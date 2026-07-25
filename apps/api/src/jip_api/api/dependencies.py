@@ -56,10 +56,26 @@ def _bearer_token(request: Request) -> str:
     return token.strip()
 
 
+def _resolve_verifier() -> ClerkTokenVerifier:
+    """Build the verifier, or report the service as unable to authenticate.
+
+    Deliberately *not* a FastAPI dependency. FastAPI resolves dependencies
+    before the handler runs, so a misconfigured instance would fail while
+    building the verifier — turning even a request that carries no credential
+    at all into an opaque 500, instead of the 401 it plainly deserves.
+    """
+    try:
+        return get_token_verifier()
+    except ValueError as exc:
+        # Configuration error, not a bad credential: the caller may well hold a
+        # perfectly good token and we simply cannot check it.
+        logger.error("Authentication is not configured", exc_info=exc)
+        raise AuthenticationUnavailableError() from exc
+
+
 def get_current_user(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
-    verifier: Annotated[ClerkTokenVerifier, Depends(get_token_verifier)],
 ) -> User:
     """Resolve the authenticated user, provisioning on first sight.
 
@@ -69,6 +85,7 @@ def get_current_user(
     passes.
     """
     token = _bearer_token(request)
+    verifier = _resolve_verifier()
 
     try:
         identity = verifier.verify(token)
