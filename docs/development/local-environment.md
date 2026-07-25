@@ -111,6 +111,64 @@ needs permission to `CREATE DATABASE`.
   Redis-compatible Windows server, or rely on CI (see DEV-003 in
   `known-issues.md`).
 
+## Authentication setup (Clerk)
+
+Required before sign-in works against a real instance. See
+`docs/adr/0004-clerk-as-authentication-provider.md` for why Clerk, and
+`docs/adr/0005-provider-neutral-identity-boundary.md` for why the API's settings
+are named `JIP_AUTH_*` rather than after the vendor.
+
+1. Create an application at [dashboard.clerk.com](https://dashboard.clerk.com).
+2. From **API Keys**, copy the publishable key, the secret key, and the Frontend
+   API URL (this is the token issuer).
+3. Fill in `apps/web/.env.local` (copy from `apps/web/.env.example`):
+
+   ```bash
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+   CLERK_SECRET_KEY=sk_test_...
+   ```
+
+4. Fill in the root `.env` for the API:
+
+   ```bash
+   JIP_AUTH_PROVIDER=clerk
+   JIP_AUTH_ISSUER=https://your-app.clerk.accounts.dev
+   JIP_AUTH_AUTHORIZED_PARTIES=http://localhost:3000
+   ```
+
+5. Restart both processes. Settings are read once per process.
+
+Two things worth knowing:
+
+- **The API needs no Clerk secret.** It verifies tokens against the public JWKS.
+  If a Clerk secret key ever appears in the API's configuration, something has
+  been wired wrong.
+- **Leaving `JIP_AUTH_AUTHORIZED_PARTIES` empty disables the `azp` check**,
+  which is what stops a token minted for a different application from being
+  accepted here. Set it in every environment.
+
+### Keyless mode
+
+With no Clerk keys set, `next dev` runs in Clerk's keyless mode: it provisions a
+temporary instance and prints a claim URL in the server output. Sign-in works
+immediately, which is convenient for a first look, but the instance is not
+yours until claimed and the API cannot verify its tokens (you have no issuer to
+configure). Use real keys for anything beyond a smoke test.
+
+### Where authorization actually happens
+
+Three independent layers, in order of authority:
+
+1. **`src/app/(app)/layout.tsx`** — checks the session before rendering any
+   authenticated page. This is the frontend boundary. A page is protected
+   because it lives under `(app)/`, not because a pattern matched.
+2. **The API** — verifies the bearer token on every request, independently of
+   anything the frontend did.
+3. **`src/middleware.ts`** — attaches auth context only. It deliberately makes
+   no authorization decisions: Clerk deprecated middleware path-matching for
+   this because a path pattern can diverge from how Next.js routes a request,
+   leaving a resource reachable with nothing logged.
+
 ## Environment variables
 
 Every backend variable is prefixed `JIP_`. `.env.example` documents all of them.

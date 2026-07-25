@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 
 import { Providers } from "@/app/providers";
@@ -11,15 +12,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      {/*
-        Fonts come from the system stack rather than next/font/google: a webfont
-        fetch at build time makes `next build` fail on a network-restricted
-        runner for a purely cosmetic dependency.
-      */}
-      <body className="font-sans antialiased">
-        <Providers>{children}</Providers>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
+        {/*
+          Fonts come from the system stack rather than next/font/google: a
+          webfont fetch at build time makes `next build` fail on a
+          network-restricted runner for a purely cosmetic dependency.
+        */}
+        <body className="font-sans antialiased">
+          <Providers>{children}</Providers>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

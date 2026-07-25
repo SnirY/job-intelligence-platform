@@ -169,6 +169,18 @@ jobs:
             psql -U jip -d jip -tAc 'SELECT version_num FROM alembic_version' \
             | tee /dev/stderr | grep -q .
 
+      - name: Verify the users table exists
+        run: |
+          docker compose exec -T postgres \
+            psql -U jip -d jip -tAc "SELECT to_regclass('public.users')" \
+            | tee /dev/stderr | grep -q users
+
+      - name: Verify a protected endpoint rejects an unauthenticated request
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/users/me)
+          echo "GET /api/v1/users/me without a token -> HTTP ${status}"
+          test "${status}" = "401"
+
       - name: Verify the worker processes a queued task
         run: |
           docker compose exec -T api python - <<'PY'

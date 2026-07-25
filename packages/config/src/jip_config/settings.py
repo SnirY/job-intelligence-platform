@@ -8,8 +8,10 @@ silently falling back to something that only appears to work.
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from pydantic import Field, field_validator
@@ -42,6 +44,32 @@ def _split_csv(value: Any) -> Any:
 # before validation, which is what lets _split_csv see the comma-separated form.
 CommaSeparated = Annotated[list[str], NoDecode]
 
+ENV_FILE_VARIABLE = "JIP_ENV_FILE"
+
+
+def _find_env_file() -> Path | str:
+    """Locate the ``.env``, searching upward from the working directory.
+
+    A bare relative ``".env"`` is resolved against the current directory, so
+    running a tool from a subdirectory — ``alembic upgrade head`` from
+    ``apps/api/``, say — would silently miss the repository's ``.env`` and fail
+    with "field required" instead of pointing at the real problem.
+
+    ``JIP_ENV_FILE`` overrides the search. Finding nothing is fine: containers
+    and CI pass real environment variables, which take priority over any file.
+    """
+    override = os.environ.get(ENV_FILE_VARIABLE)
+    if override:
+        return Path(override)
+
+    start = Path.cwd().resolve()
+    for directory in (start, *start.parents):
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+
+    return ".env"
+
 
 class Settings(BaseSettings):
     """Backend runtime settings.
@@ -52,7 +80,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="JIP_",
-        env_file=".env",
+        env_file=_find_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -78,12 +106,60 @@ class Settings(BaseSettings):
 
     worker_queues: CommaSeparated = Field(default_factory=lambda: ["default"])
 
+    # --- Authentication ---
+    # Provider-neutral on purpose: these are OIDC concepts, not vendor ones, so
+    # moving to a different issuer is configuration rather than code.
+    # See docs/adr/0004-clerk-as-authentication-provider.md and ADR-0005.
+    #
+    # Verification is offline against a public JWKS, so no provider secret
+    # belongs here. The API image deliberately carries no auth credential.
+    auth_provider: str = Field(
+        default="clerk",
+        description="Identifier stored on new users, recording which issuer vouched for them.",
+    )
+    auth_issuer: str | None = Field(
+        default=None,
+        description="Expected `iss` claim, e.g. https://your-app.clerk.accounts.dev",
+    )
+    auth_authorized_parties: CommaSeparated = Field(
+        default_factory=list,
+        description="Permitted `azp` values, i.e. the origins allowed to use this API.",
+    )
+    auth_jwks_url: str | None = Field(
+        default=None,
+        description="Overrides the JWKS URL derived from auth_issuer.",
+    )
+    auth_jwks_cache_seconds: int = 3600
+    auth_leeway_seconds: int = 5
+
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
+    _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)
 
     @property
     def is_production(self) -> bool:
         return self.environment is Environment.PRODUCTION
+
+    @property
+    def resolved_auth_jwks_url(self) -> str:
+        """JWKS document location.
+
+        Derived from the issuer unless explicitly overridden. Raises rather than
+        returning a placeholder: a wrong JWKS URL means every token fails to
+        verify, and that is far easier to diagnose at startup than as a blanket
+        401 at runtime.
+        """
+        if self.auth_jwks_url:
+            return self.auth_jwks_url
+        if not self.auth_issuer:
+            raise ValueError(
+                "Authentication is not configured: set JIP_AUTH_ISSUER (or JIP_AUTH_JWKS_URL)."
+            )
+        return f"{self.auth_issuer.rstrip('/')}/.well-known/jwks.json"
+
+    @property
+    def authentication_configured(self) -> bool:
+        return bool(self.auth_issuer or self.auth_jwks_url)
 
 
 @lru_cache(maxsize=1)

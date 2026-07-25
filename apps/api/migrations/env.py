@@ -11,6 +11,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from jip_api.infrastructure.db import registry  # noqa: F401  (populates Base.metadata)
 from jip_api.infrastructure.db.base import Base
 from jip_config import get_settings
 
@@ -19,10 +20,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# A URL set explicitly on the config wins; settings are the default. Overriding
+# unconditionally would silently ignore a caller that passed its own URL — which
+# is exactly what a test targeting a throwaway database does, and the symptom is
+# a migration run against the wrong database rather than an error.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# Importing model modules here registers them on Base.metadata for autogenerate.
-# No domain models exist yet (Phase 0 is infrastructure only).
 target_metadata = Base.metadata
 
 

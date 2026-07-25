@@ -42,6 +42,16 @@ def _isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("JIP_REDIS_URL", UNREACHABLE_REDIS_URL)
     monkeypatch.setenv("JIP_CONNECT_TIMEOUT_SECONDS", "1")
 
+    # Authentication is left unconfigured, and pinned so explicitly because the
+    # settings loader reads a repository .env when one exists. A developer with
+    # working local credentials would otherwise silently invert the tests that
+    # assert unconfigured behaviour — they would pass on CI and on a fresh
+    # clone, and fail only on the machine that has a .env. Environment
+    # variables take priority over the file, so empty values win here.
+    monkeypatch.setenv("JIP_AUTH_ISSUER", "")
+    monkeypatch.setenv("JIP_AUTH_JWKS_URL", "")
+    monkeypatch.setenv("JIP_AUTH_AUTHORIZED_PARTIES", "")
+
     _clear_caches()
     yield
     _clear_caches()
