@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jip-worker"
+version = "0.1.0"
+description = "Job Intelligence Platform background worker."
+requires-python = ">=3.12"
+dependencies = [
+  "jip-config",
+  "redis>=5.0,<7",
+  "rq>=1.16,<3",
+]
+
+[project.scripts]
+jip-worker = "jip_worker.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jip_worker"]
