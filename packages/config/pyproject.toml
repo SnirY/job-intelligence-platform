@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jip-config"
+version = "0.1.0"
+description = "Shared runtime configuration for the Job Intelligence Platform backend services."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.5,<3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jip_config"]

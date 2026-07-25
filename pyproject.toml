@@ -1,0 +1,91 @@
+# Repository-wide Python tooling configuration.
+#
+# This file intentionally declares no [project] table: it is not an installable
+# package. Each Python package (packages/config, apps/api, apps/worker) has its
+# own pyproject.toml. Keeping lint, type-check, and test settings here means all
+# backend code is held to one standard.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = [
+  "packages/config/src",
+  "apps/api/src",
+  "apps/worker/src",
+]
+extend-exclude = ["apps/api/migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # import sorting
+  "B",    # bugbear
+  "UP",   # pyupgrade
+  "C4",   # comprehensions
+  "SIM",  # simplify
+  "TID",  # tidy imports
+  "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately use assert and long descriptive names.
+"**/tests/**" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jip_api", "jip_config", "jip_worker"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+pretty = true
+show_error_codes = true
+mypy_path = [
+  "packages/config/src",
+  "apps/api/src",
+  "apps/worker/src",
+]
+files = [
+  "packages/config/src",
+  "packages/config/tests",
+  "apps/api/src",
+  "apps/api/tests",
+  "apps/api/migrations",
+  "apps/worker/src",
+  "apps/worker/tests",
+]
+
+[[tool.mypy.overrides]]
+# Alembic generates these modules from a template; they are configuration, not
+# library code, and Alembic's own context object is dynamically constructed.
+module = ["migrations.*", "alembic.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = [
+  "packages/config/tests",
+  "apps/api/tests",
+  "apps/worker/tests",
+]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "integration: requires live PostgreSQL and/or Redis (see docs/development/local-environment.md)",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = [
+  "packages/config/src",
+  "apps/api/src",
+  "apps/worker/src",
+]
+
+[tool.coverage.report]
+show_missing = true
