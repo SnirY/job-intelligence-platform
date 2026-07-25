@@ -1,0 +1,106 @@
+# Local development stack: web, api, worker, PostgreSQL, Redis.
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# The API and worker read JIP_DATABASE_URL / JIP_REDIS_URL with container
+# hostnames, overriding the localhost values in .env that a host-run process
+# would use.
+
+name: job-intelligence-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jip_local_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-jip}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Dependents wait for readiness, not just for the container to exist.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jip} -d ${POSTGRES_DB:-jip}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    working_dir: /app/apps/api
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      JIP_ENVIRONMENT: ${JIP_ENVIRONMENT:-local}
+      JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
+      JIP_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    environment:
+      JIP_ENVIRONMENT: ${JIP_ENVIRONMENT:-local}
+      JIP_LOG_LEVEL: ${JIP_LOG_LEVEL:-INFO}
+      JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
+      JIP_REDIS_URL: redis://redis:6379/0
+      JIP_CORS_ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "${JIP_API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["jip-worker"]
+    environment:
+      JIP_ENVIRONMENT: ${JIP_ENVIRONMENT:-local}
+      JIP_LOG_LEVEL: ${JIP_LOG_LEVEL:-INFO}
+      JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
+      JIP_REDIS_URL: redis://redis:6379/0
+      JIP_WORKER_QUEUES: ${JIP_WORKER_QUEUES:-default}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    environment:
+      # Resolved by the browser, not by the container, so it must be a host URL.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${JIP_API_PORT:-8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:

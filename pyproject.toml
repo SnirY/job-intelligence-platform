@@ -58,6 +58,7 @@ files = [
   "apps/api/migrations",
   "apps/worker/src",
   "apps/worker/tests",
+  "scripts",
 ]
 
 [[tool.mypy.overrides]]
