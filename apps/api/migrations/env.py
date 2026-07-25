@@ -11,6 +11,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from jip_api.infrastructure.db import registry  # noqa: F401  (populates Base.metadata)
 from jip_api.infrastructure.db.base import Base
 from jip_config import get_settings
 
@@ -21,8 +22,6 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# Importing model modules here registers them on Base.metadata for autogenerate.
-# No domain models exist yet (Phase 0 is infrastructure only).
 target_metadata = Base.metadata
 
 
