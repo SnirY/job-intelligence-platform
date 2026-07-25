@@ -9,22 +9,28 @@ query has to be written deliberately rather than produced by forgetting a
 from __future__ import annotations
 
 import uuid
-from typing import Protocol
 
 from sqlalchemy import Select, select
 
-
-class UserOwned(Protocol):
-    """A model with a ``user_id`` column."""
-
-    user_id: uuid.UUID
+from jip_api.infrastructure.db.base import Base
 
 
-def owned[ModelT: UserOwned](model: type[ModelT], user_id: uuid.UUID) -> Select[tuple[ModelT]]:
+def owned[ModelT: Base](model: type[ModelT], user_id: uuid.UUID) -> Select[tuple[ModelT]]:
     """Start a SELECT already scoped to ``user_id``.
 
     Prefer this over ``select(Model)`` in every repository. Filtering by a
     primary key alone is not enough: an id that belongs to another user would
     still match, which turns a guessable identifier into a data leak.
+
+    Raises ``TypeError`` for a model that has no ``user_id``. Some tables are
+    deliberately global — the canonical ``skills`` catalogue is shared by every
+    user — and scoping one of those by user would quietly return nothing rather
+    than failing, so it is caught here instead.
     """
-    return select(model).where(model.user_id == user_id)  # type: ignore[arg-type]
+    user_column = getattr(model, "user_id", None)
+    if user_column is None:
+        raise TypeError(
+            f"{model.__name__} has no user_id column, so it cannot be scoped to a user. "
+            "Global tables must be queried with select() directly."
+        )
+    return select(model).where(user_column == user_id)

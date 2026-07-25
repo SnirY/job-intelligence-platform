@@ -79,6 +79,13 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     throw new ApiTransportError(`Could not reach the API at ${API_BASE_URL}`, { cause });
   }
 
+  // 204 carries no body by definition, so parsing one would always throw.
+  // DELETE endpoints answer this way; treating it as a transport failure would
+  // report a successful delete as an error.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   let payload: unknown;
   try {
     payload = await response.json();

@@ -29,4 +29,5 @@ export const API_ROUTES = {
   readiness: "/api/v1/health/ready",
   currentUser: "/api/v1/users/me",
   careerProfile: "/api/v1/career/profile",
+  careerTargetRoles: "/api/v1/career/target-roles",
 } as const;

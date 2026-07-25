@@ -1,4 +1,11 @@
-import { API_ROUTES, type CareerProfile, type CareerProfileUpdate } from "@jip/shared-types";
+import {
+  API_ROUTES,
+  type CareerProfile,
+  type CareerProfileUpdate,
+  type TargetRole,
+  type TargetRoleCreate,
+  type TargetRoleUpdate,
+} from "@jip/shared-types";
 
 import type { ApiFetchOptions } from "@/lib/api";
 
@@ -23,4 +30,37 @@ export function updateCareerProfile(api: Api, update: CareerProfileUpdate): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(update),
   });
+}
+
+// --- target roles ------------------------------------------------------------
+
+export const targetRolesQueryKey = ["career", "target-roles"] as const;
+
+export function fetchTargetRoles(api: Api): Promise<TargetRole[]> {
+  return api<TargetRole[]>(API_ROUTES.careerTargetRoles);
+}
+
+export function createTargetRole(api: Api, body: TargetRoleCreate): Promise<TargetRole> {
+  return api<TargetRole>(API_ROUTES.careerTargetRoles, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateTargetRole(
+  api: Api,
+  id: string,
+  body: TargetRoleUpdate,
+): Promise<TargetRole> {
+  return api<TargetRole>(`${API_ROUTES.careerTargetRoles}/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Returns nothing: the endpoint answers 204 with no body. */
+export function deleteTargetRole(api: Api, id: string): Promise<void> {
+  return api<void>(`${API_ROUTES.careerTargetRoles}/${id}`, { method: "DELETE" });
 }

@@ -10,10 +10,16 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from jip_api.application.errors import (
+    ApplicationError,
+    DuplicateResourceError,
+    ResourceNotFoundError,
+)
 from jip_api.core.context import get_request_id
 from jip_api.core.responses import ErrorBody, ErrorResponse
 
@@ -45,6 +51,22 @@ class ServiceUnavailableError(APIError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "SERVICE_UNAVAILABLE"
     message = "A required dependency is unavailable."
+
+
+class NotFoundError(APIError):
+    """The requested resource does not exist for this caller."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "NOT_FOUND"
+    message = "The requested resource could not be found."
+
+
+class ConflictError(APIError):
+    """The request collides with an existing resource."""
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "CONFLICT"
+    message = "The request conflicts with existing data."
 
 
 def error_response(
@@ -88,7 +110,11 @@ async def _handle_validation_error(_: Request, exc: Exception) -> JSONResponse:
         status_code=HTTP_422_UNPROCESSABLE_CONTENT,
         code="VALIDATION_ERROR",
         message="The request payload failed validation.",
-        details=exc.errors(),
+        # jsonable_encoder is required, not cosmetic: when a custom
+        # field_validator raises ValueError, pydantic puts that exception object
+        # into ctx, and serialising it directly fails — turning every such 422
+        # into a 500.
+        details=jsonable_encoder(exc.errors()),
     )
 
 
@@ -123,8 +149,30 @@ _HTTP_ERROR_CODES: dict[int, str] = {
 }
 
 
+async def _handle_application_error(_: Request, exc: Exception) -> JSONResponse:
+    """Map a use-case failure onto the error envelope.
+
+    Keeps the application layer free of any HTTP dependency: it raises a
+    domain-shaped error and the status code is decided here.
+    """
+    assert isinstance(exc, ApplicationError)
+    mapped = _APPLICATION_ERROR_MAP.get(type(exc))
+    if mapped is None:
+        raise exc  # unmapped: let the generic 500 handler log it properly
+
+    status_code, code = mapped
+    return error_response(status_code=status_code, code=code, message=str(exc) or code)
+
+
+_APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
+    ResourceNotFoundError: (status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
+    DuplicateResourceError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+}
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach the envelope-producing handlers to the application."""
+    app.add_exception_handler(ApplicationError, _handle_application_error)
     app.add_exception_handler(APIError, _handle_api_error)
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
     app.add_exception_handler(StarletteHTTPException, _handle_http_exception)

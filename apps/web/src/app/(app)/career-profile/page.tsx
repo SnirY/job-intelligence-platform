@@ -1,4 +1,5 @@
 import { ProfileBasicsForm } from "@/features/career/profile-basics-form";
+import { TargetRolesSection } from "@/features/career/target-roles-section";
 
 export default function CareerProfilePage() {
   return (
@@ -12,11 +13,12 @@ export default function CareerProfilePage() {
       </header>
 
       <ProfileBasicsForm />
+      <TargetRolesSection />
 
       {/*
-        Target roles, skills, experience, projects, and education are the
-        remaining Phase 2 slices. They are absent rather than stubbed: an empty
-        section that looks built is indistinguishable from a broken one.
+        Skills, experience, projects, and education are the remaining Phase 2
+        slices. They are absent rather than stubbed: an empty section that looks
+        built is indistinguishable from a broken one.
       */}
     </div>
   );
