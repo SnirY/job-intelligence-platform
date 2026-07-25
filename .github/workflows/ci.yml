@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests, migrations)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: jip
+          POSTGRES_PASSWORD: jip_ci
+          POSTGRES_DB: jip
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jip -d jip"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      JIP_TEST_DATABASE_URL: postgresql+psycopg://jip:jip_ci@localhost:5432/jip
+      JIP_TEST_REDIS_URL: redis://localhost:6379/0
+      # Turns "infrastructure missing" from a silent skip into a failure, so a
+      # broken service shows up as a red build rather than a shorter test run.
+      JIP_REQUIRE_INTEGRATION: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy
+
+      - name: Unit tests
+        run: pytest -m "not integration"
+
+      - name: Integration tests (PostgreSQL, Redis, RQ worker)
+        run: pytest -m integration
+
+      - name: Alembic upgrade from a clean database
+        env:
+          JIP_DATABASE_URL: postgresql+psycopg://jip:jip_ci@localhost:5432/jip_migrations
+          JIP_REDIS_URL: redis://localhost:6379/0
+          PGPASSWORD: jip_ci
+        working-directory: apps/api
+        run: |
+          psql -h localhost -U jip -d jip -c 'CREATE DATABASE jip_migrations'
+          alembic upgrade head
+          alembic current
+          alembic downgrade base
+
+  frontend:
+    name: Frontend (lint, types, tests, build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Type check (tsc)
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+  compose:
+    name: Docker Compose stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: docker compose build api web
+
+      - name: Start the stack
+        run: docker compose up -d postgres redis migrate api worker
+
+      - name: Wait for the API to report ready
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/api/v1/health/ready; then
+              echo
+              echo "API ready after ${attempt} attempt(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become ready" >&2
+          docker compose ps
+          docker compose logs --no-color
+          exit 1
+
+      - name: Verify migrations were applied
+        run: |
+          docker compose exec -T postgres \
+            psql -U jip -d jip -tAc 'SELECT version_num FROM alembic_version' \
+            | tee /dev/stderr | grep -q .
+
+      - name: Verify the worker processes a queued task
+        run: |
+          docker compose exec -T api python - <<'PY'
+          import sys, time
+          from redis import Redis
+          from rq import Queue
+          from rq.job import JobStatus
+
+          queue = Queue("default", connection=Redis.from_url("redis://redis:6379/0"))
+          job = queue.enqueue("jip_worker.tasks.system.ping", "ci")
+
+          for _ in range(60):
+              status = job.get_status(refresh=True)
+              if status == JobStatus.FINISHED:
+                  print("worker returned:", job.return_value())
+                  assert job.return_value()["echo"] == "ci"
+                  sys.exit(0)
+              if status == JobStatus.FAILED:
+                  print("job failed:", job.latest_result(), file=sys.stderr)
+                  sys.exit(1)
+              time.sleep(1)
+
+          print(f"job did not finish (last status: {status})", file=sys.stderr)
+          sys.exit(1)
+          PY
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
