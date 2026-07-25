@@ -132,6 +132,28 @@ class Settings(BaseSettings):
     auth_jwks_cache_seconds: int = 3600
     auth_leeway_seconds: int = 5
 
+    # --- Object storage (S3-compatible) ---
+    # Uploaded files never go in the database (docs/04-system-architecture.md).
+    # Endpoint URL is configurable so the same adapter serves AWS S3, MinIO,
+    # and R2 without a code change.
+    storage_bucket: str | None = None
+    storage_endpoint_url: str | None = Field(
+        default=None,
+        description="Leave unset for AWS S3; set for MinIO or another S3-compatible service.",
+    )
+    storage_region: str = "us-east-1"
+    storage_access_key: str | None = None
+    storage_secret_key: str | None = None
+    storage_signed_url_ttl_seconds: int = 900
+
+    # --- Uploads ---
+    max_upload_bytes: int = 10 * 1024 * 1024
+    """Refused above this size.
+
+    Bounded because an unbounded upload is a denial-of-service vector: the file
+    is read into memory to hash and scan it before anything is stored.
+    """
+
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
     _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)

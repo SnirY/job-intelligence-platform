@@ -9,6 +9,7 @@ Add every new model module here.
 """
 
 from jip_api.domain.career import models as career_models
+from jip_api.domain.documents import models as document_models
 from jip_api.domain.users import models as user_models
 
-__all__ = ["career_models", "user_models"]
+__all__ = ["career_models", "document_models", "user_models"]
