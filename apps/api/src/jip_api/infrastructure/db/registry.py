@@ -8,6 +8,7 @@ the symptom is a migration that silently omits a table.
 Add every new model module here.
 """
 
+from jip_api.domain.career import models as career_models
 from jip_api.domain.users import models as user_models
 
-__all__ = ["user_models"]
+__all__ = ["career_models", "user_models"]

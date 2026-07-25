@@ -77,3 +77,35 @@ def test_every_response_carries_a_request_id(client: TestClient, supplied: str |
     assert returned
     if supplied:
         assert returned == supplied
+
+
+def test_validator_raising_value_error_yields_422_not_500(app: FastAPI) -> None:
+    """Regression: a custom field_validator used to produce a 500.
+
+    Pydantic puts the raised ValueError object into the error's ``ctx``.
+    Serialising that directly fails, so the 422 became an unhandled 500 — and
+    the caller was told the server had broken when their input was simply
+    invalid.
+    """
+    from pydantic import BaseModel, field_validator
+
+    class Body(BaseModel):
+        name: str
+
+        @field_validator("name")
+        @classmethod
+        def not_blank(cls, value: str) -> str:
+            if not value.strip():
+                raise ValueError("name must not be blank")
+            return value
+
+    @app.post("/api/v1/_test/custom-validator")
+    def _endpoint(body: Body) -> dict[str, str]:  # pragma: no cover - invoked via HTTP
+        return {"name": body.name}
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/v1/_test/custom-validator", json={"name": "   "})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["details"]
