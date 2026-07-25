@@ -8,8 +8,10 @@ silently falling back to something that only appears to work.
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from pydantic import Field, field_validator
@@ -42,6 +44,32 @@ def _split_csv(value: Any) -> Any:
 # before validation, which is what lets _split_csv see the comma-separated form.
 CommaSeparated = Annotated[list[str], NoDecode]
 
+ENV_FILE_VARIABLE = "JIP_ENV_FILE"
+
+
+def _find_env_file() -> Path | str:
+    """Locate the ``.env``, searching upward from the working directory.
+
+    A bare relative ``".env"`` is resolved against the current directory, so
+    running a tool from a subdirectory — ``alembic upgrade head`` from
+    ``apps/api/``, say — would silently miss the repository's ``.env`` and fail
+    with "field required" instead of pointing at the real problem.
+
+    ``JIP_ENV_FILE`` overrides the search. Finding nothing is fine: containers
+    and CI pass real environment variables, which take priority over any file.
+    """
+    override = os.environ.get(ENV_FILE_VARIABLE)
+    if override:
+        return Path(override)
+
+    start = Path.cwd().resolve()
+    for directory in (start, *start.parents):
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+
+    return ".env"
+
 
 class Settings(BaseSettings):
     """Backend runtime settings.
@@ -52,7 +80,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="JIP_",
-        env_file=".env",
+        env_file=_find_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
