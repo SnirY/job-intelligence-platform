@@ -1,13 +1,42 @@
 # Job Intelligence Platform
 
-This repository contains the product, architecture, AI, UX, API, engineering, and development-continuity specifications for a personal AI-powered Job Search and Career Intelligence Platform.
+A personal AI-powered Job Search and Career Intelligence Platform. This repository contains the product, architecture, AI, UX, API, engineering, and development-continuity specifications, together with the implementation.
+
+**Current state: Phase 0 (Project Foundation) is complete. No product features are implemented yet.**
+
+## Quick start
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Web at http://localhost:3000, API at http://localhost:8000, API docs at http://localhost:8000/docs.
+
+For host-process development, running the checks, and the Windows notes, see `docs/development/local-environment.md`.
+
+## Repository layout
+
+```text
+apps/
+    web/        Next.js + TypeScript + Tailwind + shadcn/ui
+    api/        FastAPI + SQLAlchemy + Alembic
+    worker/     RQ background worker
+packages/
+    config/         shared backend settings and logging (jip-config)
+    shared-types/   TypeScript API contracts (@jip/shared-types)
+docs/
+infra/          Dockerfiles
+scripts/
+tests/
+```
 
 ## Start here
 
 1. Read `GOAL.md`.
 2. Read the current development state in `docs/development/`.
 3. Read the specification documents relevant to the active phase.
-4. Use `BOOTSTRAP_PHASE_0_PROMPT.md` to begin Phase 0 with Codex.
+4. Read the architecture decisions in `docs/adr/`.
 
 ## Documentation map
 
@@ -24,5 +53,7 @@ This repository contains the product, architecture, AI, UX, API, engineering, an
 - `docs/10-api-contracts.md` — API and internal technical interfaces
 - `docs/11-engineering-standards.md` — coding, testing, and Codex rules
 - `docs/12-project-tracking.md` — tracking and continuity rules
+- `docs/adr/` — architecture decision records
+- `docs/development/local-environment.md` — running and verifying the stack
 
 The project should be developed one reliable vertical slice at a time.

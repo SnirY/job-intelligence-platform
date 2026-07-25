@@ -1,0 +1,19 @@
+# Generated or vendored output
+node_modules/
+.next/
+out/
+coverage/
+.venv/
+*.lock
+package-lock.json
+
+# Python is formatted by ruff, not prettier
+*.py
+*.mako
+
+# Documentation is authored by hand; reflowing it produces noisy diffs
+docs/
+*.md
+
+# Emitted by the bootstrap bundle, not maintained here
+MANIFEST.json

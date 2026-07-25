@@ -53,3 +53,6 @@ yarn-error.log*
 pnpm-debug.log*
 tmp/
 .tmp/
+
+# Local agent/editor tooling state
+.claude/
