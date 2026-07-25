@@ -27,4 +27,5 @@ export interface ReadinessPayload {
 export const API_ROUTES = {
   health: "/api/v1/health",
   readiness: "/api/v1/health/ready",
+  currentUser: "/api/v1/users/me",
 } as const;

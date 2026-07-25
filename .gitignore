@@ -56,3 +56,6 @@ tmp/
 
 # Local agent/editor tooling state
 .claude/
+
+# Clerk keyless-mode instance keys
+.clerk/
