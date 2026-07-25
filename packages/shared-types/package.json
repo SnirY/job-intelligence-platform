@@ -1,0 +1,16 @@
+{
+  "name": "@jip/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript contracts shared between the web app and the API.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
