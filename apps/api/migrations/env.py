@@ -20,7 +20,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# A URL set explicitly on the config wins; settings are the default. Overriding
+# unconditionally would silently ignore a caller that passed its own URL — which
+# is exactly what a test targeting a throwaway database does, and the symptom is
+# a migration run against the wrong database rather than an error.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 target_metadata = Base.metadata
 

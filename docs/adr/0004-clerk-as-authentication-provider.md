@@ -6,6 +6,13 @@ Accepted
 Date:
 2026-07-25
 
+Amended by:
+ADR-0005, which renames the schema column, settings, and verifier type to be
+provider-neutral. The decision to use Clerk stands; only the naming and the
+uniqueness constraint changed. Where this document says `clerk_user_id`,
+`JIP_CLERK_*`, or `ClerkTokenVerifier`, read `external_user_id`, `JIP_AUTH_*`,
+and `JwksTokenVerifier`.
+
 ## Context
 
 Phase 1 delivers sign up, login, logout, protected routes, and user scoping.
@@ -183,10 +190,10 @@ API (extends `jip_config.Settings`, `JIP_` prefix):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JIP_CLERK_ISSUER` | none — required outside `local` | Expected `iss` claim; also the JWKS base |
-| `JIP_CLERK_AUTHORIZED_PARTIES` | none | Permitted `azp` values; comma-separated via the existing `CommaSeparated` helper |
-| `JIP_CLERK_JWKS_URL` | `{issuer}/.well-known/jwks.json` | Override for testing or a pinned endpoint |
-| `JIP_CLERK_JWKS_CACHE_SECONDS` | `3600` | JWKS cache lifetime |
+| `JIP_AUTH_ISSUER` | none — required outside `local` | Expected `iss` claim; also the JWKS base |
+| `JIP_AUTH_AUTHORIZED_PARTIES` | none | Permitted `azp` values; comma-separated via the existing `CommaSeparated` helper |
+| `JIP_AUTH_JWKS_URL` | `{issuer}/.well-known/jwks.json` | Override for testing or a pinned endpoint |
+| `JIP_AUTH_JWKS_CACHE_SECONDS` | `3600` | JWKS cache lifetime |
 
 These follow the Phase 0 convention: no defaults for values that must be
 correct, so a misconfigured process fails at startup instead of running with

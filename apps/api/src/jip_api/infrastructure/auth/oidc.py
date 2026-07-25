@@ -1,19 +1,23 @@
-"""Clerk session-token verification.
+"""Session-token verification against a JWKS.
 
-Verification is offline: the token is checked against Clerk's public JWKS, which
-this process caches. No Clerk credential is held and no request is made to Clerk
-on the authentication path.
+Nothing here is specific to one vendor. RS256 signing plus a published JWKS is
+the shape every OIDC issuer emits — Clerk today, and Keycloak, Zitadel,
+Authentik, Logto, or Auth0 without changing this module.
 
-See ``docs/adr/0004-clerk-as-authentication-provider.md``.
+Verification is offline: tokens are checked against the issuer's public keys,
+which this process caches. No provider credential is held and no call is made to
+the provider on the authentication path.
+
+See ``docs/adr/0004-clerk-as-authentication-provider.md`` and
+``docs/adr/0005-provider-neutral-identity-boundary.md``.
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
+from typing import Any, Protocol
 
 import jwt
 from jwt import PyJWKClient
@@ -40,10 +44,15 @@ class TokenVerificationError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class VerifiedIdentity:
-    """Identity claims from a token that passed every check."""
+    """Identity claims from a token that passed every check.
+
+    Deliberately free of vendor vocabulary. This is the type the application
+    layer consumes, which is what keeps user provisioning independent of who
+    issued the token.
+    """
 
     subject: str
-    """The Clerk user id (`sub`). The external identity reference."""
+    """The issuer's identifier for this person — the `sub` claim."""
 
     session_id: str | None
     email: str | None
@@ -70,8 +79,16 @@ def _optional_str(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-class ClerkTokenVerifier:
-    """Verifies Clerk session tokens against a cached JWKS."""
+class TokenVerifier(Protocol):
+    """Turns a bearer token into a verified identity, or refuses."""
+
+    def verify(self, token: str) -> VerifiedIdentity:
+        """Verify ``token``, raising :class:`TokenVerificationError` if invalid."""
+        ...
+
+
+class JwksTokenVerifier:
+    """:class:`TokenVerifier` backed by an OIDC issuer's published JWKS."""
 
     def __init__(
         self,
@@ -91,16 +108,13 @@ class ClerkTokenVerifier:
             lifespan=cache_seconds,
             # An unknown `kid` triggers a JWKS refetch. Without a bound, a
             # stream of forged tokens carrying random `kid` values turns into a
-            # request flood against Clerk — and a self-inflicted outage once
-            # Clerk rate-limits us back.
+            # request flood against the issuer — and a self-inflicted outage
+            # once the issuer rate-limits us back.
             max_cached_keys=16,
         )
 
     def verify(self, token: str) -> VerifiedIdentity:
-        """Verify ``token`` and return its identity claims.
-
-        Raises :class:`TokenVerificationError` if any check fails.
-        """
+        """Verify ``token`` and return its identity claims."""
         if not token or token.count(".") != 2:
             raise TokenVerificationError("token is not a well-formed JWS")
 
@@ -126,7 +140,8 @@ class ClerkTokenVerifier:
                     "verify_nbf": True,
                     "verify_iss": self._issuer is not None,
                     # Clerk session tokens carry no `aud`; `azp` is the
-                    # equivalent binding and is checked below.
+                    # equivalent binding and is checked below. An issuer that
+                    # uses `aud` instead would enable this and pass `audience=`.
                     "verify_aud": False,
                 },
             )
@@ -152,19 +167,19 @@ class ClerkTokenVerifier:
             raise TokenVerificationError(f"unauthorized party: {azp!r}")
 
 
-def build_verifier(settings: Settings) -> ClerkTokenVerifier:
-    """Construct a verifier from settings."""
-    return ClerkTokenVerifier(
-        settings.resolved_clerk_jwks_url,
-        issuer=settings.clerk_issuer,
-        authorized_parties=settings.clerk_authorized_parties,
-        cache_seconds=settings.clerk_jwks_cache_seconds,
-        leeway_seconds=settings.clerk_leeway_seconds,
+def build_verifier(settings: Settings) -> TokenVerifier:
+    """Construct the configured verifier."""
+    return JwksTokenVerifier(
+        settings.resolved_auth_jwks_url,
+        issuer=settings.auth_issuer,
+        authorized_parties=settings.auth_authorized_parties,
+        cache_seconds=settings.auth_jwks_cache_seconds,
+        leeway_seconds=settings.auth_leeway_seconds,
     )
 
 
 @lru_cache(maxsize=1)
-def get_token_verifier() -> ClerkTokenVerifier:
+def get_token_verifier() -> TokenVerifier:
     """Process-wide verifier, so the JWKS cache is shared across requests."""
     return build_verifier(get_settings())
 
@@ -172,8 +187,3 @@ def get_token_verifier() -> ClerkTokenVerifier:
 def reset_verifier_cache() -> None:
     """Drop the cached verifier. Used by tests that reconfigure authentication."""
     get_token_verifier.cache_clear()
-
-
-def utc_now_epoch() -> int:
-    """Current time as a UNIX timestamp, for token construction in tests."""
-    return int(time.time())

@@ -114,8 +114,9 @@ needs permission to `CREATE DATABASE`.
 ## Authentication setup (Clerk)
 
 Required before sign-in works against a real instance. See
-`docs/adr/0004-clerk-as-authentication-provider.md` for why Clerk, and how the
-pieces fit.
+`docs/adr/0004-clerk-as-authentication-provider.md` for why Clerk, and
+`docs/adr/0005-provider-neutral-identity-boundary.md` for why the API's settings
+are named `JIP_AUTH_*` rather than after the vendor.
 
 1. Create an application at [dashboard.clerk.com](https://dashboard.clerk.com).
 2. From **API Keys**, copy the publishable key, the secret key, and the Frontend
@@ -130,8 +131,9 @@ pieces fit.
 4. Fill in the root `.env` for the API:
 
    ```bash
-   JIP_CLERK_ISSUER=https://your-app.clerk.accounts.dev
-   JIP_CLERK_AUTHORIZED_PARTIES=http://localhost:3000
+   JIP_AUTH_PROVIDER=clerk
+   JIP_AUTH_ISSUER=https://your-app.clerk.accounts.dev
+   JIP_AUTH_AUTHORIZED_PARTIES=http://localhost:3000
    ```
 
 5. Restart both processes. Settings are read once per process.
@@ -141,7 +143,7 @@ Two things worth knowing:
 - **The API needs no Clerk secret.** It verifies tokens against the public JWKS.
   If a Clerk secret key ever appears in the API's configuration, something has
   been wired wrong.
-- **Leaving `JIP_CLERK_AUTHORIZED_PARTIES` empty disables the `azp` check**,
+- **Leaving `JIP_AUTH_AUTHORIZED_PARTIES` empty disables the `azp` check**,
   which is what stops a token minted for a different application from being
   accepted here. Set it in every environment.
 

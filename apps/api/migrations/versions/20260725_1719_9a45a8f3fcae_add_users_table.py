@@ -1,12 +1,17 @@
 """add users table
 
-The internal user record. ``clerk_user_id`` holds the verified Clerk subject and
-carries a unique index — that constraint is what makes just-in-time provisioning
-idempotent: concurrent first requests race, one inserts, the other is rejected
-and re-reads rather than creating a second account for the same person.
+The internal user record. ``id`` is the platform's own UUID and is what every
+user-owned foreign key will reference; the authentication provider's identifier
+is confined to ``external_user_id``, scoped by ``auth_provider``.
 
-``email`` and ``display_name`` are nullable because Clerk's default session token
-does not carry them.
+The unique constraint on ``(auth_provider, external_user_id)`` is what makes
+just-in-time provisioning idempotent: concurrent first requests race, one
+inserts, the other is rejected and re-reads rather than creating a second
+account for the same person. Scoping it by provider also means a future
+migration can run with two issuers live instead of needing a flag day.
+
+``email`` and ``display_name`` are nullable because many issuers — Clerk's
+default session token among them — carry neither claim.
 
 Revision ID: 9a45a8f3fcae
 Revises: a1b2c3d4e5f6
@@ -35,7 +40,8 @@ def upgrade() -> None:
             server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
-        sa.Column("clerk_user_id", sa.String(length=255), nullable=False),
+        sa.Column("auth_provider", sa.String(length=50), nullable=False),
+        sa.Column("external_user_id", sa.String(length=255), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=True),
         sa.Column("display_name", sa.String(length=255), nullable=True),
         sa.Column(
@@ -51,10 +57,11 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
+        sa.UniqueConstraint(
+            "auth_provider", "external_user_id", name="uq_users_external_identity"
+        ),
     )
-    op.create_index(op.f("ix_users_clerk_user_id"), "users", ["clerk_user_id"], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_users_clerk_user_id"), table_name="users")
     op.drop_table("users")

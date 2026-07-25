@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 from jip_api.application.users.provisioning import provision_user
 from jip_api.core.errors import APIError
 from jip_api.domain.users.models import User
-from jip_api.infrastructure.auth.clerk import (
-    ClerkTokenVerifier,
+from jip_api.infrastructure.auth.oidc import (
     TokenVerificationError,
+    TokenVerifier,
     get_token_verifier,
 )
 from jip_api.infrastructure.db.session import get_session
+from jip_config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def _bearer_token(request: Request) -> str:
     return token.strip()
 
 
-def _resolve_verifier() -> ClerkTokenVerifier:
+def _resolve_verifier() -> TokenVerifier:
     """Build the verifier, or report the service as unable to authenticate.
 
     Deliberately *not* a FastAPI dependency. FastAPI resolves dependencies
@@ -94,7 +95,7 @@ def get_current_user(
         raise UnauthenticatedError() from exc
 
     try:
-        user = provision_user(session, identity)
+        user = provision_user(session, identity, provider=get_settings().auth_provider)
         session.commit()
     except Exception:
         session.rollback()

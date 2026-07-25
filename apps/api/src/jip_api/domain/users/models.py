@@ -1,12 +1,13 @@
 """The internal user record.
 
-Clerk owns *identity* — credentials, email verification, MFA, recovery. This
-table owns the *domain user*: the thing every user-owned row in the database
-will point at.
+The authentication provider owns *identity* — credentials, email verification,
+MFA, recovery. This table owns the *domain user*: the thing every user-owned row
+in the database points at.
 
-The two are joined by exactly one column, ``clerk_user_id``. Nothing else in the
-schema may reference it. See
-``docs/adr/0004-clerk-as-authentication-provider.md``.
+The two are joined by ``(auth_provider, external_user_id)``, and nothing else in
+the schema may reference those columns. See
+``docs/adr/0004-clerk-as-authentication-provider.md`` and
+``docs/adr/0005-provider-neutral-identity-boundary.md``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +35,12 @@ class User(Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (
+        # Scoping uniqueness to the provider is what makes a future migration
+        # tractable: users from a new issuer can be inserted alongside the old
+        # ones, rather than colliding on a bare subject string.
+        UniqueConstraint("auth_provider", "external_user_id", name="uq_users_external_identity"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True),
@@ -42,18 +49,25 @@ class User(Base):
     )
     """Internal identifier. Every user-owned foreign key points here.
 
-    Deliberately not the Clerk id: keeping the domain key independent of the
-    provider means changing providers rewrites one column instead of every
-    foreign key in the database.
+    Deliberately not the provider's id: keeping the domain key independent means
+    changing providers rewrites one column instead of every foreign key in the
+    database.
     """
 
-    clerk_user_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    """External identity reference — the verified ``sub`` claim.
+    auth_provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    """Which issuer vouched for this person, e.g. ``clerk``.
 
-    The unique constraint is what makes provisioning idempotent under
-    concurrency: two simultaneous first requests race, one inserts, the other
-    gets an IntegrityError and re-reads. Without it, the loser would create a
-    duplicate user and silently split that person's data across two accounts.
+    Recorded per row rather than assumed globally, so a migration can run with
+    both providers live instead of requiring a flag day.
+    """
+
+    external_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    """The provider's identifier for this person — the verified ``sub`` claim.
+
+    The unique constraint above is what makes provisioning idempotent under
+    concurrency: two simultaneous first requests race, one inserts, the other is
+    rejected and re-reads. Without it, the loser would create a duplicate user
+    and silently split that person's data across two accounts.
     """
 
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
@@ -70,4 +84,4 @@ class User(Base):
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"<User id={self.id} clerk_user_id={self.clerk_user_id!r}>"
+        return f"<User id={self.id} provider={self.auth_provider!r}>"

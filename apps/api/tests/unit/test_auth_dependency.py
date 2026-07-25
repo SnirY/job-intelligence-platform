@@ -41,7 +41,7 @@ def test_presented_token_reports_503_when_authentication_is_unconfigured(
     """A caller with a credential we cannot verify is not an unauthenticated one.
 
     Returning 401 here would tell an operator their token is bad when the real
-    fault is a missing JIP_CLERK_ISSUER on the server.
+    fault is a missing JIP_AUTH_ISSUER on the server.
     """
     response = client.get(ME, headers={"Authorization": "Bearer a.b.c"})
 

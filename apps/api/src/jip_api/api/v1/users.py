@@ -22,9 +22,10 @@ router = APIRouter(prefix="/users", tags=["users"])
 class UserPayload(BaseModel):
     """Public representation of the internal user.
 
-    Deliberately omits ``clerk_user_id``. The client already knows its own Clerk
-    identity, and the internal id is the only one the API accepts in URLs, so
-    exposing the provider id would only invite it to be used as a handle.
+    Deliberately omits ``auth_provider`` and ``external_user_id``. The client
+    already knows its own provider identity, and the internal id is the only one
+    the API accepts in URLs, so exposing the provider id would only invite it to
+    be used as a handle — and would leak which provider is in use.
     """
 
     model_config = ConfigDict(from_attributes=True)

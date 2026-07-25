@@ -78,35 +78,42 @@ class Settings(BaseSettings):
 
     worker_queues: CommaSeparated = Field(default_factory=lambda: ["default"])
 
-    # --- Authentication (Clerk) ---
-    # See docs/adr/0004-clerk-as-authentication-provider.md. Verification is
-    # offline against a public JWKS, so no Clerk secret is needed here; the API
-    # image deliberately carries no Clerk credential.
-    clerk_issuer: str | None = Field(
+    # --- Authentication ---
+    # Provider-neutral on purpose: these are OIDC concepts, not vendor ones, so
+    # moving to a different issuer is configuration rather than code.
+    # See docs/adr/0004-clerk-as-authentication-provider.md and ADR-0005.
+    #
+    # Verification is offline against a public JWKS, so no provider secret
+    # belongs here. The API image deliberately carries no auth credential.
+    auth_provider: str = Field(
+        default="clerk",
+        description="Identifier stored on new users, recording which issuer vouched for them.",
+    )
+    auth_issuer: str | None = Field(
         default=None,
         description="Expected `iss` claim, e.g. https://your-app.clerk.accounts.dev",
     )
-    clerk_authorized_parties: CommaSeparated = Field(
+    auth_authorized_parties: CommaSeparated = Field(
         default_factory=list,
         description="Permitted `azp` values, i.e. the origins allowed to use this API.",
     )
-    clerk_jwks_url: str | None = Field(
+    auth_jwks_url: str | None = Field(
         default=None,
-        description="Overrides the JWKS URL derived from clerk_issuer.",
+        description="Overrides the JWKS URL derived from auth_issuer.",
     )
-    clerk_jwks_cache_seconds: int = 3600
-    clerk_leeway_seconds: int = 5
+    auth_jwks_cache_seconds: int = 3600
+    auth_leeway_seconds: int = 5
 
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
-    _split_parties = field_validator("clerk_authorized_parties", mode="before")(_split_csv)
+    _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)
 
     @property
     def is_production(self) -> bool:
         return self.environment is Environment.PRODUCTION
 
     @property
-    def resolved_clerk_jwks_url(self) -> str:
+    def resolved_auth_jwks_url(self) -> str:
         """JWKS document location.
 
         Derived from the issuer unless explicitly overridden. Raises rather than
@@ -114,17 +121,17 @@ class Settings(BaseSettings):
         verify, and that is far easier to diagnose at startup than as a blanket
         401 at runtime.
         """
-        if self.clerk_jwks_url:
-            return self.clerk_jwks_url
-        if not self.clerk_issuer:
+        if self.auth_jwks_url:
+            return self.auth_jwks_url
+        if not self.auth_issuer:
             raise ValueError(
-                "Authentication is not configured: set JIP_CLERK_ISSUER (or JIP_CLERK_JWKS_URL)."
+                "Authentication is not configured: set JIP_AUTH_ISSUER (or JIP_AUTH_JWKS_URL)."
             )
-        return f"{self.clerk_issuer.rstrip('/')}/.well-known/jwks.json"
+        return f"{self.auth_issuer.rstrip('/')}/.well-known/jwks.json"
 
     @property
     def authentication_configured(self) -> bool:
-        return bool(self.clerk_issuer or self.clerk_jwks_url)
+        return bool(self.auth_issuer or self.auth_jwks_url)
 
 
 @lru_cache(maxsize=1)

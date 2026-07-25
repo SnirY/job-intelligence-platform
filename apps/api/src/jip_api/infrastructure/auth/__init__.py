@@ -1,15 +1,21 @@
-"""Authentication adapters: Clerk token verification."""
+"""Authentication adapters: OIDC token verification."""
 
-from jip_api.infrastructure.auth.clerk import (
-    ClerkTokenVerifier,
+from jip_api.infrastructure.auth.oidc import (
+    JwksTokenVerifier,
+    TokenVerificationError,
+    TokenVerifier,
     VerifiedIdentity,
+    build_verifier,
     get_token_verifier,
     reset_verifier_cache,
 )
 
 __all__ = [
-    "ClerkTokenVerifier",
+    "JwksTokenVerifier",
+    "TokenVerificationError",
+    "TokenVerifier",
     "VerifiedIdentity",
+    "build_verifier",
     "get_token_verifier",
     "reset_verifier_cache",
 ]

@@ -18,7 +18,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 
-from jip_api.infrastructure.auth.clerk import reset_verifier_cache
+from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import get_engine, reset_engine_cache
 from jip_api.infrastructure.tasks.dispatcher import reset_task_caches
 from jip_config import get_settings
@@ -44,10 +44,10 @@ def client(
     """An app wired to a fresh database and a locally served JWKS."""
     with serve_jwks(factory) as jwks_url:
         monkeypatch.setenv("JIP_DATABASE_URL", clean_database_url)
-        monkeypatch.setenv("JIP_CLERK_ISSUER", ISSUER)
-        monkeypatch.setenv("JIP_CLERK_JWKS_URL", jwks_url)
-        monkeypatch.setenv("JIP_CLERK_AUTHORIZED_PARTIES", AUTHORIZED_PARTY)
-        monkeypatch.setenv("JIP_CLERK_LEEWAY_SECONDS", "0")
+        monkeypatch.setenv("JIP_AUTH_ISSUER", ISSUER)
+        monkeypatch.setenv("JIP_AUTH_JWKS_URL", jwks_url)
+        monkeypatch.setenv("JIP_AUTH_AUTHORIZED_PARTIES", AUTHORIZED_PARTY)
+        monkeypatch.setenv("JIP_AUTH_LEEWAY_SECONDS", "0")
 
         get_settings.cache_clear()
         reset_engine_cache()
