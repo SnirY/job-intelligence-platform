@@ -24,20 +24,30 @@ logger = logging.getLogger(__name__)
 class S3ObjectStorage:
     """:class:`ObjectStorage` backed by the S3 API."""
 
-    def __init__(self, client: Any, bucket: str) -> None:
+    def __init__(
+        self, client: Any, bucket: str, *, server_side_encryption: str | None = None
+    ) -> None:
         self._client = client
         self._bucket = bucket
+        self._sse = server_side_encryption
 
     def upload(self, key: str, data: bytes, *, content_type: str) -> StoredObject:
+        extra: dict[str, Any] = {}
+        if self._sse:
+            # Only sent when configured. Requesting it unconditionally breaks
+            # every S3 implementation without a key service — MinIO answers
+            # NotImplemented — and AWS S3 has encrypted at rest by default
+            # since 2023, so the parameter is for when a *specific* algorithm
+            # or KMS key is required, not for baseline protection.
+            extra["ServerSideEncryption"] = self._sse
+
         try:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
                 Body=data,
                 ContentType=content_type,
-                # Resumes are personal data. Server-side encryption costs
-                # nothing here and means a leaked backup is not a leaked resume.
-                ServerSideEncryption="AES256",
+                **extra,
             )
         except Exception as exc:  # boto3 raises a wide family of client errors
             logger.warning("Object upload failed", exc_info=exc, extra={"key": key})
@@ -120,7 +130,11 @@ def get_object_storage() -> ObjectStorage:
     settings = get_settings()
     if not settings.storage_bucket:
         raise ValueError("Object storage is not configured: set JIP_STORAGE_BUCKET.")
-    return S3ObjectStorage(build_s3_client(settings), settings.storage_bucket)
+    return S3ObjectStorage(
+        build_s3_client(settings),
+        settings.storage_bucket,
+        server_side_encryption=settings.storage_server_side_encryption,
+    )
 
 
 def reset_storage_cache() -> None:

@@ -145,6 +145,14 @@ class Settings(BaseSettings):
     storage_access_key: str | None = None
     storage_secret_key: str | None = None
     storage_signed_url_ttl_seconds: int = 900
+    storage_server_side_encryption: str | None = Field(
+        default=None,
+        description=(
+            'Sent as ServerSideEncryption on upload when set, e.g. "AES256" or "aws:kms". '
+            "Leave unset for S3 implementations without a key service — MinIO answers "
+            "NotImplemented — and note AWS S3 encrypts at rest by default."
+        ),
+    )
 
     # --- Uploads ---
     max_upload_bytes: int = 10 * 1024 * 1024
