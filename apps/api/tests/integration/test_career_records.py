@@ -247,14 +247,10 @@ def test_distinct_skills_stay_distinct(client: TestClient, factory: TokenFactory
     assert canonical_count() - before == 3
 
 
-def test_the_same_skill_cannot_be_claimed_twice(
-    client: TestClient, factory: TokenFactory
-) -> None:
+def test_the_same_skill_cannot_be_claimed_twice(client: TestClient, factory: TokenFactory) -> None:
     create(client, factory, ALICE, "skills", {"name": "Python"})
 
-    response = client.post(
-        f"{BASE}/skills", headers=auth(factory, ALICE), json={"name": "python"}
-    )
+    response = client.post(f"{BASE}/skills", headers=auth(factory, ALICE), json={"name": "python"})
 
     assert response.status_code == 409
 
@@ -354,9 +350,7 @@ def test_all_career_records_are_removed_with_their_user(
     with get_engine().begin() as connection:
         connection.execute(sqlalchemy.text("DELETE FROM users"))
         remaining = {
-            table: connection.execute(
-                sqlalchemy.text(f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed names
-            ).scalar_one()
+            table: connection.execute(sqlalchemy.text(f"SELECT count(*) FROM {table}")).scalar_one()
             for table in ("user_skills", "experiences", "projects", "education")
         }
 
