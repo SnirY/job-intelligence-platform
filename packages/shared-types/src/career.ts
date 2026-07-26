@@ -78,3 +78,176 @@ export interface TargetRoleCreate {
 
 /** Body of `PATCH /api/v1/career/target-roles/{id}`. Omitted keys are untouched. */
 export type TargetRoleUpdate = Partial<TargetRoleCreate>;
+
+// --- skills ------------------------------------------------------------------
+
+export type SkillCategory =
+  | "LANGUAGE"
+  | "FRAMEWORK"
+  | "DATABASE"
+  | "TOOL"
+  | "PLATFORM"
+  | "PRACTICE"
+  | "DOMAIN"
+  | "SOFT_SKILL"
+  | "OTHER";
+
+export const SKILL_CATEGORY_LABELS: Record<SkillCategory, string> = {
+  LANGUAGE: "Language",
+  FRAMEWORK: "Framework",
+  DATABASE: "Database",
+  TOOL: "Tool",
+  PLATFORM: "Platform",
+  PRACTICE: "Practice",
+  DOMAIN: "Domain",
+  SOFT_SKILL: "Soft skill",
+  OTHER: "Other",
+};
+
+export type Proficiency = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT";
+
+export const PROFICIENCY_LABELS: Record<Proficiency, string> = {
+  BEGINNER: "Beginner",
+  INTERMEDIATE: "Intermediate",
+  ADVANCED: "Advanced",
+  EXPERT: "Expert",
+};
+
+export interface UserSkill {
+  id: string;
+  skill_id: string;
+  name: string;
+  category: SkillCategory;
+  proficiency: Proficiency | null;
+  years_of_experience: number | null;
+  last_used_year: number | null;
+  verification_status: VerificationStatus;
+  source: string;
+  notes: string | null;
+}
+
+export interface UserSkillCreate {
+  name: string;
+  category?: SkillCategory;
+  proficiency?: Proficiency | null;
+  years_of_experience?: number | null;
+  last_used_year?: number | null;
+  notes?: string | null;
+}
+
+// --- experience --------------------------------------------------------------
+
+export type EmploymentType =
+  "FULL_TIME" | "PART_TIME" | "CONTRACT" | "FREELANCE" | "INTERNSHIP" | "VOLUNTEER";
+
+export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
+  FULL_TIME: "Full-time",
+  PART_TIME: "Part-time",
+  CONTRACT: "Contract",
+  FREELANCE: "Freelance",
+  INTERNSHIP: "Internship",
+  VOLUNTEER: "Volunteer",
+};
+
+export interface Experience {
+  id: string;
+  company: string;
+  title: string;
+  employment_type: EmploymentType | null;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current: boolean;
+  description: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface ExperienceCreate {
+  company: string;
+  title: string;
+  employment_type?: EmploymentType | null;
+  location?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_current?: boolean;
+  description?: string | null;
+}
+
+// --- projects ----------------------------------------------------------------
+
+export type ProjectType =
+  "PERSONAL" | "ACADEMIC" | "PROFESSIONAL" | "OPEN_SOURCE" | "FREELANCE" | "RESEARCH";
+
+export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
+  PERSONAL: "Personal",
+  ACADEMIC: "Academic",
+  PROFESSIONAL: "Professional",
+  OPEN_SOURCE: "Open source",
+  FREELANCE: "Freelance",
+  RESEARCH: "Research",
+};
+
+export type ProjectStatus = "IN_PROGRESS" | "COMPLETED" | "MAINTAINED" | "ARCHIVED";
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  MAINTAINED: "Maintained",
+  ARCHIVED: "Archived",
+};
+
+export interface Project {
+  id: string;
+  name: string;
+  project_type: ProjectType | null;
+  status: ProjectStatus | null;
+  summary: string | null;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  repository_url: string | null;
+  demo_url: string | null;
+  documentation_url: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface ProjectCreate {
+  name: string;
+  project_type?: ProjectType | null;
+  status?: ProjectStatus | null;
+  summary?: string | null;
+  description?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  repository_url?: string | null;
+  demo_url?: string | null;
+  documentation_url?: string | null;
+}
+
+// --- education ---------------------------------------------------------------
+
+export interface Education {
+  id: string;
+  institution: string;
+  degree: string | null;
+  field_of_study: string | null;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current: boolean;
+  grade: string | null;
+  description: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface EducationCreate {
+  institution: string;
+  degree?: string | null;
+  field_of_study?: string | null;
+  location?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_current?: boolean;
+  grade?: string | null;
+  description?: string | null;
+}

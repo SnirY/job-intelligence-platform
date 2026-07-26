@@ -30,4 +30,8 @@ export const API_ROUTES = {
   currentUser: "/api/v1/users/me",
   careerProfile: "/api/v1/career/profile",
   careerTargetRoles: "/api/v1/career/target-roles",
+  careerSkills: "/api/v1/career/skills",
+  careerExperiences: "/api/v1/career/experiences",
+  careerProjects: "/api/v1/career/projects",
+  careerEducation: "/api/v1/career/education",
 } as const;
