@@ -133,7 +133,12 @@ jobs:
         run: docker compose build api web
 
       - name: Start the stack
-        run: docker compose up -d postgres redis migrate api worker web
+        run: |
+          docker compose up -d postgres redis minio
+          # Bucket creation is a one-shot container; wait for it rather than
+          # racing the API's first upload against it.
+          docker compose up --exit-code-from minio-init minio-init
+          docker compose up -d migrate api worker web
 
       - name: Wait for the API to report ready
         run: |
@@ -174,6 +179,29 @@ jobs:
           docker compose exec -T postgres \
             psql -U jip -d jip -tAc "SELECT to_regclass('public.users')" \
             | tee /dev/stderr | grep -q users
+
+      - name: Verify object storage round-trips through the API's adapter
+        run: |
+          docker compose exec -T api python - <<'PY'
+          from jip_api.infrastructure.storage.s3 import get_object_storage
+
+          storage = get_object_storage()
+          key = "ci/roundtrip.txt"
+          payload = b"phase-3 storage check"
+
+          stored = storage.upload(key, payload, content_type="text/plain")
+          assert stored.size_bytes == len(payload), stored
+
+          assert storage.download(key) == payload, "downloaded bytes differ"
+
+          url = storage.create_signed_url(key, expires_in_seconds=60)
+          assert "X-Amz-Signature" in url, f"url is not signed: {url}"
+
+          storage.delete(key)
+          storage.delete(key)  # deleting a missing key must not raise
+
+          print("object storage round-trip OK; signed url issued")
+          PY
 
       - name: Verify a protected endpoint rejects an unauthenticated request
         run: |

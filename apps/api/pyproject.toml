@@ -17,6 +17,7 @@ dependencies = [
   "redis>=5.0,<7",
   "rq>=1.16,<3",
   "pyjwt[crypto]>=2.9,<3",
+  "boto3>=1.35,<2",
 ]
 
 [tool.hatch.build.targets.wheel]

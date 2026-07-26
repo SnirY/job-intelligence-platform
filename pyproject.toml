@@ -67,6 +67,13 @@ files = [
 module = ["migrations.*", "alembic.*"]
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+# boto3 and botocore ship no type information. The typed stubs are a separate
+# package that lags the runtime; the S3 adapter confines the untyped surface to
+# one module and re-types its own boundary.
+module = ["boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = [

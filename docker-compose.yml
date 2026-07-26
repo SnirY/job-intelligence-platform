@@ -40,6 +40,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-compatible object storage for uploaded documents. Real S3 semantics
+  # locally — signed URLs and content types behave as they will in production,
+  # which a filesystem shortcut would not.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
+      MINIO_ROOT_PASSWORD: ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot bucket creation. MinIO has no declarative bucket config, so the
+  # alternative is every developer creating it by hand and CI failing until
+  # someone remembers.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000
+      ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
+      ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only} &&
+      mc mb --ignore-existing local/${JIP_STORAGE_BUCKET:-jip-documents} &&
+      echo 'bucket ready'
+      "
+
   migrate:
     build:
       context: .
@@ -64,6 +101,10 @@ services:
       JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
       JIP_REDIS_URL: redis://redis:6379/0
       JIP_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      JIP_STORAGE_BUCKET: ${JIP_STORAGE_BUCKET:-jip-documents}
+      JIP_STORAGE_ENDPOINT_URL: http://minio:9000
+      JIP_STORAGE_ACCESS_KEY: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
+      JIP_STORAGE_SECRET_KEY: ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only}
     ports:
       - "${JIP_API_PORT:-8000}:8000"
     depends_on:
@@ -83,6 +124,10 @@ services:
       JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
       JIP_REDIS_URL: redis://redis:6379/0
       JIP_WORKER_QUEUES: ${JIP_WORKER_QUEUES:-default}
+      JIP_STORAGE_BUCKET: ${JIP_STORAGE_BUCKET:-jip-documents}
+      JIP_STORAGE_ENDPOINT_URL: http://minio:9000
+      JIP_STORAGE_ACCESS_KEY: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
+      JIP_STORAGE_SECRET_KEY: ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -104,3 +149,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  minio-data:
