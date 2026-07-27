@@ -8,6 +8,7 @@ import {
   type JobAnalysisView,
   type JobCreate,
   type JobListQuery,
+  type JobMatchView,
   type JobSource,
   type JobSummary,
   type JobUpdate,
@@ -206,6 +207,42 @@ export function useAnalyzeJob(id: string) {
       // Both: the analysis view carries the status the poll watches, and the
       // job itself carries the status the list badge reads.
       void queryClient.invalidateQueries({ queryKey: analysisKey(id) });
+      void queryClient.invalidateQueries({ queryKey: jobsKey });
+    },
+  });
+}
+
+// --- matching -----------------------------------------------------------------
+
+export function matchKey(id: string, version?: number) {
+  return version ? (["jobs", id, "match", version] as const) : (["jobs", id, "match"] as const);
+}
+
+/**
+ * A job's match, its items, and their evidence.
+ *
+ * No polling: matching is arithmetic over data already in the database, so the
+ * POST returns the finished result rather than a job to watch.
+ */
+export function useJobMatch(id: string, version?: number) {
+  const api = useApi();
+  const suffix = version ? `?version=${version}` : "";
+
+  return useQuery({
+    queryKey: matchKey(id, version),
+    queryFn: () => api<JobMatchView>(`${API_ROUTES.jobs}/${id}/match${suffix}`),
+  });
+}
+
+/** Compute a match, or recompute one. The same operation either way. */
+export function useMatchJob(id: string) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api<JobMatchView>(`${API_ROUTES.jobs}/${id}/match`, { method: "POST" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: matchKey(id) });
       void queryClient.invalidateQueries({ queryKey: jobsKey });
     },
   });

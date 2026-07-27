@@ -1,0 +1,25 @@
+{
+  "name": "Nothing to compare against",
+  "note": "Every verdict is NO_EVIDENCE, so there is no score. The summary must say the profile is empty rather than implying the person lacks the skills - the difference is the whole reason NO_EVIDENCE exists as a separate status.",
+  "verdicts": [
+    {
+      "requirement": "Python",
+      "status": "NO_EVIDENCE",
+      "score": 0,
+      "weight": "3.00",
+      "explanation": "There are no skills in your profile yet, so Python could not be checked."
+    },
+    {
+      "requirement": "Kubernetes",
+      "status": "NO_EVIDENCE",
+      "score": 0,
+      "weight": "2.00",
+      "explanation": "There are no skills in your profile yet, so Kubernetes could not be checked."
+    }
+  ],
+  "expect_mentions": ["profile"],
+  "forbid_mentions": ["you lack", "you do not have the skills", "unqualified"],
+  "recorded_output": {
+    "summary": "There is nothing in your career profile yet, so this posting could not be compared against it. The role asks for Python and Kubernetes; adding your skills and work history will let us tell you where you stand."
+  }
+}

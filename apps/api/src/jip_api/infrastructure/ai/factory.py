@@ -51,6 +51,9 @@ def build_model_router(settings: Settings) -> ModelRouter:
         job_analysis_model=settings.ai_job_analysis_model or None,
         job_analysis_max_output_tokens=settings.ai_job_analysis_max_output_tokens,
         job_analysis_effort=settings.ai_job_analysis_effort or None,
+        match_explain_model=settings.ai_match_explain_model or None,
+        match_explain_max_output_tokens=settings.ai_match_explain_max_output_tokens,
+        match_explain_effort=settings.ai_match_explain_effort or None,
     )
 
 

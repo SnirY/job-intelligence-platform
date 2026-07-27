@@ -9,6 +9,7 @@ from jip_api.api.v1 import (
     career_records,
     health,
     jobs,
+    matches,
     processing_jobs,
     resumes,
     users,
@@ -21,4 +22,5 @@ api_v1_router.include_router(career.router)
 api_v1_router.include_router(career_records.router)
 api_v1_router.include_router(resumes.router)
 api_v1_router.include_router(jobs.router)
+api_v1_router.include_router(matches.router)
 api_v1_router.include_router(processing_jobs.router)

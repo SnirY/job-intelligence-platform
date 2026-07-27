@@ -276,6 +276,38 @@ jobs:
              to_regclass('public.job_responsibilities')" \
             | tee /dev/stderr | grep -q "job_analyses|job_requirements|job_responsibilities"
 
+      - name: Verify the matching engine schema and rules are reachable
+        run: |
+          docker compose exec -T api python - <<'PY'
+          # The matching engine is deterministic and versioned, so the thing
+          # worth asserting in CI is that its rules are intact and its version
+          # is recorded — a silently reverted weight would change every score
+          # without changing any test that mocks the rules.
+          from jip_api.domain.matching.rules import MATCHING_ENGINE_VERSION, STATUS_SCORES
+          from jip_api.domain.matching.models import MatchStatus
+          from jip_api.domain.matching.transferable import find_transfer
+
+          assert MATCHING_ENGINE_VERSION
+          assert set(STATUS_SCORES) == set(MatchStatus), "a status has no score"
+
+          # Semantic similarity is not equivalence: a transferable link must
+          # never be reported as the same skill.
+          transfer = find_transfer("Spring Boot", ["FastAPI"])
+          assert transfer is not None, "FastAPI should transfer to Spring Boot"
+          assert find_transfer("Java", ["Python"]) is None, "Python must not transfer to Java"
+
+          from jip_ai import AIOperation
+          from jip_api.infrastructure.ai import build_model_router
+          from jip_config import get_settings
+
+          assert build_model_router(get_settings()).route(AIOperation.MATCH_EXPLAIN).model
+
+          print("matching engine wiring ok:", MATCHING_ENGINE_VERSION)
+          PY
+
+          docker compose exec -T postgres             psql -U jip -d jip -tAc             "SELECT to_regclass('public.job_matches'), to_regclass('public.job_match_items'),
+             to_regclass('public.job_match_evidence')"             | tee /dev/stderr | grep -q "job_matches|job_match_items|job_match_evidence"
+
       - name: Verify object storage round-trips through the API's adapter
         run: |
           docker compose exec -T api python - <<'PY'

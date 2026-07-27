@@ -2,7 +2,7 @@
 
 A personal AI-powered Job Search and Career Intelligence Platform. This repository contains the product, architecture, AI, UX, API, engineering, and development-continuity specifications, together with the implementation.
 
-**Current state: Phases 0–5 are complete. Phase 6 (Matching Engine) has not been started.**
+**Current state: Phases 0–6 are complete. Phase 7 (Resume Intelligence) has not been started.**
 
 | Phase | State | What it delivered |
 |---|---|---|
@@ -12,7 +12,8 @@ A personal AI-powered Job Search and Career Intelligence Platform. This reposito
 | 3 — Resume Import | Done | Upload → extract → parse → review → approve, plus `jip-ai` and `jip-prompts` |
 | 4 — Job Workspace | Done | Add a job by paste, link, or hand; the original source preserved; list and detail |
 | 5 — Job Intelligence | Done | Versioned analyses: requirements, responsibilities, role family, seniority |
-| 6 — Matching Engine | Not started | — |
+| 6 — Matching Engine | Done | Deterministic, versioned, evidence-first matching with per-requirement verdicts |
+| 7 — Resume Intelligence | Not started | — |
 
 `docs/development/implementation-status.md` has the per-capability detail, and
 `docs/development/known-issues.md` records what is not yet verified.

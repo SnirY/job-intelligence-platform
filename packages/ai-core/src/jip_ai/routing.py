@@ -35,6 +35,15 @@ class AIOperation(enum.StrEnum):
     reasoning.
     """
 
+    MATCH_EXPLAIN = "MATCH_EXPLAIN"
+    """Putting a finished match into words. Explanation only.
+
+    The score, the statuses, and the recommendation are all decided
+    deterministically before this runs — ``docs/05-ai-and-matching.md`` keeps
+    final scoring away from AI, so this operation exists to describe a result
+    and never to produce one.
+    """
+
 
 class ModelTier(enum.StrEnum):
     """Capability bands, so routing is expressed in intent rather than in model ids."""
@@ -118,6 +127,9 @@ def build_router(
     job_analysis_model: str | None = None,
     job_analysis_max_output_tokens: int = 4000,
     job_analysis_effort: str | None = None,
+    match_explain_model: str | None = None,
+    match_explain_max_output_tokens: int = 1000,
+    match_explain_effort: str | None = None,
 ) -> ModelRouter:
     """Assemble the routing table from settings.
 
@@ -149,6 +161,12 @@ def build_router(
             job_analysis_model,
             job_analysis_max_output_tokens,
             job_analysis_effort,
+        ),
+        (
+            AIOperation.MATCH_EXPLAIN,
+            match_explain_model,
+            match_explain_max_output_tokens,
+            match_explain_effort,
         ),
     ):
         resolved = model or resume_parse_model
