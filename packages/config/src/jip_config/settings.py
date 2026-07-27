@@ -162,6 +162,75 @@ class Settings(BaseSettings):
     is read into memory to hash and scan it before anything is stored.
     """
 
+    # --- AI ---
+    # Model routing is configuration, not code (docs/05-ai-and-matching.md), so
+    # a cost or quality decision can be revisited without a deploy.
+    ai_provider: str = Field(
+        default="anthropic",
+        description="Which LLM adapter to build. Recorded on every AIRun.",
+    )
+    ai_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Provider API key. With none set, AI features fail with a clear "
+            "PROVIDER_ERROR instead of silently returning nothing."
+        ),
+    )
+    ai_request_timeout_seconds: float = 120.0
+    """Generous, because parsing a long resume is a slow call — but bounded, so
+    a wedged provider surfaces as a classified TIMEOUT rather than a worker
+    thread stuck forever."""
+
+    ai_max_attempts: int = 3
+    """Attempts per AI operation, including the first. Each one is traced."""
+
+    ai_resume_parse_model: str = "claude-opus-5"
+    ai_resume_parse_max_output_tokens: int = 16000
+    ai_resume_parse_effort: str | None = Field(
+        default="medium",
+        description=(
+            "Reasoning depth for resume parsing, when the provider exposes one. "
+            "Extraction rarely needs the ceiling; unset to use the provider default."
+        ),
+    )
+
+    # Job intelligence routes two operations, because they are two different
+    # tasks: parsing reads the posting, analysis interprets it. Empty falls back
+    # to the resume model, so adding these did not change what a deployment that
+    # has not set them runs.
+    ai_job_parse_model: str | None = None
+    ai_job_parse_max_output_tokens: int = 16000
+    ai_job_parse_effort: str | None = "medium"
+
+    ai_job_analysis_model: str | None = None
+    ai_job_analysis_max_output_tokens: int = 4000
+    """Smaller than a parse on purpose: the analysis returns a handful of fields
+    and its reasoning, not every requirement in the posting."""
+
+    ai_job_analysis_effort: str | None = Field(
+        default="medium",
+        description=(
+            "Reasoning depth for job analysis. Seniority is a judgement from "
+            "several weak signals, which is the case for reasoning if there is one."
+        ),
+    )
+
+    # --- Job URL import ---
+    # Fetching a page the user chose is the one place the server talks to an
+    # address it did not pick. Both bounds are denial-of-service controls, not
+    # product limits: without them a slow or enormous page is something the
+    # user can point the worker at.
+    job_fetch_timeout_seconds: float = 15.0
+    job_fetch_max_bytes: int = 3 * 1024 * 1024
+
+    ai_max_input_chars: int = 60_000
+    """Ceiling on the document text sent to a model.
+
+    A resume is a few thousand characters; anything near this limit is a
+    different kind of document. Truncation is reported to the user as a warning
+    rather than hidden, so a partial parse is never presented as a full one.
+    """
+
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
     _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)
@@ -190,6 +259,11 @@ class Settings(BaseSettings):
     @property
     def authentication_configured(self) -> bool:
         return bool(self.auth_issuer or self.auth_jwks_url)
+
+    @property
+    def ai_configured(self) -> bool:
+        """Whether a model call could be made at all."""
+        return bool(self.ai_api_key)
 
 
 @lru_cache(maxsize=1)

@@ -1,0 +1,131 @@
+{
+  "name": "Junior Python Backend",
+  "resume_text": "MAYA OKONKWO\nBackend Engineer | Lisbon, Portugal\nmaya.okonkwo@example.com | github.com/mayaok\n\nEXPERIENCE\n\nJunior Backend Engineer, Verdant Logistics\nMarch 2023 - Present | Lisbon (hybrid)\n- Built and maintained REST endpoints in FastAPI for the shipment tracking service.\n- Migrated 14 legacy Flask endpoints to FastAPI without downtime.\n- Wrote the PostgreSQL queries behind the carrier reconciliation report.\n- Added pytest coverage for the pricing module, taking it from 31% to 78%.\n\nBackend Intern, Verdant Logistics\nJuly 2022 - February 2023 | Lisbon\n- Fixed defects in the internal admin tooling.\n- Automated a nightly data export with a scheduled Celery task.\n\nPROJECTS\n\nledgerline (github.com/mayaok/ledgerline)\nA double-entry bookkeeping library in Python. Uses SQLAlchemy for persistence\nand Hypothesis for property-based tests.\n\nEDUCATION\n\nBSc Computer Science, University of Lisbon, 2019 - 2022\n\nSKILLS\n\nPython, FastAPI, Flask, PostgreSQL, SQLAlchemy, Docker, Git, pytest\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "Python",
+        "category": "LANGUAGE",
+        "confidence": 98,
+        "source_text": "Python, FastAPI, Flask, PostgreSQL"
+      },
+      {
+        "name": "FastAPI",
+        "category": "FRAMEWORK",
+        "confidence": 97,
+        "source_text": "Built and maintained REST endpoints in FastAPI"
+      },
+      {
+        "name": "Flask",
+        "category": "FRAMEWORK",
+        "confidence": 92,
+        "source_text": "Migrated 14 legacy Flask endpoints"
+      },
+      {
+        "name": "PostgreSQL",
+        "category": "DATABASE",
+        "confidence": 95,
+        "source_text": "Wrote the PostgreSQL queries"
+      },
+      {
+        "name": "SQLAlchemy",
+        "category": "FRAMEWORK",
+        "confidence": 93,
+        "source_text": "Uses SQLAlchemy for persistence"
+      },
+      {
+        "name": "Docker",
+        "category": "PLATFORM",
+        "confidence": 85,
+        "source_text": "Docker, Git, pytest"
+      },
+      {
+        "name": "pytest",
+        "category": "TOOL",
+        "confidence": 90,
+        "source_text": "Added pytest coverage for the pricing module"
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Verdant Logistics",
+        "title": "Junior Backend Engineer",
+        "employment_type": "FULL_TIME",
+        "location": "Lisbon (hybrid)",
+        "start_date": "2023-03",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 96,
+        "source_text": "Junior Backend Engineer, Verdant Logistics",
+        "skills": ["FastAPI", "PostgreSQL", "pytest"],
+        "achievements": [
+          {
+            "text": "Built and maintained REST endpoints in FastAPI for the shipment tracking service.",
+            "confidence": 95,
+            "source_text": "Built and maintained REST endpoints in FastAPI"
+          },
+          {
+            "text": "Migrated 14 legacy Flask endpoints to FastAPI without downtime.",
+            "confidence": 94,
+            "source_text": "Migrated 14 legacy Flask endpoints to FastAPI without downtime."
+          },
+          {
+            "text": "Added pytest coverage for the pricing module, taking it from 31% to 78%.",
+            "confidence": 93,
+            "source_text": "taking it from 31% to 78%"
+          }
+        ]
+      },
+      {
+        "company": "Verdant Logistics",
+        "title": "Backend Intern",
+        "employment_type": "INTERNSHIP",
+        "location": "Lisbon",
+        "start_date": "2022-07",
+        "end_date": "2023-02",
+        "is_current": false,
+        "confidence": 94,
+        "source_text": "Backend Intern, Verdant Logistics",
+        "achievements": [
+          {
+            "text": "Automated a nightly data export with a scheduled Celery task.",
+            "confidence": 90,
+            "source_text": "Automated a nightly data export with a scheduled Celery task."
+          }
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "name": "ledgerline",
+        "project_type": "PERSONAL",
+        "summary": "A double-entry bookkeeping library in Python.",
+        "repository_url": "https://github.com/mayaok/ledgerline",
+        "confidence": 92,
+        "source_text": "ledgerline (github.com/mayaok/ledgerline)",
+        "technologies": [
+          { "name": "Python", "confidence": 95 },
+          { "name": "SQLAlchemy", "confidence": 92 }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "institution": "University of Lisbon",
+        "degree": "BSc",
+        "field_of_study": "Computer Science",
+        "start_date": "2019",
+        "end_date": "2022",
+        "is_current": false,
+        "confidence": 95,
+        "source_text": "BSc Computer Science, University of Lisbon, 2019 - 2022"
+      }
+    ]
+  },
+  "expect_skills": ["Python", "FastAPI", "PostgreSQL"],
+  "expect_companies": ["Verdant Logistics"],
+  "expect_min_experiences": 2,
+  "expect_min_projects": 1,
+  "expect_min_education": 1,
+  "forbid_substrings": []
+}

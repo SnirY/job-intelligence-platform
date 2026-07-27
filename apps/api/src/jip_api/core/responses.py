@@ -31,3 +31,24 @@ class ErrorResponse(BaseModel):
     """Standard error envelope."""
 
     error: ErrorBody
+
+
+class PaginationMeta(BaseModel):
+    """Collection pagination metadata from ``docs/10-api-contracts.md``."""
+
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class CollectionResponse[T](BaseModel):
+    """Standard collection success envelope.
+
+    Separate from :class:`DataResponse` because a paginated list has to carry
+    the counts the caller needs to page through it; folding them into `data`
+    would make every list payload a different shape.
+    """
+
+    data: list[T]
+    meta: PaginationMeta

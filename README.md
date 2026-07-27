@@ -2,7 +2,20 @@
 
 A personal AI-powered Job Search and Career Intelligence Platform. This repository contains the product, architecture, AI, UX, API, engineering, and development-continuity specifications, together with the implementation.
 
-**Current state: Phase 0 (Project Foundation) is complete. No product features are implemented yet.**
+**Current state: Phases 0–5 are complete. Phase 6 (Matching Engine) has not been started.**
+
+| Phase | State | What it delivered |
+|---|---|---|
+| 0 — Project Foundation | Done | Monorepo, FastAPI, Next.js, PostgreSQL, Redis, RQ, Compose, CI |
+| 1 — Authentication & Shell | Done | Clerk, the `users` table, offline JWKS verification, the app shell |
+| 2 — Career Profile | Done | Profile, target roles, skills, experience, projects, education — no AI |
+| 3 — Resume Import | Done | Upload → extract → parse → review → approve, plus `jip-ai` and `jip-prompts` |
+| 4 — Job Workspace | Done | Add a job by paste, link, or hand; the original source preserved; list and detail |
+| 5 — Job Intelligence | Done | Versioned analyses: requirements, responsibilities, role family, seniority |
+| 6 — Matching Engine | Not started | — |
+
+`docs/development/implementation-status.md` has the per-capability detail, and
+`docs/development/known-issues.md` records what is not yet verified.
 
 ## Quick start
 
@@ -25,10 +38,13 @@ apps/
 packages/
     config/         shared backend settings and logging (jip-config)
     shared-types/   TypeScript API contracts (@jip/shared-types)
+    ai-core/        provider abstraction, routing, retry, tracing (jip-ai)
+    prompts/        versioned prompt registry (jip-prompts)
 docs/
 infra/          Dockerfiles
 scripts/
 tests/
+    evals/      AI evaluation fixtures, offline by default
 ```
 
 ## Start here

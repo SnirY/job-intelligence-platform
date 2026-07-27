@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jip-prompts"
+version = "0.1.0"
+description = "Centrally managed, versioned prompts."
+requires-python = ">=3.12"
+dependencies = [
+  # Depends on ai-core for the PromptTemplate and PromptRegistry types, never
+  # the other way round: the mechanism must not know which prompts exist.
+  "jip-ai-core",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jip_prompts"]

@@ -1,0 +1,101 @@
+{
+  "name": "Preferences the model wrongly promoted to required",
+  "job_text": "Machine Learning Engineer\nAurelia Health — Berlin\n\nWe build diagnostic support tools for radiologists. You will train and ship models that read medical images.\n\nEssential:\n- 3+ years building production machine learning systems\n- Python\n- PyTorch or TensorFlow\n\nDesirable:\n- Experience with medical imaging is a plus\n- Kubernetes would be great\n- Familiarity with DICOM\n- German is nice to have, but not required\n\nWe sponsor visas for the right person.",
+  "note": "The recorded response deliberately marks every 'Desirable' item REQUIRED or CORE. docs/05-ai-and-matching.md: importance must preserve source meaning, and 'nice to have' must not become 'required'. This fixture exists to prove the demotion guard fires against a model that gets it wrong — the same role the fabricated_metrics resume fixture plays for the metric guard.",
+  "expect_requirements": ["Python", "PyTorch or TensorFlow"],
+  "expect_min_requirements": 5,
+  "expect_min_responsibilities": 1,
+  "expect_required": ["Python", "PyTorch or TensorFlow"],
+  "expect_preferred": ["Medical imaging experience", "Kubernetes", "DICOM", "German"],
+  "expect_role_family": "AI_ML",
+  "expect_seniority": "MID",
+  "expect_skill_names": ["Python", "Kubernetes"],
+  "expect_requirement_types": ["EXPERIENCE", "TECHNICAL_SKILL", "DOMAIN_KNOWLEDGE", "LANGUAGE"],
+  "recorded_parse": {
+    "summary": "A machine learning role building diagnostic tools for radiologists.",
+    "title": "Machine Learning Engineer",
+    "company": "Aurelia Health",
+    "location": "Berlin",
+    "years_experience_min": 3,
+    "requirements": [
+      {
+        "normalized_text": "3+ years production machine learning",
+        "requirement_type": "EXPERIENCE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "3+ years building production machine learning systems",
+        "confidence": 95,
+        "years_min": 3
+      },
+      {
+        "normalized_text": "Python",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Essential:\n- 3+ years building production machine learning systems\n- Python",
+        "confidence": 96,
+        "skill_name": "Python"
+      },
+      {
+        "normalized_text": "PyTorch or TensorFlow",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "PyTorch or TensorFlow",
+        "confidence": 94,
+        "skill_name": "PyTorch"
+      },
+      {
+        "normalized_text": "Medical imaging experience",
+        "requirement_type": "DOMAIN_KNOWLEDGE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Experience with medical imaging is a plus",
+        "confidence": 88
+      },
+      {
+        "normalized_text": "Kubernetes",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Kubernetes would be great",
+        "confidence": 86,
+        "skill_name": "Kubernetes"
+      },
+      {
+        "normalized_text": "DICOM",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Familiarity with DICOM",
+        "confidence": 84,
+        "skill_name": "DICOM"
+      },
+      {
+        "normalized_text": "German",
+        "requirement_type": "LANGUAGE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "German is nice to have, but not required",
+        "confidence": 82
+      }
+    ],
+    "responsibilities": [
+      {
+        "text": "Train and ship models that read medical images",
+        "source_text": "You will train and ship models that read medical images",
+        "confidence": 94
+      }
+    ]
+  },
+  "recorded_analysis": {
+    "role_family": "AI_ML",
+    "role_family_confidence": 95,
+    "role_family_reasoning": "Training and shipping production machine learning models with PyTorch or TensorFlow.",
+    "seniority": "MID",
+    "seniority_confidence": 82,
+    "seniority_reasoning": "Asks for 3+ years of production experience with no mention of architecture ownership, leadership, or mentoring.",
+    "domain": "medical imaging",
+    "summary": "A mid-level machine learning role building diagnostic support tools for radiologists."
+  }
+}

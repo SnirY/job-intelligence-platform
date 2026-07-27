@@ -35,6 +35,27 @@ def _blank_to_none(value: str | None) -> str | None:
     return value.strip() or None
 
 
+def _experience_payload(session: Session, record: Any) -> ExperiencePayload:
+    """An experience with its achievements attached.
+
+    A separate query per role rather than a join, because the lists are small
+    and a join would need de-duplication to avoid multiplying the parent row.
+    """
+    payload = ExperiencePayload.model_validate(record)
+    payload.achievements = [
+        AchievementPayload.model_validate(a)
+        for a in history_uc.list_achievements(session, record.id)
+    ]
+    return payload
+
+
+def _project_payload(session: Session, record: Any) -> ProjectPayload:
+    """A project with its canonical technologies attached."""
+    payload = ProjectPayload.model_validate(record)
+    payload.skills = [s.canonical_name for s in history_uc.list_project_skills(session, record.id)]
+    return payload
+
+
 class _DateRangeMixin(BaseModel):
     """Rejects an end date before the start date.
 
@@ -205,6 +226,17 @@ def remove_skill(user: CurrentUser, session: SessionDep, skill_id: uuid.UUID) ->
 # --- experiences --------------------------------------------------------------
 
 
+class AchievementPayload(BaseModel):
+    """A bullet-level fact belonging to a role."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    text: str
+    display_order: int
+    verification_status: str
+
+
 class ExperiencePayload(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -218,6 +250,14 @@ class ExperiencePayload(BaseModel):
     is_current: bool
     description: str | None
     verification_status: str
+
+    achievements: list[AchievementPayload] = Field(default_factory=list)
+    """Nested rather than given their own endpoint.
+
+    An achievement is never useful without its role, and resume approval can
+    write them — data the user could not otherwise see anywhere would be worse
+    than not storing it.
+    """
 
 
 class ExperienceCreateRequest(_DateRangeMixin):
@@ -266,7 +306,7 @@ def read_experiences(
     user: CurrentUser, session: SessionDep
 ) -> DataResponse[list[ExperiencePayload]]:
     records = history_uc.list_experiences(session, user.id)
-    return DataResponse(data=[ExperiencePayload.model_validate(r) for r in records])
+    return DataResponse(data=[_experience_payload(session, r) for r in records])
 
 
 @router.post(
@@ -293,7 +333,7 @@ def post_experience(
         ),
     )
     session.commit()
-    return DataResponse(data=ExperiencePayload.model_validate(record))
+    return DataResponse(data=_experience_payload(session, record))
 
 
 @router.patch(
@@ -308,7 +348,7 @@ def patch_experience(
         session, user.id, record_id, body.to_update(body.model_fields_set)
     )
     session.commit()
-    return DataResponse(data=ExperiencePayload.model_validate(record))
+    return DataResponse(data=_experience_payload(session, record))
 
 
 @router.delete(
@@ -340,6 +380,13 @@ class ProjectPayload(BaseModel):
     demo_url: str | None
     documentation_url: str | None
     verification_status: str
+
+    skills: list[str] = Field(default_factory=list)
+    """Canonical names of the technologies this project used.
+
+    Names rather than ids: this is what makes a project readable as evidence,
+    and the ids belong to the shared catalogue rather than to the project.
+    """
 
 
 class ProjectCreateRequest(_DateRangeMixin):
@@ -391,7 +438,7 @@ class ProjectUpdateRequest(_DateRangeMixin):
 @router.get("/projects", response_model=DataResponse[list[ProjectPayload]], summary="List projects")
 def read_projects(user: CurrentUser, session: SessionDep) -> DataResponse[list[ProjectPayload]]:
     records = history_uc.list_projects(session, user.id)
-    return DataResponse(data=[ProjectPayload.model_validate(r) for r in records])
+    return DataResponse(data=[_project_payload(session, r) for r in records])
 
 
 @router.get(
@@ -401,7 +448,7 @@ def read_project(
     user: CurrentUser, session: SessionDep, record_id: uuid.UUID
 ) -> DataResponse[ProjectPayload]:
     return DataResponse(
-        data=ProjectPayload.model_validate(history_uc.get_project(session, user.id, record_id))
+        data=_project_payload(session, history_uc.get_project(session, user.id, record_id))
     )
 
 
@@ -431,7 +478,7 @@ def post_project(
         ),
     )
     session.commit()
-    return DataResponse(data=ProjectPayload.model_validate(record))
+    return DataResponse(data=_project_payload(session, record))
 
 
 @router.patch(
@@ -444,7 +491,7 @@ def patch_project(
         session, user.id, record_id, body.to_update(body.model_fields_set)
     )
     session.commit()
-    return DataResponse(data=ProjectPayload.model_validate(record))
+    return DataResponse(data=_project_payload(session, record))
 
 
 @router.delete(

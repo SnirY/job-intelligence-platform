@@ -9,6 +9,8 @@ description = "Job Intelligence Platform HTTP API."
 requires-python = ">=3.12"
 dependencies = [
   "jip-config",
+  "jip-ai-core",
+  "jip-prompts",
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
   "sqlalchemy>=2.0,<3",
@@ -18,6 +20,12 @@ dependencies = [
   "rq>=1.16,<3",
   "pyjwt[crypto]>=2.9,<3",
   "boto3>=1.35,<2",
+  # Multipart parsing for file uploads. FastAPI needs it to accept UploadFile.
+  "python-multipart>=0.0.9,<1",
+  # PDF text extraction. Pure Python, no system libraries, and it is the one
+  # format whose parsing cannot reasonably be written here. DOCX needs no
+  # dependency — it is a ZIP of XML, handled with the standard library.
+  "pypdf>=5.1,<7",
 ]
 
 [tool.hatch.build.targets.wheel]

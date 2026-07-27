@@ -1,0 +1,389 @@
+/** Contracts for the job workspace API. */
+
+import type { EmploymentType, Seniority } from "./career";
+
+/** How a job got into the workspace. From `docs/10-api-contracts.md`. */
+export type JobImportMethod = "PASTED_DESCRIPTION" | "URL" | "MANUAL";
+
+export const IMPORT_METHOD_LABELS: Record<JobImportMethod, string> = {
+  PASTED_DESCRIPTION: "Pasted",
+  URL: "From a link",
+  MANUAL: "Added by hand",
+};
+
+/**
+ * Where the job is in the pipeline.
+ *
+ * Follows Flow 3 in `docs/02-user-flows.md` as far as this phase reaches.
+ * MATCHING and READY belong to Phase 6 and are deliberately absent — a status
+ * nothing can set is a promise the UI would render and the backend could never
+ * fulfil.
+ *
+ * The two failure members are distinct. FAILED means there is no content, and
+ * the user is offered a paste box. ANALYSIS_FAILED means the content is fine
+ * and interpreting it did not work, where a paste box would be telling someone
+ * to re-enter text that is already there.
+ */
+export type JobStatus =
+  "FETCHING" | "RAW" | "PARSING" | "ANALYZING" | "ANALYZED" | "FAILED" | "ANALYSIS_FAILED";
+
+/** Whether an analysis is running right now. */
+export function isAnalysisRunning(status: JobStatus): boolean {
+  return status === "PARSING" || status === "ANALYZING";
+}
+
+export type WorkMode = "ONSITE" | "HYBRID" | "REMOTE";
+
+export const WORK_MODE_LABELS: Record<WorkMode, string> = {
+  ONSITE: "On-site",
+  HYBRID: "Hybrid",
+  REMOTE: "Remote",
+};
+
+/** A job as the detail screen shows it. */
+export interface Job {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  work_mode: WorkMode | null;
+  employment_type: EmploymentType | null;
+  seniority: Seniority | null;
+  role_family: string | null;
+  description: string | null;
+  source_url: string | null;
+  import_method: JobImportMethod;
+  status: JobStatus;
+  notes: string | null;
+  salary_text: string | null;
+  /** Why a URL import failed, in words safe to show. */
+  fetch_error: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A job as the list shows it.
+ *
+ * Without the description: fifty jobs would otherwise ship a megabyte of text
+ * nothing on screen displays.
+ */
+export interface JobSummary {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  work_mode: WorkMode | null;
+  employment_type: EmploymentType | null;
+  seniority: Seniority | null;
+  status: JobStatus;
+  import_method: JobImportMethod;
+  source_url: string | null;
+  archived_at: string | null;
+  created_at: string;
+  has_description: boolean;
+}
+
+/** One import attempt, exactly as it happened. */
+export interface JobImportRecord {
+  id: string;
+  import_method: JobImportMethod;
+  source_url: string | null;
+  final_url: string | null;
+  redirect_chain: string[];
+  content_type: string | null;
+  http_status: number | null;
+  content_bytes: number | null;
+  error: string | null;
+  error_code: string | null;
+  imported_at: string | null;
+}
+
+/**
+ * Payload of `GET /api/v1/jobs/{id}/source`.
+ *
+ * What arrived, as it arrived — distinct from the job's current description,
+ * which the user may have edited.
+ */
+export interface JobSource {
+  job_id: string;
+  import_method: JobImportMethod;
+  source_url: string | null;
+  original_description: string | null;
+  raw_content: string | null;
+  extracted_text: string | null;
+  imports: JobImportRecord[];
+}
+
+/** Body of `POST /api/v1/jobs`. */
+export interface JobCreate {
+  import_method: JobImportMethod;
+  title?: string | null;
+  company?: string | null;
+  location?: string | null;
+  work_mode?: WorkMode | null;
+  employment_type?: EmploymentType | null;
+  seniority?: Seniority | null;
+  role_family?: string | null;
+  description?: string | null;
+  source_url?: string | null;
+  notes?: string | null;
+  salary_text?: string | null;
+  /**
+   * The explicit create-anyway path.
+   *
+   * A possible duplicate answers 409 with the existing job; the user
+   * re-submits with this set. Never the default.
+   */
+  allow_duplicate?: boolean;
+}
+
+/** Body of `PATCH /api/v1/jobs/{id}`. Omitted keys are left alone. */
+export type JobUpdate = Partial<Omit<JobCreate, "import_method" | "allow_duplicate">>;
+
+/** Why the API thinks a submission is a duplicate. */
+export type DuplicateReason = "SAME_URL" | "SAME_CONTENT";
+
+export const DUPLICATE_REASON_LABELS: Record<DuplicateReason, string> = {
+  SAME_URL: "the same link",
+  SAME_CONTENT: "the same description",
+};
+
+/** The `details` of a 409 from `POST /api/v1/jobs`. */
+export interface DuplicateDetails {
+  existing_job_id: string;
+  existing_title: string;
+  reason: DuplicateReason;
+}
+
+/** Narrow an `ApiError.details` to the duplicate payload. */
+export function isDuplicateDetails(value: unknown): value is DuplicateDetails {
+  if (typeof value !== "object" || value === null) return false;
+  const details = value as Record<string, unknown>;
+  return (
+    typeof details.existing_job_id === "string" &&
+    typeof details.existing_title === "string" &&
+    (details.reason === "SAME_URL" || details.reason === "SAME_CONTENT")
+  );
+}
+
+/** Orderings the list offers. */
+export type JobSort = "NEWEST" | "OLDEST" | "TITLE" | "COMPANY";
+
+export const JOB_SORT_LABELS: Record<JobSort, string> = {
+  NEWEST: "Newest first",
+  OLDEST: "Oldest first",
+  TITLE: "Title A–Z",
+  COMPANY: "Company A–Z",
+};
+
+/** Which side of the archive to show. */
+export type ArchivedFilter = "ACTIVE" | "ARCHIVED" | "ALL";
+
+/** Query parameters for `GET /api/v1/jobs`. */
+export interface JobListQuery {
+  search?: string;
+  company?: string;
+  work_mode?: WorkMode | "";
+  employment_type?: EmploymentType | "";
+  seniority?: Seniority | "";
+  status?: JobStatus | "";
+  archived?: ArchivedFilter;
+  sort?: JobSort;
+  page?: number;
+  page_size?: number;
+}
+
+// --- job intelligence ---------------------------------------------------------
+
+/** The nine requirement types from `docs/03-domain-model.md`. */
+export type RequirementType =
+  | "TECHNICAL_SKILL"
+  | "EXPERIENCE"
+  | "EDUCATION"
+  | "LANGUAGE"
+  | "DOMAIN_KNOWLEDGE"
+  | "SOFT_SKILL"
+  | "LOCATION"
+  | "WORK_AUTHORIZATION"
+  | "OTHER";
+
+export const REQUIREMENT_TYPE_LABELS: Record<RequirementType, string> = {
+  TECHNICAL_SKILL: "Technical skills",
+  EXPERIENCE: "Experience",
+  EDUCATION: "Education",
+  LANGUAGE: "Languages",
+  DOMAIN_KNOWLEDGE: "Domain knowledge",
+  SOFT_SKILL: "Ways of working",
+  LOCATION: "Location",
+  WORK_AUTHORIZATION: "Work authorisation",
+  OTHER: "Other",
+};
+
+/**
+ * The order requirement groups are shown in.
+ *
+ * Not alphabetical and not the enum's own order. What can rule someone out
+ * comes first — work authorisation and location are the things worth knowing
+ * before reading any further — then what the role is built on, then the rest.
+ */
+export const REQUIREMENT_TYPE_ORDER: RequirementType[] = [
+  "WORK_AUTHORIZATION",
+  "LOCATION",
+  "TECHNICAL_SKILL",
+  "EXPERIENCE",
+  "EDUCATION",
+  "DOMAIN_KNOWLEDGE",
+  "LANGUAGE",
+  "SOFT_SKILL",
+  "OTHER",
+];
+
+/**
+ * How much the posting insists.
+ *
+ * `docs/05-ai-and-matching.md`: importance must preserve source meaning, and
+ * "nice to have" must not become "required".
+ */
+export type RequirementImportance = "CORE" | "REQUIRED" | "PREFERRED" | "OPTIONAL" | "UNKNOWN";
+
+export const IMPORTANCE_LABELS: Record<RequirementImportance, string> = {
+  CORE: "Essential",
+  REQUIRED: "Required",
+  PREFERRED: "Preferred",
+  OPTIONAL: "Optional",
+  UNKNOWN: "Not stated",
+};
+
+/** Whether failing this would count against a candidate. */
+export function isMandatory(importance: RequirementImportance): boolean {
+  return importance === "CORE" || importance === "REQUIRED";
+}
+
+/** Whether the posting stated it, or the reader inferred it. */
+export type RequirementExplicitness = "EXPLICIT" | "IMPLIED";
+
+/** The initial families from `docs/05-ai-and-matching.md`, plus an escape. */
+export type RoleFamily =
+  | "BACKEND"
+  | "FRONTEND"
+  | "FULL_STACK"
+  | "SOFTWARE"
+  | "AI_ML"
+  | "DATA_ENGINEERING"
+  | "COMPUTER_VISION"
+  | "DEVOPS"
+  | "CYBERSECURITY"
+  | "OTHER";
+
+export const ROLE_FAMILY_LABELS: Record<RoleFamily, string> = {
+  BACKEND: "Backend engineering",
+  FRONTEND: "Frontend engineering",
+  FULL_STACK: "Full stack engineering",
+  SOFTWARE: "Software engineering",
+  AI_ML: "AI / ML",
+  DATA_ENGINEERING: "Data engineering",
+  COMPUTER_VISION: "Computer vision",
+  DEVOPS: "DevOps",
+  CYBERSECURITY: "Cybersecurity",
+  OTHER: "Something else",
+};
+
+/** Seniority a posting implies. The set named in `docs/05-ai-and-matching.md`. */
+export type AnalyzedSeniority =
+  "INTERN" | "ENTRY_LEVEL" | "JUNIOR" | "MID" | "SENIOR" | "STAFF_PLUS" | "UNKNOWN";
+
+export const ANALYZED_SENIORITY_LABELS: Record<AnalyzedSeniority, string> = {
+  INTERN: "Internship",
+  ENTRY_LEVEL: "Entry level",
+  JUNIOR: "Junior",
+  MID: "Mid-level",
+  SENIOR: "Senior",
+  STAFF_PLUS: "Staff or above",
+  UNKNOWN: "Not clear from the posting",
+};
+
+/** One thing the posting asks for. */
+export interface JobRequirement {
+  id: string;
+  requirement_type: RequirementType;
+  importance: RequirementImportance;
+  explicitness: RequirementExplicitness;
+  /** The posting's own words. Never rewritten, and always shown on request. */
+  source_text: string;
+  normalized_text: string;
+  confidence: number;
+  source_order: number;
+  /** The canonical skill this resolved to, when one exists. */
+  skill_id: string | null;
+  skill_name: string | null;
+  years_min: number | null;
+}
+
+/** One thing the role does. */
+export interface JobResponsibility {
+  id: string;
+  text: string;
+  source_text: string | null;
+  confidence: number;
+  source_order: number;
+}
+
+/** A versioned interpretation of a job. */
+export interface JobAnalysis {
+  id: string;
+  job_id: string;
+  version: number;
+  summary: string | null;
+  role_family: RoleFamily | null;
+  secondary_role_family: RoleFamily | null;
+  role_family_confidence: number | null;
+  role_family_reasoning: string | null;
+  seniority: AnalyzedSeniority;
+  seniority_confidence: number | null;
+  seniority_reasoning: string | null;
+  domain: string | null;
+  years_experience_min: number | null;
+  years_experience_max: number | null;
+  model: string;
+  parse_prompt_version: string;
+  analysis_prompt_version: string | null;
+  /** What validation corrected or could not verify. Shown to the user. */
+  warnings: string[];
+  analyzed_at: string | null;
+  created_at: string;
+}
+
+/** The state of the most recent analysis attempt. */
+export interface AnalysisProcessingState {
+  id: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  step: "QUEUED" | "EXTRACTING" | "PARSING" | "ANALYZING" | "COMPLETED";
+  attempts: number;
+  error_code: string | null;
+  error_message: string | null;
+  is_retriable: boolean;
+}
+
+/** Payload of `GET /api/v1/jobs/{id}/analysis`. */
+export interface JobAnalysisView {
+  job_id: string;
+  job_status: JobStatus;
+  analysis: JobAnalysis | null;
+  requirements: JobRequirement[];
+  responsibilities: JobResponsibility[];
+  processing: AnalysisProcessingState | null;
+  /** Whether the description has been edited since this analysis read it. */
+  is_stale: boolean;
+  available_versions: number[];
+  /** Whether asking for an analysis right now would be accepted. */
+  can_analyze: boolean;
+}
+
+/** The 202 body of `POST /api/v1/jobs/{id}/analysis`. */
+export interface StartedAnalysis {
+  job_id: string;
+  processing_job_id: string;
+  status: AnalysisProcessingState["status"];
+}

@@ -169,6 +169,82 @@ Three independent layers, in order of authority:
    this because a path pattern can diverge from how Next.js routes a request,
    leaving a resource reachable with nothing logged.
 
+## AI configuration
+
+Resume import is the first feature that calls a model. Without a key, an import
+still uploads and stores the file, then fails with a clear `PROVIDER_ERROR` —
+the platform never returns invented results when AI is unavailable
+(`docs/11-engineering-standards.md`).
+
+```bash
+JIP_AI_PROVIDER=anthropic
+JIP_AI_API_KEY=sk-ant-...
+JIP_AI_RESUME_PARSE_MODEL=claude-opus-5
+```
+
+Model routing is configuration, not code (`docs/05-ai-and-matching.md`), so a
+cost or quality decision can be revisited without a deploy. `.env.example`
+documents the rest: output-token ceiling, effort, attempt count, timeout, and
+the input-character limit.
+
+The key belongs to the **worker**, which is what actually makes the calls. The
+API reads the same settings so its own configuration reporting stays truthful.
+
+Job intelligence adds two more routable operations, because parsing a posting
+and interpreting it are different tasks:
+
+```bash
+JIP_AI_JOB_PARSE_MODEL=
+JIP_AI_JOB_ANALYSIS_MODEL=
+```
+
+Both fall back to `JIP_AI_RESUME_PARSE_MODEL` when empty, so adding them did
+not change what an existing deployment runs. Their token ceilings differ
+because their outputs do — a parse returns every requirement in a posting, an
+analysis returns a handful of fields and its reasoning.
+
+## Job URL import
+
+Importing a job by link makes our server open a URL a user supplied, so the
+worker is the process that needs the settings:
+
+```bash
+JIP_JOB_FETCH_TIMEOUT_SECONDS=15
+JIP_JOB_FETCH_MAX_BYTES=3145728
+```
+
+Both are abuse controls first: a slow host must not tie up a worker, and a
+large response must not be read into memory.
+
+The SSRF rules are **not** configurable, deliberately. Schemes are limited to
+HTTP and HTTPS, ports to 80, 443, 8080, and 8443, and every address DNS returns
+must be public — loopback, link-local, private, and the cloud metadata address
+are all refused, including through redirects. An operator cannot widen that
+with an environment variable, because the one thing worse than no SSRF
+protection is SSRF protection that a hurried change can switch off. See
+`apps/api/src/jip_api/infrastructure/fetching/safety.py`.
+
+Nothing here needs configuring for local development, and a job import works
+with no key or credential of any kind — this phase calls no model.
+
+## AI evaluations
+
+`tests/evals/` runs offline by default and is part of the normal suite: each
+fixture replays a recorded response through the fake provider, which exercises
+prompt rendering, structured parsing, schema and business validation, and the
+fabrication guards. That is where most of what can regress actually lives.
+
+To measure the *model* rather than the code around it:
+
+```bash
+export JIP_RUN_AI_EVALS=1
+export JIP_AI_API_KEY=sk-ant-...
+pytest tests/evals -m live_ai
+```
+
+This costs money and is the only path in the repository that calls a live
+model. `docs/11-engineering-standards.md` keeps it out of the normal run.
+
 ## Environment variables
 
 Every backend variable is prefixed `JIP_`. `.env.example` documents all of them.

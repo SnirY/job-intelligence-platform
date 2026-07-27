@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jip-ai-core"
+version = "0.1.0"
+description = "Provider abstraction, routing, structured output, and tracing for AI operations."
+requires-python = ">=3.12"
+dependencies = [
+  # The Anthropic SDK is the one real provider adapter. It is imported lazily,
+  # so the package stays importable — and its unit tests runnable — without it.
+  "anthropic>=0.40,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jip_ai"]

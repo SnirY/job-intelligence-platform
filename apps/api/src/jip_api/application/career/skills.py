@@ -47,6 +47,14 @@ class UserSkillInput:
     last_used_year: int | None = None
     notes: str | None = None
     source: SkillSource = SkillSource.MANUAL
+    verification_status: VerificationStatus | None = None
+    """Overrides the status derived from ``source``.
+
+    Needed because a skill can arrive from a resume *and* be explicitly
+    confirmed by the user in the review screen. Source records where it came
+    from; verification records whether a person agreed to it. Left ``None``,
+    the derivation below applies.
+    """
 
 
 @dataclass(slots=True)
@@ -156,11 +164,17 @@ def add_user_skill(
         source=data.source,
         # Typed by a person, so confirmed by definition. An AI-proposed skill
         # arrives through a different path and never lands as confirmed
-        # (docs/05-ai-and-matching.md: AI must not control verified facts).
+        # (docs/05-ai-and-matching.md: AI must not control verified facts) —
+        # unless the caller states otherwise, which the resume review screen
+        # does once the user has explicitly accepted the item.
         verification_status=(
-            VerificationStatus.USER_CONFIRMED
-            if data.source is SkillSource.MANUAL
-            else VerificationStatus.AI_INFERRED
+            data.verification_status
+            if data.verification_status is not None
+            else (
+                VerificationStatus.USER_CONFIRMED
+                if data.source is SkillSource.MANUAL
+                else VerificationStatus.AI_INFERRED
+            )
         ),
     )
     session.add(user_skill)
@@ -172,6 +186,28 @@ def add_user_skill(
         raise DuplicateResourceError(f"{skill.canonical_name} is already in your skills.") from exc
 
     return user_skill, skill
+
+
+def ensure_user_skill(
+    session: Session, user_id: uuid.UUID, data: UserSkillInput
+) -> tuple[UserSkill, Skill, bool]:
+    """Claim a skill, or return the existing claim.
+
+    The third element says whether a row was created. Approving a resume must
+    not fail because the user already listed Python by hand, and it must not
+    quietly overwrite what they said about it either — an existing claim is
+    returned untouched.
+    """
+    skill = resolve_skill(session, data.name, data.category)
+
+    existing = session.execute(
+        owned(UserSkill, user_id).where(UserSkill.skill_id == skill.id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing, skill, False
+
+    user_skill, resolved = add_user_skill(session, user_id, data)
+    return user_skill, resolved, True
 
 
 def update_user_skill(

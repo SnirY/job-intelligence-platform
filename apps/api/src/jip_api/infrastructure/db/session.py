@@ -26,9 +26,21 @@ def get_engine() -> Engine:
         settings.database_url,
         pool_pre_ping=True,
         future=True,
-        # Bounded so an unreachable database surfaces as an error rather than a
-        # request that hangs until some upstream proxy gives up.
-        connect_args={"connect_timeout": settings.connect_timeout_seconds},
+        connect_args={
+            # Bounded so an unreachable database surfaces as an error rather
+            # than a request that hangs until some upstream proxy gives up.
+            "connect_timeout": settings.connect_timeout_seconds,
+            # Every connection reads and writes timestamps in UTC.
+            #
+            # `docs/10-api-contracts.md` requires ISO 8601 UTC in the API, and
+            # without this a `timestamptz` comes back in the *server's* local
+            # zone: the same instant is serialised as "…04:44:35Z" when it was
+            # just set in Python and "…07:44:35+03:00" once reloaded. Both are
+            # correct instants, which is what makes it easy to miss, and a
+            # client comparing the two strings sees a change that never
+            # happened.
+            "options": "-c timezone=utc",
+        },
     )
 
 
@@ -44,6 +56,16 @@ def get_session() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def new_session() -> Session:
+    """Return an unmanaged session for a caller that owns its own transactions.
+
+    The worker needs this: a background task commits at several points so a
+    later failure does not discard earlier work, which neither the request-scoped
+    dependency nor ``session_scope`` allows.
+    """
+    return _get_session_factory()()
 
 
 @contextmanager

@@ -15,7 +15,7 @@ from fastapi import Depends, Request, status
 from sqlalchemy.orm import Session
 
 from jip_api.application.users.provisioning import provision_user
-from jip_api.core.errors import APIError
+from jip_api.core.errors import APIError, ServiceUnavailableError
 from jip_api.domain.users.models import User
 from jip_api.infrastructure.auth.oidc import (
     TokenVerificationError,
@@ -23,6 +23,9 @@ from jip_api.infrastructure.auth.oidc import (
     get_token_verifier,
 )
 from jip_api.infrastructure.db.session import get_session
+from jip_api.infrastructure.storage.base import ObjectStorage
+from jip_api.infrastructure.storage.s3 import get_object_storage
+from jip_api.infrastructure.tasks.dispatcher import TaskDispatcher, get_task_dispatcher
 from jip_config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -106,3 +109,32 @@ def get_current_user(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 """Use as ``user: CurrentUser`` on any endpoint that requires authentication."""
+
+
+def get_storage() -> ObjectStorage:
+    """Resolve object storage, reporting a misconfiguration as unavailable.
+
+    The factory raises ``ValueError`` when no bucket is configured. Left
+    unhandled inside a dependency, that surfaces as an opaque 500 — a server
+    that was never given a bucket is unavailable, not broken by this request,
+    and 503 says so.
+    """
+    try:
+        return get_object_storage()
+    except ValueError as exc:
+        logger.error("Object storage is not configured", exc_info=exc)
+        raise ServiceUnavailableError("File storage is not available.") from exc
+
+
+def get_dispatcher() -> TaskDispatcher:
+    """Resolve the task dispatcher.
+
+    Never raises for an unreachable queue: RQ connects lazily, so a Redis
+    outage surfaces when the task is enqueued. That is deliberate — the upload
+    still succeeds and the failure lands on the job, where it is retriable.
+    """
+    return get_task_dispatcher()
+
+
+StorageDep = Annotated[ObjectStorage, Depends(get_storage)]
+DispatcherDep = Annotated[TaskDispatcher, Depends(get_dispatcher)]

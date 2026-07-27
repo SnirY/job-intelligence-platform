@@ -1,0 +1,103 @@
+{
+  "name": "Junior Java Backend",
+  "resume_text": "TOMAS HALLER\nSoftware Engineer\nBrno, Czech Republic | tomas.haller@example.com\n\nWORK EXPERIENCE\n\nSoftware Engineer, Kestrel Payments\nSeptember 2022 - Present\n- Develop microservices in Java 17 and Spring Boot for the settlement platform.\n- Own the Kafka consumer that reconciles card authorisations against settlements.\n- Introduced Testcontainers so integration tests run against a real PostgreSQL.\n\nJunior Developer, Moravia Software House\nJune 2021 - August 2022\n- Maintained a Spring MVC monolith for a regional insurer.\n- Wrote Liquibase migrations and JUnit tests.\n\nEDUCATION\n\nBachelor of Informatics, Masaryk University, 2018 - 2021\n\nTECHNICAL SKILLS\n\nJava, Spring Boot, Kafka, PostgreSQL, Maven, JUnit, Docker, Kubernetes\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "Java",
+        "category": "LANGUAGE",
+        "confidence": 98,
+        "source_text": "Develop microservices in Java 17 and Spring Boot"
+      },
+      {
+        "name": "Spring Boot",
+        "category": "FRAMEWORK",
+        "confidence": 96,
+        "source_text": "Java 17 and Spring Boot"
+      },
+      {
+        "name": "Kafka",
+        "category": "PLATFORM",
+        "confidence": 94,
+        "source_text": "Own the Kafka consumer"
+      },
+      {
+        "name": "PostgreSQL",
+        "category": "DATABASE",
+        "confidence": 93,
+        "source_text": "run against a real PostgreSQL"
+      },
+      {
+        "name": "JUnit",
+        "category": "TOOL",
+        "confidence": 90,
+        "source_text": "Wrote Liquibase migrations and JUnit tests."
+      },
+      {
+        "name": "Kubernetes",
+        "category": "PLATFORM",
+        "confidence": 80,
+        "source_text": "Docker, Kubernetes"
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Kestrel Payments",
+        "title": "Software Engineer",
+        "employment_type": "FULL_TIME",
+        "start_date": "2022-09",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 96,
+        "source_text": "Software Engineer, Kestrel Payments",
+        "achievements": [
+          {
+            "text": "Develop microservices in Java 17 and Spring Boot for the settlement platform.",
+            "confidence": 95,
+            "source_text": "Develop microservices in Java 17 and Spring Boot for the settlement platform."
+          },
+          {
+            "text": "Own the Kafka consumer that reconciles card authorisations against settlements.",
+            "confidence": 94,
+            "source_text": "Own the Kafka consumer that reconciles card authorisations against settlements."
+          }
+        ]
+      },
+      {
+        "company": "Moravia Software House",
+        "title": "Junior Developer",
+        "employment_type": "FULL_TIME",
+        "start_date": "2021-06",
+        "end_date": "2022-08",
+        "is_current": false,
+        "confidence": 94,
+        "source_text": "Junior Developer, Moravia Software House",
+        "achievements": [
+          {
+            "text": "Maintained a Spring MVC monolith for a regional insurer.",
+            "confidence": 91,
+            "source_text": "Maintained a Spring MVC monolith for a regional insurer."
+          }
+        ]
+      }
+    ],
+    "projects": [],
+    "education": [
+      {
+        "institution": "Masaryk University",
+        "degree": "Bachelor of Informatics",
+        "start_date": "2018",
+        "end_date": "2021",
+        "is_current": false,
+        "confidence": 94,
+        "source_text": "Bachelor of Informatics, Masaryk University, 2018 - 2021"
+      }
+    ]
+  },
+  "expect_skills": ["Java", "Spring Boot", "Kafka"],
+  "expect_companies": ["Kestrel Payments", "Moravia Software House"],
+  "expect_min_experiences": 2,
+  "expect_min_projects": 0,
+  "expect_min_education": 1,
+  "forbid_substrings": []
+}

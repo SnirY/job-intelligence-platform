@@ -54,9 +54,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "length(trim(title)) > 0", name=op.f("ck_target_roles_title_not_blank")
-        ),
+        sa.CheckConstraint("length(trim(title)) > 0", name=op.f("ck_target_roles_title_not_blank")),
         sa.CheckConstraint(
             "priority >= 0 AND priority <= 1000", name=op.f("ck_target_roles_priority_range")
         ),

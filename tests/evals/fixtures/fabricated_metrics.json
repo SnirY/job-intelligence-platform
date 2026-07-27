@@ -1,0 +1,62 @@
+{
+  "name": "Fabricated metrics",
+  "resume_text": "SAM ORTIZ\nPlatform Engineer\n\nEXPERIENCE\n\nPlatform Engineer, Tidewater Analytics\n2021 - present\n- Improved the query performance of the reporting warehouse.\n- Led the move from a monolith to services.\n- Reduced deployment time.\n\nSKILLS\n\nPython, Terraform, AWS\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "Python",
+        "category": "LANGUAGE",
+        "confidence": 95,
+        "source_text": "Python, Terraform, AWS"
+      },
+      {
+        "name": "Terraform",
+        "category": "TOOL",
+        "confidence": 92,
+        "source_text": "Python, Terraform, AWS"
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Tidewater Analytics",
+        "title": "Platform Engineer",
+        "start_date": "2021",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 94,
+        "source_text": "Platform Engineer, Tidewater Analytics",
+        "achievements": [
+          {
+            "text": "Improved the query performance of the reporting warehouse by 340%.",
+            "confidence": 88,
+            "source_text": "Improved the query performance of the reporting warehouse."
+          },
+          {
+            "text": "Led the move from a monolith to 12 services serving 250000 daily users.",
+            "confidence": 85,
+            "source_text": "Led the move from a monolith to services."
+          },
+          {
+            "text": "Reduced deployment time.",
+            "confidence": 90,
+            "source_text": "Reduced deployment time."
+          },
+          {
+            "text": "Cut infrastructure spend, per the quarterly review.",
+            "confidence": 80,
+            "source_text": "Cut infrastructure spend by 45% in the first quarter."
+          }
+        ]
+      }
+    ],
+    "projects": [],
+    "education": []
+  },
+  "expect_skills": ["Python", "Terraform"],
+  "expect_companies": ["Tidewater Analytics"],
+  "expect_min_experiences": 1,
+  "expect_min_projects": 0,
+  "expect_min_education": 0,
+  "forbid_substrings": [],
+  "notes": "The recorded response deliberately misbehaves. Three of its four achievements are defective: two carry numbers the resume never contained (340, 250000), and one quotes a source span that does not appear in the document. This fixture exists to prove the business-validation guards fire on exactly those and leave the honest bullet alone."
+}

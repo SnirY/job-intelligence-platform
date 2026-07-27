@@ -1,0 +1,118 @@
+{
+  "name": "Full Stack",
+  "resume_text": "PRIYA NAIR\nFull Stack Developer | Remote (IST)\n\nEXPERIENCE\n\nFull Stack Developer, Brightloom\nApril 2020 - Present\n- Ship features across a React frontend and a Node.js API.\n- Introduced TypeScript to the frontend codebase.\n- Own the Postgres schema for the campaign builder.\n\nFrontend Developer, Ashcombe Digital\nFebruary 2018 - March 2020\n- Built marketing sites in React.js and Next.js for agency clients.\n\nPROJECTS\n\nrecipe-box\nA self-hosted recipe manager. React frontend, Express API, SQLite.\nhttps://github.com/priyanair/recipe-box\n\nEDUCATION\n\nBE Information Technology, Anna University, 2014 - 2018\n\nSKILLS\n\nJavaScript, TypeScript, React.js, Node.js, Next.js, Postgres, Express, HTML, CSS\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "JavaScript",
+        "category": "LANGUAGE",
+        "confidence": 96,
+        "source_text": "JavaScript, TypeScript, React.js, Node.js"
+      },
+      {
+        "name": "TypeScript",
+        "category": "LANGUAGE",
+        "confidence": 95,
+        "source_text": "Introduced TypeScript to the frontend codebase."
+      },
+      {
+        "name": "React.js",
+        "category": "FRAMEWORK",
+        "confidence": 96,
+        "source_text": "Built marketing sites in React.js and Next.js"
+      },
+      {
+        "name": "Node.js",
+        "category": "PLATFORM",
+        "confidence": 94,
+        "source_text": "a React frontend and a Node.js API"
+      },
+      {
+        "name": "Next.js",
+        "category": "FRAMEWORK",
+        "confidence": 90,
+        "source_text": "React.js and Next.js for agency clients"
+      },
+      {
+        "name": "Postgres",
+        "category": "DATABASE",
+        "confidence": 92,
+        "source_text": "Own the Postgres schema for the campaign builder."
+      },
+      {
+        "name": "Express",
+        "category": "FRAMEWORK",
+        "confidence": 88,
+        "source_text": "React frontend, Express API, SQLite."
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Brightloom",
+        "title": "Full Stack Developer",
+        "employment_type": "FULL_TIME",
+        "start_date": "2020-04",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 96,
+        "source_text": "Full Stack Developer, Brightloom",
+        "achievements": [
+          {
+            "text": "Ship features across a React frontend and a Node.js API.",
+            "confidence": 94,
+            "source_text": "Ship features across a React frontend and a Node.js API."
+          },
+          {
+            "text": "Introduced TypeScript to the frontend codebase.",
+            "confidence": 94,
+            "source_text": "Introduced TypeScript to the frontend codebase."
+          }
+        ]
+      },
+      {
+        "company": "Ashcombe Digital",
+        "title": "Frontend Developer",
+        "employment_type": "FULL_TIME",
+        "start_date": "2018-02",
+        "end_date": "2020-03",
+        "is_current": false,
+        "confidence": 94,
+        "source_text": "Frontend Developer, Ashcombe Digital"
+      }
+    ],
+    "projects": [
+      {
+        "name": "recipe-box",
+        "project_type": "PERSONAL",
+        "summary": "A self-hosted recipe manager.",
+        "repository_url": "https://github.com/priyanair/recipe-box",
+        "confidence": 92,
+        "source_text": "A self-hosted recipe manager. React frontend, Express API, SQLite.",
+        "technologies": [
+          { "name": "React", "confidence": 92 },
+          { "name": "Express", "confidence": 90 },
+          { "name": "SQLite", "confidence": 90 }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "institution": "Anna University",
+        "degree": "BE",
+        "field_of_study": "Information Technology",
+        "start_date": "2014",
+        "end_date": "2018",
+        "is_current": false,
+        "confidence": 93,
+        "source_text": "BE Information Technology, Anna University, 2014 - 2018"
+      }
+    ]
+  },
+  "expect_skills": ["TypeScript", "React.js", "Node.js"],
+  "expect_companies": ["Brightloom", "Ashcombe Digital"],
+  "expect_min_experiences": 2,
+  "expect_min_projects": 1,
+  "expect_min_education": 1,
+  "forbid_substrings": [],
+  "notes": "The expectation is React.js, not React, because that is what this resume actually says. Collapsing the two is the alias catalogue's job and happens at approval time against the database; the parser is expected to report the document's own wording, not to pre-normalise it."
+}

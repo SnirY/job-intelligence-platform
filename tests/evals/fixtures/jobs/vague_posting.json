@@ -1,0 +1,27 @@
+{
+  "name": "Vague posting that supports no seniority",
+  "job_text": "Senior Software Engineer\nNorthgate\n\nWe are growing fast and need great engineers. You will work on exciting problems with a talented team.\n\nIf that sounds like you, apply within.",
+  "expect_min_requirements": 0,
+  "expect_min_responsibilities": 0,
+  "expect_role_family": "SOFTWARE",
+  "expect_seniority": "UNKNOWN",
+  "expect_max_requirements": 1,
+  "note": "The title says Senior. Nothing else does. docs/05-ai-and-matching.md warns against reading the title and stopping, and the analysis validator refuses a level when the parse found nothing to support one — so this fixture pins the honest answer even against a model that returns SENIOR confidently.",
+  "recorded_parse": {
+    "summary": "A software engineering role with no stated requirements.",
+    "title": "Senior Software Engineer",
+    "company": "Northgate",
+    "requirements": [],
+    "responsibilities": []
+  },
+  "recorded_analysis": {
+    "role_family": "SOFTWARE",
+    "role_family_confidence": 45,
+    "role_family_reasoning": "The posting names no technologies or areas, so only the generic engineering title supports a family.",
+    "seniority": "SENIOR",
+    "seniority_confidence": 80,
+    "seniority_reasoning": "The title says Senior Software Engineer.",
+    "domain": null,
+    "summary": "A software engineering role at a growing company, with no stated requirements or responsibilities."
+  }
+}

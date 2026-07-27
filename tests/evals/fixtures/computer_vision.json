@@ -1,0 +1,107 @@
+{
+  "name": "Computer Vision",
+  "resume_text": "DR. AISHA RAHMAN\nComputer Vision Engineer | Manchester, UK\n\nEXPERIENCE\n\nComputer Vision Engineer, Northgate Robotics\nJanuary 2021 - Present\n- Train and deploy object detection models (YOLOv8, PyTorch) for warehouse robots.\n- Built the annotation review pipeline used by the labelling team.\n- Reduced false positives on the pallet detector, measured on our internal test set.\n\nResearch Assistant, University of Manchester\nOctober 2017 - December 2020\n- Published work on self-supervised depth estimation.\n- Implemented experiments in PyTorch and OpenCV.\n\nPROJECTS\n\nDepthFold\nOpen-source implementation of a monocular depth estimation network. PyTorch, ONNX.\n\nEDUCATION\n\nPhD Computer Science, University of Manchester, 2017 - 2021\nMEng Electronic Engineering, University of Leeds, 2013 - 2017\n\nSKILLS\n\nPython, PyTorch, OpenCV, NumPy, ONNX, CUDA, Docker\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "Python",
+        "category": "LANGUAGE",
+        "confidence": 97,
+        "source_text": "Python, PyTorch, OpenCV, NumPy"
+      },
+      {
+        "name": "PyTorch",
+        "category": "FRAMEWORK",
+        "confidence": 97,
+        "source_text": "object detection models (YOLOv8, PyTorch)"
+      },
+      {
+        "name": "OpenCV",
+        "category": "FRAMEWORK",
+        "confidence": 94,
+        "source_text": "Implemented experiments in PyTorch and OpenCV."
+      },
+      { "name": "ONNX", "category": "TOOL", "confidence": 88, "source_text": "PyTorch, ONNX." },
+      {
+        "name": "CUDA",
+        "category": "PLATFORM",
+        "confidence": 82,
+        "source_text": "ONNX, CUDA, Docker"
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Northgate Robotics",
+        "title": "Computer Vision Engineer",
+        "employment_type": "FULL_TIME",
+        "start_date": "2021-01",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 96,
+        "source_text": "Computer Vision Engineer, Northgate Robotics",
+        "achievements": [
+          {
+            "text": "Train and deploy object detection models (YOLOv8, PyTorch) for warehouse robots.",
+            "confidence": 95,
+            "source_text": "Train and deploy object detection models (YOLOv8, PyTorch) for warehouse robots."
+          },
+          {
+            "text": "Reduced false positives on the pallet detector, measured on our internal test set.",
+            "confidence": 90,
+            "source_text": "Reduced false positives on the pallet detector, measured on our internal test set."
+          }
+        ]
+      },
+      {
+        "company": "University of Manchester",
+        "title": "Research Assistant",
+        "start_date": "2017-10",
+        "end_date": "2020-12",
+        "is_current": false,
+        "confidence": 92,
+        "source_text": "Research Assistant, University of Manchester"
+      }
+    ],
+    "projects": [
+      {
+        "name": "DepthFold",
+        "project_type": "OPEN_SOURCE",
+        "summary": "Open-source implementation of a monocular depth estimation network.",
+        "confidence": 91,
+        "source_text": "Open-source implementation of a monocular depth estimation network.",
+        "technologies": [
+          { "name": "PyTorch", "confidence": 94 },
+          { "name": "ONNX", "confidence": 90 }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "institution": "University of Manchester",
+        "degree": "PhD",
+        "field_of_study": "Computer Science",
+        "start_date": "2017",
+        "end_date": "2021",
+        "is_current": false,
+        "confidence": 95,
+        "source_text": "PhD Computer Science, University of Manchester, 2017 - 2021"
+      },
+      {
+        "institution": "University of Leeds",
+        "degree": "MEng",
+        "field_of_study": "Electronic Engineering",
+        "start_date": "2013",
+        "end_date": "2017",
+        "is_current": false,
+        "confidence": 94,
+        "source_text": "MEng Electronic Engineering, University of Leeds, 2013 - 2017"
+      }
+    ]
+  },
+  "expect_skills": ["PyTorch", "OpenCV", "Python"],
+  "expect_companies": ["Northgate Robotics"],
+  "expect_min_experiences": 2,
+  "expect_min_projects": 1,
+  "expect_min_education": 2,
+  "forbid_substrings": []
+}

@@ -10,6 +10,8 @@ line-length = 100
 target-version = "py312"
 src = [
   "packages/config/src",
+  "packages/ai-core/src",
+  "packages/prompts/src",
   "apps/api/src",
   "apps/worker/src",
 ]
@@ -34,7 +36,7 @@ select = [
 "**/tests/**" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["jip_api", "jip_config", "jip_worker"]
+known-first-party = ["jip_ai", "jip_api", "jip_config", "jip_prompts", "jip_worker"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -47,18 +49,25 @@ pretty = true
 show_error_codes = true
 mypy_path = [
   "packages/config/src",
+  "packages/ai-core/src",
+  "packages/prompts/src",
   "apps/api/src",
   "apps/worker/src",
 ]
 files = [
   "packages/config/src",
   "packages/config/tests",
+  "packages/ai-core/src",
+  "packages/ai-core/tests",
+  "packages/prompts/src",
+  "packages/prompts/tests",
   "apps/api/src",
   "apps/api/tests",
   "apps/api/migrations",
   "apps/worker/src",
   "apps/worker/tests",
   "scripts",
+  "tests/evals",
 ]
 
 [[tool.mypy.overrides]]
@@ -74,16 +83,26 @@ ignore_errors = true
 module = ["boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# Imported lazily inside one adapter so the package stays usable without a
+# provider SDK installed; the adapter re-types its own boundary.
+module = ["anthropic.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = [
   "packages/config/tests",
+  "packages/ai-core/tests",
+  "packages/prompts/tests",
   "apps/api/tests",
   "apps/worker/tests",
+  "tests/evals",
 ]
 addopts = "-ra --strict-markers --strict-config"
 markers = [
   "integration: requires live PostgreSQL and/or Redis (see docs/development/local-environment.md)",
+  "live_ai: calls a real model provider; skipped unless JIP_RUN_AI_EVALS=1 (see tests/evals/README.md)",
 ]
 filterwarnings = ["error"]
 
@@ -91,6 +110,8 @@ filterwarnings = ["error"]
 branch = true
 source = [
   "packages/config/src",
+  "packages/ai-core/src",
+  "packages/prompts/src",
   "apps/api/src",
   "apps/worker/src",
 ]

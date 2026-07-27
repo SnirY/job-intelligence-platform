@@ -1,12 +1,9 @@
-import { PhasePlaceholder } from "@/components/phase-placeholder";
+import { JobsList } from "@/features/jobs/jobs-list";
 
 export default function JobsPage() {
   return (
-    <PhasePlaceholder
-      title="Jobs"
-      phase={4}
-      phaseName="Job Workspace"
-      description="Import roles by pasting a description or a link, then keep them in one place while you decide."
-    />
+    <div className="mx-auto max-w-4xl">
+      <JobsList />
+    </div>
   );
 }

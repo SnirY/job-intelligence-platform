@@ -1,0 +1,99 @@
+{
+  "name": "Junior frontend, aliases and a title that understates the level",
+  "job_text": "Frontend Developer (Graduate)\nHalcyon Studio — Remote\n\nWe build interfaces for museums and galleries. This is a first professional role: we expect you to have finished a degree or a bootcamp, and nothing more.\n\nThe role:\n- Build screens from designs our team produces\n- Fix bugs reported by our support team\n- Learn our codebase with the support of a senior developer\n\nRequirements:\n- A degree in computer science or an equivalent bootcamp\n- JS fundamentals\n- Some React.js\n- English, written and spoken\n\nBonus points:\n- TS\n- Any experience with accessibility standards\n\nWe do not expect commercial experience. You will be paired with a senior developer for your first six months.",
+  "expect_requirements": ["JavaScript", "React"],
+  "expect_min_requirements": 4,
+  "expect_min_responsibilities": 2,
+  "expect_preferred": ["TypeScript"],
+  "expect_role_family": "FRONTEND",
+  "expect_seniority": "ENTRY_LEVEL",
+  "expect_skill_names": ["JS", "React.js", "TS"],
+  "expect_requirement_types": ["EDUCATION", "TECHNICAL_SKILL", "LANGUAGE"],
+  "recorded_parse": {
+    "summary": "A graduate frontend role building museum and gallery interfaces.",
+    "title": "Frontend Developer (Graduate)",
+    "company": "Halcyon Studio",
+    "location": "Remote",
+    "requirements": [
+      {
+        "normalized_text": "Computer science degree or bootcamp",
+        "requirement_type": "EDUCATION",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "A degree in computer science or an equivalent bootcamp",
+        "confidence": 94
+      },
+      {
+        "normalized_text": "JavaScript",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "JS fundamentals",
+        "confidence": 92,
+        "skill_name": "JS"
+      },
+      {
+        "normalized_text": "React",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Some React.js",
+        "confidence": 88,
+        "skill_name": "React.js"
+      },
+      {
+        "normalized_text": "English",
+        "requirement_type": "LANGUAGE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "English, written and spoken",
+        "confidence": 95
+      },
+      {
+        "normalized_text": "TypeScript",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "PREFERRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Bonus points:\n- TS",
+        "confidence": 85,
+        "skill_name": "TS"
+      },
+      {
+        "normalized_text": "Accessibility standards",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "PREFERRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Any experience with accessibility standards",
+        "confidence": 80,
+        "skill_name": "Accessibility"
+      }
+    ],
+    "responsibilities": [
+      {
+        "text": "Build screens from supplied designs",
+        "source_text": "Build screens from designs our team produces",
+        "confidence": 93
+      },
+      {
+        "text": "Fix reported bugs",
+        "source_text": "Fix bugs reported by our support team",
+        "confidence": 92
+      },
+      {
+        "text": "Learn the codebase with senior support",
+        "source_text": "Learn our codebase with the support of a senior developer",
+        "confidence": 88
+      }
+    ]
+  },
+  "recorded_analysis": {
+    "role_family": "FRONTEND",
+    "role_family_confidence": 93,
+    "role_family_reasoning": "Building screens from designs, JavaScript and React, no server-side work mentioned.",
+    "seniority": "ENTRY_LEVEL",
+    "seniority_confidence": 92,
+    "seniority_reasoning": "States it is a first professional role, expects no commercial experience, and pairs the person with a senior developer for six months.",
+    "domain": "arts and culture",
+    "summary": "A graduate frontend role at a studio building interfaces for museums, with explicit support for someone in their first job."
+  }
+}

@@ -41,9 +41,12 @@ export default function LandingPage() {
         </Show>
       </div>
 
+      {/* Kept accurate as phases land. A page claiming less than the product
+          does is as misleading as one claiming more. */}
       <p className="text-sm text-muted-foreground">
-        In development — Phase 1 of 11. Accounts and navigation work; the career and job features
-        are not built yet.
+        In development — Phase 5 of 11. You can build a career profile, import one from a resume,
+        save jobs, and have a posting read into its requirements. Matching a profile against a job
+        is not built yet.
       </p>
     </main>
   );

@@ -13,11 +13,14 @@ apps/web/src/**/*.test.tsx  frontend units
 This directory is reserved for tests that span applications and therefore have
 no single owner:
 
-- `tests/e2e/` — browser journeys across web and API (Phase 1 onward, once
-  there is a user-facing flow to walk through)
-- `tests/evals/` — AI evaluation suites, kept separate from the normal test run
-  because they call live models (Phase 5 onward, per
-  `docs/11-engineering-standards.md`)
+- `tests/e2e/` — browser journeys across web and API. **Still absent.** No
+  browser journey is automated yet; see DEV-006 in
+  `docs/development/known-issues.md`.
+- `tests/evals/` — AI evaluation fixtures. **Built in Phase 3**, which turned
+  out to be the first AI feature rather than Phase 5.
 
-Neither exists yet. Phase 0 has no cross-application behaviour to cover, and
-creating the directories early would only add empty scaffolding.
+`tests/evals/` runs in the normal suite because it is offline by default: each
+fixture replays a recorded model response, which exercises everything the
+platform owns around the call. Only the `live_ai`-marked run makes real
+requests, and it is skipped unless `JIP_RUN_AI_EVALS=1`. See
+`tests/evals/README.md`.

@@ -1,0 +1,100 @@
+{
+  "name": "Requirements quoting text the posting never contained",
+  "job_text": "DevOps Engineer\nSaltmarsh Systems — Remote within the EU\n\nWe run the infrastructure behind a fleet-tracking product.\n\nYou will:\n- Keep our Kubernetes clusters healthy\n- Own our Terraform modules\n\nWe are looking for:\n- 4+ years in an infrastructure or platform role\n- Terraform\n- Kubernetes\n\nWe are a small team and everyone is on call one week in six.",
+  "note": "The recorded response invents three requirements, each quoting a passage that is not in the posting: AWS, a security clearance, and a specific salary figure. docs/05-ai-and-matching.md makes provenance checkable, and job requirements are dropped rather than flagged because nobody reviews them one by one — a fabricated one would go straight into a matcher. This is the job-side counterpart to fabricated_metrics.json.",
+  "expect_requirements": ["Terraform", "Kubernetes"],
+  "expect_min_requirements": 3,
+  "expect_min_responsibilities": 2,
+  "expect_role_family": "DEVOPS",
+  "expect_seniority": "MID",
+  "expect_skill_names": ["Terraform", "Kubernetes"],
+  "forbid_requirements": ["AWS", "Security clearance", "Salary expectations under 90000"],
+  "recorded_parse": {
+    "summary": "An infrastructure role running Kubernetes and Terraform for a fleet-tracking product.",
+    "title": "DevOps Engineer",
+    "company": "Saltmarsh Systems",
+    "location": "Remote within the EU",
+    "years_experience_min": 4,
+    "requirements": [
+      {
+        "normalized_text": "4+ years infrastructure or platform",
+        "requirement_type": "EXPERIENCE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "4+ years in an infrastructure or platform role",
+        "confidence": 95,
+        "years_min": 4
+      },
+      {
+        "normalized_text": "Terraform",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Terraform",
+        "confidence": 94,
+        "skill_name": "Terraform"
+      },
+      {
+        "normalized_text": "Kubernetes",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Kubernetes",
+        "confidence": 94,
+        "skill_name": "Kubernetes"
+      },
+      {
+        "normalized_text": "AWS",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Deep experience with AWS across EC2, EKS, and RDS",
+        "confidence": 91,
+        "skill_name": "AWS"
+      },
+      {
+        "normalized_text": "Security clearance",
+        "requirement_type": "WORK_AUTHORIZATION",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Candidates must hold an active government security clearance",
+        "confidence": 89
+      },
+      {
+        "normalized_text": "Salary expectations under 90000",
+        "requirement_type": "OTHER",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Salary expectations must be under EUR 90,000",
+        "confidence": 87
+      }
+    ],
+    "responsibilities": [
+      {
+        "text": "Keep Kubernetes clusters healthy",
+        "source_text": "Keep our Kubernetes clusters healthy",
+        "confidence": 95
+      },
+      {
+        "text": "Own the Terraform modules",
+        "source_text": "Own our Terraform modules",
+        "confidence": 94
+      },
+      {
+        "text": "Manage the AWS bill",
+        "source_text": "You will also be responsible for reducing our AWS spend by 30%",
+        "confidence": 88
+      }
+    ]
+  },
+  "recorded_analysis": {
+    "role_family": "DEVOPS",
+    "role_family_confidence": 95,
+    "role_family_reasoning": "Kubernetes clusters, Terraform modules, and an on-call rotation. Infrastructure work throughout.",
+    "seniority": "MID",
+    "seniority_confidence": 78,
+    "seniority_reasoning": "Asks for 4+ years in an infrastructure role, with ownership of modules but no architecture or leadership expectations.",
+    "domain": "fleet tracking",
+    "summary": "An infrastructure role on a small team running the platform behind a fleet-tracking product."
+  }
+}

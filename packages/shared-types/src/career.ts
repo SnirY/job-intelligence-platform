@@ -149,6 +149,14 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   VOLUNTEER: "Volunteer",
 };
 
+/** A bullet-level fact belonging to a role. */
+export interface ExperienceAchievement {
+  id: string;
+  text: string;
+  display_order: number;
+  verification_status: VerificationStatus;
+}
+
 export interface Experience {
   id: string;
   company: string;
@@ -160,6 +168,9 @@ export interface Experience {
   is_current: boolean;
   description: string | null;
   verification_status: VerificationStatus;
+  /** Nested rather than fetched separately: an achievement is never useful
+   * without its role. Resume approval can write these. */
+  achievements: ExperienceAchievement[];
 }
 
 export interface ExperienceCreate {
@@ -209,6 +220,8 @@ export interface Project {
   demo_url: string | null;
   documentation_url: string | null;
   verification_status: VerificationStatus;
+  /** Canonical names of the technologies this project used. */
+  skills: string[];
 }
 
 export interface ProjectCreate {

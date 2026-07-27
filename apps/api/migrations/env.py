@@ -7,10 +7,12 @@ The connection URL comes from the shared settings object rather than
 from __future__ import annotations
 
 from logging.config import fileConfig
+from typing import Any, Literal
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from jip_api.domain.common import StrEnumType
 from jip_api.infrastructure.db import registry  # noqa: F401  (populates Base.metadata)
 from jip_api.infrastructure.db.base import Base
 from jip_config import get_settings
@@ -30,6 +32,23 @@ if not config.get_main_option("sqlalchemy.url", None):
 target_metadata = Base.metadata
 
 
+def render_item(type_: str, obj: Any, autogen_context: Any) -> str | Literal[False]:
+    """Render custom column types as the plain types they compile to.
+
+    ``StrEnumType`` is a ``TypeDecorator`` over ``VARCHAR`` that exists so an
+    enum column reads back as its enum rather than as ``str``. Alembic does not
+    know that, and renders it as a reference to the application module — which
+    a migration must never carry: migrations have to keep running long after
+    the class they named has moved or been deleted.
+
+    Rendering it as ``sa.String`` is exact, since that is what it emits.
+    """
+    if type_ == "type" and isinstance(obj, StrEnumType):
+        length = getattr(obj.impl_instance, "length", None)
+        return f"sa.String(length={length})" if length else "sa.String()"
+    return False
+
+
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without connecting to a database."""
     context.configure(
@@ -38,6 +57,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        render_item=render_item,
     )
 
     with context.begin_transaction():
@@ -57,6 +77,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            render_item=render_item,
         )
 
         with context.begin_transaction():

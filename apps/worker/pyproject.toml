@@ -9,6 +9,10 @@ description = "Job Intelligence Platform background worker."
 requires-python = ">=3.12"
 dependencies = [
   "jip-config",
+  # The worker runs application use cases from jip_api. The dependency points
+  # this way only: the API enqueues by dotted path and never imports the worker
+  # (ADR-0003), so there is no cycle.
+  "jip-api",
   "redis>=5.0,<7",
   "rq>=1.16,<3",
 ]
