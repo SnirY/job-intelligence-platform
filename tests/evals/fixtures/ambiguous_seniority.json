@@ -1,0 +1,82 @@
+{
+  "name": "Ambiguous Seniority",
+  "resume_text": "J. WHITFIELD\nEngineer\n\nEXPERIENCE\n\nEngineer, Halcyon Systems\n2019 - present\nWork on the platform team. Involved in the migration to Go. Mentoring.\nOn call rotation.\n\nEngineer, Halcyon Systems\n2016 - 2019\nJoined as part of the graduate intake. Worked on internal tools in Python.\n\nEDUCATION\n\nUniversity of Bristol\n\nSKILLS\n\nGo, Python, Terraform\n",
+  "recorded_output": {
+    "skills": [
+      {
+        "name": "Go",
+        "category": "LANGUAGE",
+        "confidence": 90,
+        "source_text": "Go, Python, Terraform"
+      },
+      {
+        "name": "Python",
+        "category": "LANGUAGE",
+        "confidence": 90,
+        "source_text": "Worked on internal tools in Python."
+      },
+      {
+        "name": "Terraform",
+        "category": "TOOL",
+        "confidence": 78,
+        "source_text": "Go, Python, Terraform"
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Halcyon Systems",
+        "title": "Engineer",
+        "employment_type": null,
+        "start_date": "2019",
+        "end_date": null,
+        "is_current": true,
+        "confidence": 72,
+        "source_text": "Engineer, Halcyon Systems",
+        "achievements": [
+          {
+            "text": "Involved in the migration to Go.",
+            "confidence": 65,
+            "source_text": "Involved in the migration to Go."
+          }
+        ]
+      },
+      {
+        "company": "Halcyon Systems",
+        "title": "Engineer",
+        "employment_type": null,
+        "start_date": "2016",
+        "end_date": "2019",
+        "is_current": false,
+        "confidence": 70,
+        "source_text": "Engineer, Halcyon Systems",
+        "achievements": [
+          {
+            "text": "Worked on internal tools in Python.",
+            "confidence": 68,
+            "source_text": "Worked on internal tools in Python."
+          }
+        ]
+      }
+    ],
+    "projects": [],
+    "education": [
+      {
+        "institution": "University of Bristol",
+        "degree": null,
+        "field_of_study": null,
+        "start_date": null,
+        "end_date": null,
+        "is_current": false,
+        "confidence": 55,
+        "source_text": "University of Bristol"
+      }
+    ]
+  },
+  "expect_skills": ["Go", "Python"],
+  "expect_companies": ["Halcyon Systems"],
+  "expect_min_experiences": 2,
+  "expect_min_projects": 0,
+  "expect_min_education": 1,
+  "forbid_substrings": ["Senior", "Staff", "Lead", "Principal"],
+  "notes": "The resume never states a seniority. A parser that promotes 'Engineer' to 'Senior Engineer' because of the mentoring and on-call lines has invented a title, which is why those words are forbidden."
+}

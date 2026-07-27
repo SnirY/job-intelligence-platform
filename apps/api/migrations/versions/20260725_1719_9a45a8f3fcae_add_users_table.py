@@ -57,9 +57,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
-        sa.UniqueConstraint(
-            "auth_provider", "external_user_id", name="uq_users_external_identity"
-        ),
+        sa.UniqueConstraint("auth_provider", "external_user_id", name="uq_users_external_identity"),
     )
 
 

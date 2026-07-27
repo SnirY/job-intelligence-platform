@@ -8,10 +8,13 @@ authenticated user's id.
 from __future__ import annotations
 
 import datetime as dt
+import enum
 import uuid
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import DateTime, ForeignKey, String, TypeDecorator, func
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 
@@ -60,3 +63,38 @@ def new_uuid_column() -> Mapped[uuid.UUID]:
         primary_key=True,
         server_default=func.gen_random_uuid(),
     )
+
+
+class StrEnumType[E: enum.StrEnum](TypeDecorator[E]):
+    """A ``VARCHAR`` column that reads back as its enum, not as ``str``.
+
+    Enums are stored as text rather than as a PostgreSQL ``ENUM`` because
+    adding a value to a database enum needs a migration and a lock, while these
+    sets grow with almost every phase.
+
+    The decorator exists because a plain ``String`` column annotated
+    ``Mapped[SomeEnum]`` *lies*: SQLAlchemy writes the value happily and hands
+    back a bare ``str`` on load. ``==`` still works — ``StrEnum`` compares equal
+    to its value — but ``is`` silently does not, so a correct-looking identity
+    check against a loaded row is always false. Converting on the way out makes
+    the annotation true and both comparisons work.
+
+    The generated DDL is unchanged, so adopting it needs no migration.
+    """
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, enum_type: type[E], length: int = 40) -> None:
+        super().__init__(length=length)
+        self._enum_type = enum_type
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> str | None:
+        if value is None:
+            return None
+        return str(self._enum_type(value))
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> E | None:
+        if value is None:
+            return None
+        return self._enum_type(value)

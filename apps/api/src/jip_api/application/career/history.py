@@ -6,7 +6,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import asc, desc, nullsfirst
+from sqlalchemy import asc, desc, func, nullsfirst, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from jip_api.application.career.records import (
@@ -16,8 +17,15 @@ from jip_api.application.career.records import (
     get_owned,
     list_owned,
 )
-from jip_api.domain.career.history import Education, Experience, Project
+from jip_api.domain.career.history import (
+    Education,
+    Experience,
+    ExperienceAchievement,
+    Project,
+    ProjectSkill,
+)
 from jip_api.domain.career.models import VerificationStatus
+from jip_api.domain.career.skills import Skill
 
 _UNSET = object()
 
@@ -118,6 +126,80 @@ def delete_experience(session: Session, user_id: uuid.UUID, record_id: uuid.UUID
     )
 
 
+def get_experience(session: Session, user_id: uuid.UUID, record_id: uuid.UUID) -> Experience:
+    return get_owned(
+        session, Experience, user_id, record_id, missing_message="Experience not found."
+    )
+
+
+# --- achievements -------------------------------------------------------------
+#
+# Bullet-level facts belong to their role, so they are reached through it rather
+# than being user-owned in their own right. Ownership is the parent's, and the
+# cascade means an achievement cannot outlive the experience it describes.
+
+
+def list_achievements(session: Session, experience_id: uuid.UUID) -> list[ExperienceAchievement]:
+    """Achievements of one role, in display order."""
+    statement = (
+        select(ExperienceAchievement)
+        .where(ExperienceAchievement.experience_id == experience_id)
+        .order_by(ExperienceAchievement.display_order, ExperienceAchievement.created_at)
+    )
+    return list(session.execute(statement).scalars())
+
+
+def add_achievement(
+    session: Session,
+    experience: Experience,
+    *,
+    text: str,
+    verification_status: VerificationStatus = VerificationStatus.USER_CONFIRMED,
+    display_order: int | None = None,
+) -> ExperienceAchievement:
+    """Add one achievement to a role.
+
+    Takes the ``Experience`` object rather than an id: the caller has already
+    resolved it through an ownership-checked query, and accepting a bare id here
+    would make it possible to attach a bullet to someone else's role.
+
+    An identical text on the same role returns the existing row instead of a
+    second copy — confirming the same extraction twice must not double the
+    bullets under a job.
+    """
+    normalized = text.strip()
+    existing = session.execute(
+        select(ExperienceAchievement).where(
+            ExperienceAchievement.experience_id == experience.id,
+            func.lower(func.trim(ExperienceAchievement.text)) == normalized.lower(),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    if display_order is None:
+        display_order = (
+            int(
+                session.execute(
+                    select(func.coalesce(func.max(ExperienceAchievement.display_order), -1)).where(
+                        ExperienceAchievement.experience_id == experience.id
+                    )
+                ).scalar_one()
+            )
+            + 1
+        )
+
+    achievement = ExperienceAchievement(
+        experience_id=experience.id,
+        text=normalized,
+        display_order=display_order,
+        verification_status=verification_status,
+    )
+    session.add(achievement)
+    session.flush()
+    return achievement
+
+
 # --- projects -----------------------------------------------------------------
 
 
@@ -206,6 +288,35 @@ def update_project(
 
 def delete_project(session: Session, user_id: uuid.UUID, record_id: uuid.UUID) -> None:
     delete_owned(session, get_project(session, user_id, record_id))
+
+
+# --- project technologies -----------------------------------------------------
+
+
+def list_project_skills(session: Session, project_id: uuid.UUID) -> list[Skill]:
+    """Canonical skills linked to a project, alphabetically."""
+    statement = (
+        select(Skill)
+        .join(ProjectSkill, ProjectSkill.skill_id == Skill.id)
+        .where(ProjectSkill.project_id == project_id)
+        .order_by(Skill.canonical_name)
+    )
+    return list(session.execute(statement).scalars())
+
+
+def link_project_skill(session: Session, project: Project, skill_id: uuid.UUID) -> None:
+    """Link a project to a canonical skill.
+
+    Idempotent by construction: the pair is the primary key, so re-linking is a
+    no-op rather than an integrity error the caller has to catch. Takes the
+    ``Project`` object for the same reason as ``add_achievement``.
+    """
+    session.execute(
+        pg_insert(ProjectSkill)
+        .values(project_id=project.id, skill_id=skill_id)
+        .on_conflict_do_nothing(index_elements=[ProjectSkill.project_id, ProjectSkill.skill_id])
+    )
+    session.flush()
 
 
 # --- education ----------------------------------------------------------------
@@ -299,3 +410,76 @@ def delete_education(session: Session, user_id: uuid.UUID, record_id: uuid.UUID)
             session, Education, user_id, record_id, missing_message="Education entry not found."
         ),
     )
+
+
+# --- matching existing records ------------------------------------------------
+#
+# Used when approving extracted data. A resume usually describes roles the user
+# has already entered by hand, and creating a second copy of one would corrupt
+# the profile that every later match is measured against. Matching is on the
+# fields that identify a record to a person, not on an exact payload equality
+# that a different date format would defeat.
+
+
+def find_experience(
+    session: Session,
+    user_id: uuid.UUID,
+    *,
+    company: str,
+    title: str,
+    start_date: Any = None,
+) -> Experience | None:
+    """An existing role with the same company, title, and start date."""
+    statement = (
+        select(Experience)
+        .where(
+            Experience.user_id == user_id,
+            func.lower(func.trim(Experience.company)) == company.strip().lower(),
+            func.lower(func.trim(Experience.title)) == title.strip().lower(),
+        )
+        .order_by(Experience.created_at)
+    )
+    for candidate in session.execute(statement).scalars():
+        if candidate.start_date == start_date:
+            return candidate
+    return None
+
+
+def find_project(session: Session, user_id: uuid.UUID, *, name: str) -> Project | None:
+    """An existing project with the same name.
+
+    Name alone, because ``projects`` already enforces one name per user — a
+    second match is impossible, and creating one would fail the constraint.
+    """
+    return session.execute(
+        select(Project).where(
+            Project.user_id == user_id,
+            func.lower(func.trim(Project.name)) == name.strip().lower(),
+        )
+    ).scalar_one_or_none()
+
+
+def find_education(
+    session: Session,
+    user_id: uuid.UUID,
+    *,
+    institution: str,
+    degree: str | None,
+    start_date: Any = None,
+) -> Education | None:
+    """An existing education entry with the same institution, degree, and start."""
+    statement = (
+        select(Education)
+        .where(
+            Education.user_id == user_id,
+            func.lower(func.trim(Education.institution)) == institution.strip().lower(),
+        )
+        .order_by(Education.created_at)
+    )
+    normalized_degree = (degree or "").strip().lower()
+    for candidate in session.execute(statement).scalars():
+        if (candidate.degree or "").strip().lower() != normalized_degree:
+            continue
+        if candidate.start_date == start_date:
+            return candidate
+    return None
