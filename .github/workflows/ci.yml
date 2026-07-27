@@ -180,6 +180,102 @@ jobs:
             psql -U jip -d jip -tAc "SELECT to_regclass('public.users')" \
             | tee /dev/stderr | grep -q users
 
+      - name: Verify the resume import schema and worker task are reachable
+        run: |
+          docker compose exec -T api python - <<'PY'
+          # The API enqueues by dotted path (ADR-0003), so a rename in the
+          # worker is invisible until a real import runs. Importing it here
+          # turns that into a build failure instead of a stuck job.
+          import importlib
+
+          from jip_api.application.resumes.imports import RESUME_IMPORT_TASK
+
+          module_path, _, function_name = RESUME_IMPORT_TASK.rpartition(".")
+          task = getattr(importlib.import_module(module_path), function_name)
+          assert callable(task), RESUME_IMPORT_TASK
+
+          from jip_prompts import RESUME_PARSER_LATEST, get_prompt
+
+          assert get_prompt(RESUME_PARSER_LATEST).version >= 1
+          print("resume import wiring ok:", RESUME_IMPORT_TASK, RESUME_PARSER_LATEST)
+          PY
+
+          docker compose exec -T postgres             psql -U jip -d jip -tAc             "SELECT to_regclass('public.processing_jobs'), to_regclass('public.ai_runs'),              to_regclass('public.document_extractions'), to_regclass('public.document_extraction_items')"             | tee /dev/stderr | grep -q "processing_jobs|ai_runs|document_extractions|document_extraction_items"
+
+      - name: Verify the job workspace schema and worker task are reachable
+        run: |
+          docker compose exec -T api python - <<'PY'
+          # Same dotted-path risk as the resume import above: a rename in the
+          # worker only shows up when a real URL import runs.
+          import importlib
+
+          from jip_api.application.jobs.importing import FETCH_JOB_TASK
+
+          module_path, _, function_name = FETCH_JOB_TASK.rpartition(".")
+          task = getattr(importlib.import_module(module_path), function_name)
+          assert callable(task), FETCH_JOB_TASK
+
+          # The SSRF guard is the one piece of this phase that fails open if it
+          # is ever accidentally disconnected, so CI exercises it directly
+          # rather than trusting that the unit tests still import it.
+          from jip_api.infrastructure.fetching.safety import UnsafeUrlError, validate_url
+
+          for blocked in (
+              "http://169.254.169.254/latest/meta-data/",
+              "http://localhost:8000/api/v1/users/me",
+              "file:///etc/passwd",
+          ):
+              try:
+                  validate_url(blocked)
+              except UnsafeUrlError:
+                  continue
+              raise AssertionError(f"SSRF guard allowed {blocked}")
+
+          print("job workspace wiring ok:", FETCH_JOB_TASK)
+          PY
+
+          docker compose exec -T postgres \
+            psql -U jip -d jip -tAc \
+            "SELECT to_regclass('public.jobs'), to_regclass('public.job_imports')" \
+            | tee /dev/stderr | grep -q "jobs|job_imports"
+
+      - name: Verify the job analysis schema, prompts, and worker task are reachable
+        run: |
+          docker compose exec -T api python - <<'PY'
+          # Same dotted-path risk again: a rename in the worker is invisible
+          # until a real analysis runs.
+          import importlib
+
+          from jip_api.application.jobs.analysis_uc import ANALYZE_JOB_TASK
+
+          module_path, _, function_name = ANALYZE_JOB_TASK.rpartition(".")
+          task = getattr(importlib.import_module(module_path), function_name)
+          assert callable(task), ANALYZE_JOB_TASK
+
+          # Both operations must be routable. An unrouted one raises only when
+          # a user asks for an analysis, which is far too late to find out.
+          from jip_ai import AIOperation
+          from jip_api.infrastructure.ai import build_model_router
+          from jip_config import get_settings
+
+          router = build_model_router(get_settings())
+          for operation in (AIOperation.JOB_PARSE, AIOperation.JOB_ANALYSIS):
+              assert router.route(operation).model, operation
+
+          from jip_prompts import JOB_ANALYSIS_LATEST, JOB_PARSER_LATEST, get_prompt
+
+          for name in (JOB_PARSER_LATEST, JOB_ANALYSIS_LATEST):
+              assert get_prompt(name).version >= 1, name
+
+          print("job analysis wiring ok:", ANALYZE_JOB_TASK, JOB_PARSER_LATEST, JOB_ANALYSIS_LATEST)
+          PY
+
+          docker compose exec -T postgres \
+            psql -U jip -d jip -tAc \
+            "SELECT to_regclass('public.job_analyses'), to_regclass('public.job_requirements'),
+             to_regclass('public.job_responsibilities')" \
+            | tee /dev/stderr | grep -q "job_analyses|job_requirements|job_responsibilities"
+
       - name: Verify object storage round-trips through the API's adapter
         run: |
           docker compose exec -T api python - <<'PY'

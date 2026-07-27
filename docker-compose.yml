@@ -105,6 +105,13 @@ services:
       JIP_STORAGE_ENDPOINT_URL: http://minio:9000
       JIP_STORAGE_ACCESS_KEY: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
       JIP_STORAGE_SECRET_KEY: ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only}
+      JIP_AI_PROVIDER: ${JIP_AI_PROVIDER:-anthropic}
+      JIP_AI_API_KEY: ${JIP_AI_API_KEY:-}
+      JIP_AI_RESUME_PARSE_MODEL: ${JIP_AI_RESUME_PARSE_MODEL:-claude-opus-5}
+      JIP_JOB_FETCH_TIMEOUT_SECONDS: ${JIP_JOB_FETCH_TIMEOUT_SECONDS:-15}
+      JIP_JOB_FETCH_MAX_BYTES: ${JIP_JOB_FETCH_MAX_BYTES:-3145728}
+      JIP_AI_JOB_PARSE_MODEL: ${JIP_AI_JOB_PARSE_MODEL:-}
+      JIP_AI_JOB_ANALYSIS_MODEL: ${JIP_AI_JOB_ANALYSIS_MODEL:-}
     ports:
       - "${JIP_API_PORT:-8000}:8000"
     depends_on:
@@ -128,6 +135,15 @@ services:
       JIP_STORAGE_ENDPOINT_URL: http://minio:9000
       JIP_STORAGE_ACCESS_KEY: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
       JIP_STORAGE_SECRET_KEY: ${JIP_STORAGE_SECRET_KEY:-jip_local_dev_only}
+      JIP_AI_PROVIDER: ${JIP_AI_PROVIDER:-anthropic}
+      JIP_AI_API_KEY: ${JIP_AI_API_KEY:-}
+      JIP_AI_RESUME_PARSE_MODEL: ${JIP_AI_RESUME_PARSE_MODEL:-claude-opus-5}
+      # The worker is what actually opens a user-supplied link, so these two
+      # limits matter most here.
+      JIP_JOB_FETCH_TIMEOUT_SECONDS: ${JIP_JOB_FETCH_TIMEOUT_SECONDS:-15}
+      JIP_JOB_FETCH_MAX_BYTES: ${JIP_JOB_FETCH_MAX_BYTES:-3145728}
+      JIP_AI_JOB_PARSE_MODEL: ${JIP_AI_JOB_PARSE_MODEL:-}
+      JIP_AI_JOB_ANALYSIS_MODEL: ${JIP_AI_JOB_ANALYSIS_MODEL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

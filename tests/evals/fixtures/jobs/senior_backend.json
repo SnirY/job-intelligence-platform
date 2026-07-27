@@ -1,0 +1,131 @@
+{
+  "name": "Senior backend engineer, clear requirements",
+  "job_text": "Senior Backend Engineer\nVerdant Logistics — Lisbon (hybrid, 2 days on site)\n\nWe move two million parcels a day and our routing platform decides how. We are looking for a Senior Backend Engineer to own it.\n\nWhat you will do:\n- Design and build the services that plan delivery routes at scale\n- Own the PostgreSQL schema behind carrier reconciliation\n- Mentor two junior engineers on the team\n- Take our remaining Flask endpoints across to FastAPI\n\nWhat we are looking for:\n- 5+ years of professional backend engineering experience\n- Strong Python\n- Solid PostgreSQL, including query tuning\n- Experience designing distributed systems and owning their architecture\n- Right to work in Portugal\n\nNice to have:\n- Kubernetes\n- Familiarity with Go\n- Experience in logistics or supply chain\n\nWe offer a competitive salary and 25 days of leave.",
+  "expect_requirements": ["5+ years backend engineering", "Python", "PostgreSQL"],
+  "expect_min_requirements": 6,
+  "expect_min_responsibilities": 3,
+  "expect_required": ["Python", "PostgreSQL"],
+  "expect_preferred": ["Kubernetes", "Go"],
+  "expect_role_family": "BACKEND",
+  "expect_seniority": "SENIOR",
+  "expect_skill_names": ["Python", "PostgreSQL", "Kubernetes", "Go"],
+  "expect_requirement_types": ["EXPERIENCE", "TECHNICAL_SKILL", "WORK_AUTHORIZATION"],
+  "recorded_parse": {
+    "summary": "A senior backend role owning the routing platform behind a parcel delivery network.",
+    "title": "Senior Backend Engineer",
+    "company": "Verdant Logistics",
+    "location": "Lisbon",
+    "years_experience_min": 5,
+    "requirements": [
+      {
+        "normalized_text": "5+ years backend engineering",
+        "requirement_type": "EXPERIENCE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "5+ years of professional backend engineering experience",
+        "confidence": 96,
+        "years_min": 5
+      },
+      {
+        "normalized_text": "Python",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Strong Python",
+        "confidence": 95,
+        "skill_name": "Python"
+      },
+      {
+        "normalized_text": "PostgreSQL",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "CORE",
+        "explicitness": "EXPLICIT",
+        "source_text": "Solid PostgreSQL, including query tuning",
+        "confidence": 94,
+        "skill_name": "PostgreSQL"
+      },
+      {
+        "normalized_text": "Distributed systems design",
+        "requirement_type": "EXPERIENCE",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Experience designing distributed systems and owning their architecture",
+        "confidence": 90
+      },
+      {
+        "normalized_text": "Right to work in Portugal",
+        "requirement_type": "WORK_AUTHORIZATION",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Right to work in Portugal",
+        "confidence": 97
+      },
+      {
+        "normalized_text": "Kubernetes",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "PREFERRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Nice to have:\n- Kubernetes",
+        "confidence": 88,
+        "skill_name": "Kubernetes"
+      },
+      {
+        "normalized_text": "Go",
+        "requirement_type": "TECHNICAL_SKILL",
+        "importance": "PREFERRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Familiarity with Go",
+        "confidence": 85,
+        "skill_name": "Go"
+      },
+      {
+        "normalized_text": "Logistics or supply chain domain",
+        "requirement_type": "DOMAIN_KNOWLEDGE",
+        "importance": "PREFERRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Experience in logistics or supply chain",
+        "confidence": 84
+      },
+      {
+        "normalized_text": "Hybrid working from Lisbon",
+        "requirement_type": "LOCATION",
+        "importance": "REQUIRED",
+        "explicitness": "EXPLICIT",
+        "source_text": "Lisbon (hybrid, 2 days on site)",
+        "confidence": 92
+      }
+    ],
+    "responsibilities": [
+      {
+        "text": "Design and build delivery route planning services",
+        "source_text": "Design and build the services that plan delivery routes at scale",
+        "confidence": 95
+      },
+      {
+        "text": "Own the PostgreSQL schema for carrier reconciliation",
+        "source_text": "Own the PostgreSQL schema behind carrier reconciliation",
+        "confidence": 94
+      },
+      {
+        "text": "Mentor two junior engineers",
+        "source_text": "Mentor two junior engineers on the team",
+        "confidence": 93
+      },
+      {
+        "text": "Migrate remaining Flask endpoints to FastAPI",
+        "source_text": "Take our remaining Flask endpoints across to FastAPI",
+        "confidence": 90
+      }
+    ]
+  },
+  "recorded_analysis": {
+    "role_family": "BACKEND",
+    "role_family_confidence": 94,
+    "role_family_reasoning": "Server-side routing services, PostgreSQL schema ownership, Python and FastAPI. No client-side work is mentioned.",
+    "seniority": "SENIOR",
+    "seniority_confidence": 91,
+    "seniority_reasoning": "Asks for 5+ years, expects architecture ownership of the routing platform, and includes mentoring two junior engineers.",
+    "domain": "logistics",
+    "summary": "A senior backend role owning the routing platform at a parcel delivery company, with architecture ownership and mentoring."
+  }
+}

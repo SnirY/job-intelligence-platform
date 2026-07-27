@@ -34,4 +34,10 @@ export const API_ROUTES = {
   careerExperiences: "/api/v1/career/experiences",
   careerProjects: "/api/v1/career/projects",
   careerEducation: "/api/v1/career/education",
+  resumeImport: "/api/v1/resumes/import",
+  resumeImports: "/api/v1/resumes/imports",
+  resumeSupportedFormats: "/api/v1/resumes/supported-formats",
+  processingJobs: "/api/v1/processing-jobs",
+  jobs: "/api/v1/jobs",
+  jobCompanies: "/api/v1/jobs/companies",
 } as const;
