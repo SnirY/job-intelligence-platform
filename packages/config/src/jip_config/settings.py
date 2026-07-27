@@ -207,6 +207,12 @@ class Settings(BaseSettings):
     """Smaller than a parse on purpose: the analysis returns a handful of fields
     and its reasoning, not every requirement in the posting."""
 
+    # Explanation only, and short: the model restates a decided result rather
+    # than producing one, so it needs neither a big budget nor deep reasoning.
+    ai_match_explain_model: str | None = None
+    ai_match_explain_max_output_tokens: int = 1000
+    ai_match_explain_effort: str | None = None
+
     ai_job_analysis_effort: str | None = Field(
         default="medium",
         description=(

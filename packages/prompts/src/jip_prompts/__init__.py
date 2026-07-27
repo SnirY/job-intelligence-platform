@@ -15,12 +15,14 @@ those must keep meaning what they meant.
 from jip_ai.prompts import PromptRegistry, PromptTemplate
 from jip_prompts.job_analysis import JOB_ANALYSIS_V1
 from jip_prompts.job_parser import JOB_PARSER_V1
+from jip_prompts.match_explainer import MATCH_EXPLAINER_V1
 from jip_prompts.resume_parser import RESUME_PARSER_V1
 
 REGISTRY = PromptRegistry()
 REGISTRY.register(RESUME_PARSER_V1)
 REGISTRY.register(JOB_PARSER_V1)
 REGISTRY.register(JOB_ANALYSIS_V1)
+REGISTRY.register(MATCH_EXPLAINER_V1)
 
 RESUME_PARSER_LATEST = RESUME_PARSER_V1.name
 """The version new extractions use.
@@ -32,6 +34,7 @@ extractions readable.
 
 JOB_PARSER_LATEST = JOB_PARSER_V1.name
 JOB_ANALYSIS_LATEST = JOB_ANALYSIS_V1.name
+MATCH_EXPLAINER_LATEST = MATCH_EXPLAINER_V1.name
 """The versions new analyses use. Both are recorded on every ``JobAnalysis``,
 separately, because the two steps version independently."""
 
@@ -46,6 +49,8 @@ __all__ = [
     "JOB_ANALYSIS_V1",
     "JOB_PARSER_LATEST",
     "JOB_PARSER_V1",
+    "MATCH_EXPLAINER_LATEST",
+    "MATCH_EXPLAINER_V1",
     "REGISTRY",
     "RESUME_PARSER_LATEST",
     "RESUME_PARSER_V1",

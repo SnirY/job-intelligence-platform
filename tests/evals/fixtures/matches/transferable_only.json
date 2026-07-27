@@ -1,0 +1,25 @@
+{
+  "name": "A transferable match must not be described as the real thing",
+  "note": "The verdict says FastAPI transfers to Spring Boot and is not Spring Boot. A summary saying 'you have Spring Boot' would undo the distinction the entire transferability design exists to preserve.",
+  "verdicts": [
+    {
+      "requirement": "Spring Boot",
+      "status": "TRANSFERABLE_MATCH",
+      "score": 50,
+      "weight": "2.00",
+      "explanation": "You have FastAPI, not Spring Boot. Both are server-side web frameworks, so the experience should transfer - but it is not the same thing."
+    },
+    {
+      "requirement": "5+ years backend engineering",
+      "status": "STRONG_MATCH",
+      "score": 100,
+      "weight": "2.00",
+      "explanation": "You have 7 years against the 5 asked for."
+    }
+  ],
+  "expect_mentions": ["FastAPI", "Spring Boot"],
+  "forbid_mentions": ["Django", "you have spring boot"],
+  "recorded_output": {
+    "summary": "Your seven years of backend experience comfortably covers the five this role asks for. On the framework, you have FastAPI rather than Spring Boot; the two are both server-side web frameworks, so the experience is relevant, but it is not the same thing and the posting asks for Spring Boot specifically."
+  }
+}

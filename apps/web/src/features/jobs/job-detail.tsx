@@ -25,6 +25,7 @@ import {
   useSupplyDescription,
 } from "@/features/jobs/api";
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
+import { JobMatchPanel } from "@/features/jobs/job-match";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
 import { ApiError } from "@/lib/api";
 
@@ -103,7 +104,14 @@ function JobView({ job }: { job: Job }) {
           been read, the structured version is what someone deciding about the
           job actually wants, and the description below is what they check it
           against. */}
-      {job.status !== "FETCHING" && job.status !== "FAILED" && <JobIntelligence job={job} />}
+      {job.status !== "FETCHING" && job.status !== "FAILED" && (
+        <>
+          <JobIntelligence job={job} />
+          {/* Below the analysis, because a match only means something once
+              the posting has been read into requirements. */}
+          <JobMatchPanel job={job} />
+        </>
+      )}
 
       <Card>
         <CardHeader>

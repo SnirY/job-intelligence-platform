@@ -387,3 +387,172 @@ export interface StartedAnalysis {
   processing_job_id: string;
   status: AnalysisProcessingState["status"];
 }
+
+// --- matching -----------------------------------------------------------------
+
+/**
+ * The verdict on one requirement.
+ *
+ * Three of these mean "no match" and must not be conflated. GAP is a real
+ * absence. NO_EVIDENCE means we have nothing on file to judge with, and is
+ * excluded from the score rather than counted as a failure. UNKNOWN means the
+ * requirement cannot be checked automatically at all — never a gap, never a
+ * blocker.
+ */
+export type MatchStatus =
+  | "STRONG_MATCH"
+  | "MATCH"
+  | "PARTIAL_MATCH"
+  | "TRANSFERABLE_MATCH"
+  | "NO_EVIDENCE"
+  | "GAP"
+  | "BLOCKER"
+  | "UNKNOWN";
+
+export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
+  STRONG_MATCH: "Strong match",
+  MATCH: "Match",
+  PARTIAL_MATCH: "Partial match",
+  TRANSFERABLE_MATCH: "Transferable",
+  NO_EVIDENCE: "Nothing on file",
+  GAP: "Gap",
+  BLOCKER: "Blocker",
+  UNKNOWN: "Check yourself",
+};
+
+/**
+ * Semantic colour per status, from `docs/08-ui-ux.md`.
+ *
+ * Never used alone — every status also carries its label and an icon, because
+ * the document is explicit that colour must not be the only signal.
+ */
+export const MATCH_STATUS_TONE: Record<
+  MatchStatus,
+  "strong" | "ok" | "transfer" | "gap" | "blocked" | "neutral"
+> = {
+  STRONG_MATCH: "strong",
+  MATCH: "strong",
+  PARTIAL_MATCH: "ok",
+  TRANSFERABLE_MATCH: "transfer",
+  NO_EVIDENCE: "neutral",
+  GAP: "gap",
+  BLOCKER: "blocked",
+  UNKNOWN: "neutral",
+};
+
+export function isPositiveMatch(status: MatchStatus): boolean {
+  return (
+    status === "STRONG_MATCH" ||
+    status === "MATCH" ||
+    status === "PARTIAL_MATCH" ||
+    status === "TRANSFERABLE_MATCH"
+  );
+}
+
+export type MatchCategory =
+  "TECHNICAL" | "EXPERIENCE" | "PROJECTS" | "EDUCATION" | "DOMAIN" | "PREFERRED" | "OTHER";
+
+export const MATCH_CATEGORY_LABELS: Record<MatchCategory, string> = {
+  TECHNICAL: "Technical skills",
+  EXPERIENCE: "Experience",
+  PROJECTS: "Projects",
+  EDUCATION: "Education",
+  DOMAIN: "Domain knowledge",
+  PREFERRED: "Preferred extras",
+  OTHER: "Other",
+};
+
+export type MatchRecommendation =
+  "STRONG_APPLY" | "APPLY" | "CONSIDER" | "LOW_PRIORITY" | "PROBABLY_SKIP";
+
+export const RECOMMENDATION_LABELS: Record<MatchRecommendation, string> = {
+  STRONG_APPLY: "Strong apply",
+  APPLY: "Apply",
+  CONSIDER: "Worth considering",
+  LOW_PRIORITY: "Low priority",
+  PROBABLY_SKIP: "Probably skip",
+};
+
+/** Which part of the career profile a piece of evidence came from. */
+export type EvidenceType = "SKILL" | "EXPERIENCE" | "ACHIEVEMENT" | "PROJECT" | "EDUCATION";
+
+export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
+  SKILL: "Skill",
+  EXPERIENCE: "Role",
+  ACHIEVEMENT: "Achievement",
+  PROJECT: "Project",
+  EDUCATION: "Education",
+};
+
+/** One career fact behind a verdict. */
+export interface MatchEvidence {
+  id: string;
+  evidence_type: EvidenceType;
+  entity_id: string;
+  label: string;
+  detail: string | null;
+  verification_status: string;
+  relevance: number;
+}
+
+/** The verdict on one requirement, with the evidence behind it. */
+export interface MatchItem {
+  id: string;
+  requirement_id: string;
+  status: MatchStatus;
+  category: MatchCategory;
+  score: number;
+  weight: number;
+  confidence: number;
+  explanation: string;
+  is_blocker: boolean;
+  source_order: number;
+  evidence: MatchEvidence[];
+}
+
+export interface CategoryScore {
+  category: string;
+  score: number | null;
+  weight: number;
+  item_count: number;
+  scored_count: number;
+}
+
+/** A scored match. */
+export interface JobMatch {
+  id: string;
+  job_id: string;
+  version: number;
+  /** Null when nothing could be scored. Zero would be a claim about the
+   * candidate; null is a claim about our information. */
+  overall_score: number | null;
+  alignment_label: string | null;
+  score_cap: number | null;
+  score_cap_reason: string | null;
+  recommendation: MatchRecommendation;
+  recommendation_reasons: string[];
+  confidence: number;
+  summary: string | null;
+  category_scores: Record<string, CategoryScore>;
+  status_counts: Record<string, number>;
+  has_blockers: boolean;
+  scored_requirements: number;
+  total_requirements: number;
+  warnings: string[];
+  analysis_version: number;
+  engine_version: string;
+  computed_at: string | null;
+  created_at: string;
+}
+
+/** Payload of `GET /api/v1/jobs/{id}/match`. */
+export interface JobMatchView {
+  job_id: string;
+  match: JobMatch | null;
+  items: MatchItem[];
+  is_stale: boolean;
+  stale_reasons: string[];
+  available_versions: number[];
+  can_match: boolean;
+  blocking_reason: string | null;
+}

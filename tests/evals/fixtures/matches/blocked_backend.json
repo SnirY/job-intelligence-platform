@@ -1,0 +1,40 @@
+{
+  "name": "A blocker that must not be buried",
+  "note": "The summary is encouraging about four strong matches. The one thing that matters is the missing core requirement, and a paragraph that omits it would leave someone applying for a job they cannot do.",
+  "verdicts": [
+    {
+      "requirement": "Python",
+      "status": "STRONG_MATCH",
+      "score": 100,
+      "weight": "3.00",
+      "explanation": "You have Python and have used it in at least one role."
+    },
+    {
+      "requirement": "PostgreSQL",
+      "status": "MATCH",
+      "score": 85,
+      "weight": "2.00",
+      "explanation": "PostgreSQL is in your confirmed skills."
+    },
+    {
+      "requirement": "Rust",
+      "status": "BLOCKER",
+      "score": 0,
+      "weight": "3.00",
+      "is_blocker": true,
+      "explanation": "Rust is not in your profile. This is listed as essential."
+    },
+    {
+      "requirement": "Right to work in Portugal",
+      "status": "UNKNOWN",
+      "score": 35,
+      "weight": "2.00",
+      "explanation": "Your profile does not record work authorisation, so this is for you to check."
+    }
+  ],
+  "expect_mentions": ["Rust", "Python"],
+  "forbid_mentions": ["Java", "Kubernetes", "salary"],
+  "recorded_output": {
+    "summary": "Your Python and PostgreSQL both line up with what this role asks for, and Python is backed by a role in your history. The blocker is Rust, which the posting lists as essential and your profile does not mention at all. Work authorisation could not be checked from your profile, so that is worth confirming yourself before spending time on an application."
+  }
+}

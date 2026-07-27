@@ -44,9 +44,9 @@ export default function LandingPage() {
       {/* Kept accurate as phases land. A page claiming less than the product
           does is as misleading as one claiming more. */}
       <p className="text-sm text-muted-foreground">
-        In development — Phase 5 of 11. You can build a career profile, import one from a resume,
-        save jobs, and have a posting read into its requirements. Matching a profile against a job
-        is not built yet.
+        In development — Phase 6 of 11. You can build a career profile, import one from a resume,
+        save jobs, have a posting read into its requirements, and see how your profile lines up
+        against it. Resume tailoring and application tracking are not built yet.
       </p>
     </main>
   );
