@@ -1,4 +1,9 @@
-import { isErrorResponse, type ApiErrorBody, type DataResponse } from "@jip/shared-types";
+import {
+  isErrorResponse,
+  type ApiErrorBody,
+  type CollectionResponse,
+  type DataResponse,
+} from "@jip/shared-types";
 
 /**
  * Base URL of the backend API.
@@ -58,6 +63,32 @@ export interface ApiFetchOptions extends RequestInit {
  * cannot mistake "the request failed" for "the resource is empty".
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const payload = await apiFetchEnvelope(path, options);
+  // 204 carries no body by definition, so parsing one would always throw.
+  // DELETE endpoints answer this way; treating it as a transport failure would
+  // report a successful delete as an error.
+  if (payload === undefined) {
+    return undefined as T;
+  }
+  return (payload as DataResponse<T>).data;
+}
+
+/**
+ * Call the API and return a paginated collection envelope whole.
+ *
+ * Separate from `apiFetch` because a paginated list needs its `meta` — the
+ * counts a pager is built from. Unwrapping to `data` like the single-resource
+ * helper does would throw them away.
+ */
+export async function apiFetchPage<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<CollectionResponse<T>> {
+  return (await apiFetchEnvelope(path, options)) as CollectionResponse<T>;
+}
+
+/** Shared transport for both helpers: everything except the unwrapping. */
+async function apiFetchEnvelope(path: string, options: ApiFetchOptions): Promise<unknown> {
   const { getToken, headers, ...init } = options;
 
   const requestHeaders: Record<string, string> = {
@@ -79,11 +110,8 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     throw new ApiTransportError(`Could not reach the API at ${API_BASE_URL}`, { cause });
   }
 
-  // 204 carries no body by definition, so parsing one would always throw.
-  // DELETE endpoints answer this way; treating it as a transport failure would
-  // report a successful delete as an error.
   if (response.status === 204) {
-    return undefined as T;
+    return undefined;
   }
 
   let payload: unknown;
@@ -103,5 +131,5 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     throw new ApiTransportError(`The API returned HTTP ${response.status} without an error body`);
   }
 
-  return (payload as DataResponse<T>).data;
+  return payload;
 }
