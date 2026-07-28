@@ -15,6 +15,18 @@ from functools import lru_cache
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+# Populates ``Base.metadata`` with every model. Importing it here rather than at
+# each entry point makes the guarantee process-agnostic: a mapper resolves a
+# relationship or a foreign key against whatever is registered *in that
+# process*, so a process that imports only the models its own code names gets a
+# partial registry.
+#
+# The API never hit this because its routers transitively import every domain
+# module. The worker imports only what its task needs, so the first write in
+# `run_resume_import` raised NoReferencedTableError on `processing_jobs.user_id`
+# → `users` — reported to the user as a job stuck on "waiting to start", since
+# the exception escaped before any status could be recorded.
+from jip_api.infrastructure.db import registry  # noqa: F401
 from jip_config import get_settings
 
 
