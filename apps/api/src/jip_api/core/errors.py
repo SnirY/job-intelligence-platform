@@ -22,6 +22,10 @@ from jip_api.application.errors import (
     ResourceNotFoundError,
 )
 from jip_api.application.processing.jobs import JobNotRetriableError
+from jip_api.application.resumes.authoring import (
+    ResumeFamilyError,
+    ResumeNotEditableError,
+)
 from jip_api.application.resumes.confirm import InvalidDecisionError
 from jip_api.core.context import get_request_id
 from jip_api.core.responses import ErrorBody, ErrorResponse
@@ -181,6 +185,13 @@ _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     # for the same reason every other cross-user lookup is: distinguishing
     # "not yours" from "does not exist" is an enumeration oracle.
     InvalidDecisionError: (status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
+    # A family and a job that contradict each other: the request itself cannot
+    # describe a resume that could exist, which is what 422 means.
+    ResumeFamilyError: (HTTP_422_UNPROCESSABLE_CONTENT, "INVALID_RESUME_FAMILY"),
+    # Editing a used version, or a status transition the lifecycle forbids.
+    # A conflict with the resource's current state rather than a malformed
+    # request — the same reading as JobNotRetriableError above.
+    ResumeNotEditableError: (status.HTTP_409_CONFLICT, "CONFLICT"),
 }
 
 
