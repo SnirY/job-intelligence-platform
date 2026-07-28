@@ -17,6 +17,7 @@ from jip_api.domain.jobs import analysis as job_analysis_models
 from jip_api.domain.jobs import models as job_models
 from jip_api.domain.matching import models as matching_models
 from jip_api.domain.processing import models as processing_models
+from jip_api.domain.resumes import models as resume_models
 from jip_api.domain.users import models as user_models
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "job_models",
     "matching_models",
     "processing_models",
+    "resume_models",
     "user_models",
 ]
