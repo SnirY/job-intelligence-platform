@@ -199,12 +199,16 @@ Each item includes:
 ```text
 GET  /api/v1/resumes
 POST /api/v1/resumes
+GET  /api/v1/resumes/{resume_id}
 
 GET  /api/v1/resumes/{resume_id}/versions
 POST /api/v1/resumes/{resume_id}/versions
 
 GET  /api/v1/resume-versions/{version_id}
+PUT  /api/v1/resume-versions/{version_id}/content
+POST /api/v1/resume-versions/{version_id}/status
 
+GET  /api/v1/jobs/{job_id}/resume-strategies
 POST /api/v1/jobs/{job_id}/resume-strategies
 POST /api/v1/resume-strategies/{strategy_id}/suggestions
 
@@ -214,10 +218,23 @@ POST /api/v1/resume-suggestions/{id}/edit
 
 POST /api/v1/resume-strategies/{strategy_id}/finalize
 
-POST /api/v1/resume-versions/{version_id}/render
+GET  /api/v1/resume-versions/{version_id}/render
 ```
 
-Used resume versions must be immutable.
+Used resume versions must be immutable. `PUT .../content` and
+`POST .../status` are refused with 409 once a version reaches USED or ARCHIVED.
+
+Two deviations from the first draft of this list, both made while building
+Phase 7:
+
+- **Render is `GET`, not `POST`.** It has no side effects and returns a
+  representation of an existing resource, so `POST` would have misdescribed it
+  and made the result unlinkable. The response is `text/html` with
+  `Content-Disposition: inline` — see ADR-0006.
+- **`GET /jobs/{job_id}/resume-strategies` was added.** It returns the newest
+  strategy with its suggestions, or a null one carrying `can_create` and
+  `blocking_reason`, matching how `GET /jobs/{id}/match` reports `can_match`.
+  Without it the UI would have to guess whether the `POST` would succeed.
 
 ## Applications API
 

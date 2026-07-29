@@ -93,6 +93,17 @@ skip into a failure — a missing service must not present as a green build.
 Each migration test creates and drops its own database, so `JIP_TEST_DATABASE_URL`
 needs permission to `CREATE DATABASE`.
 
+Stop the worker first if the full stack is up:
+
+```bash
+docker compose stop worker
+```
+
+`test_task_dispatch.py` enqueues onto `default` and drains it with an
+in-process burst worker. A running `worker` container consumes from the same
+queue on the same Redis and takes the job first, which surfaces as a job stuck
+in `queued` and reads like a dispatcher bug.
+
 ## Windows notes
 
 - RQ's default worker forks per job, which Windows cannot do. `jip-worker`
