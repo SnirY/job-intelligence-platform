@@ -56,6 +56,23 @@ class StructuredRequest:
     """Reasoning depth, when the provider exposes one. ``None`` leaves the
     provider's default alone rather than guessing at a portable value."""
 
+    constrain_output: bool = True
+    """Whether to ask the provider to constrain generation to ``json_schema``.
+
+    On by default: a provider that enforces the schema while generating cannot
+    emit a malformed answer at all, which is strictly better than catching one
+    afterwards.
+
+    Set to ``False`` for a schema the provider refuses to compile. Anthropic
+    turns the schema into a grammar and rejects one whose compiled form is too
+    large, and the cost is structural — arrays of objects nesting further arrays
+    of objects — so it cannot be trimmed away by shortening text. See DEV-017.
+
+    Turning it off changes *when* a bad answer is caught, not *whether*: the
+    schema is still sent in the prompt and still validated on the way back, and
+    ``docs/11-engineering-standards.md`` treats model output as untrusted until
+    that validation passes regardless of this flag."""
+
 
 class LLMProvider(Protocol):
     """What the platform needs from a model provider.

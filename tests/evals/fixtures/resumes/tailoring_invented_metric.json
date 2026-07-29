@@ -1,0 +1,54 @@
+{
+  "name": "Rewrite that invents a metric",
+  "job_text": "Senior Backend Engineer. We want measurable impact: tell us what you improved and by how much.",
+  "match_summary": "Alignment: 61 (Partial alignment)\nRecommendation: CONSIDER\n- Several requirements have only indirect evidence.",
+  "selected": [
+    "[SKILL] Python (USER_CONFIRMED)",
+    "[ACHIEVEMENT] Improved the performance of the routing service (USER_CONFIRMED)"
+  ],
+  "withheld": [],
+  "recorded_strategy": {
+    "summary": "The posting rewards quantified impact and your profile has none, which is a real gap rather than a wording problem.",
+    "emphasize": ["Python", "Routing services"],
+    "reduce": [],
+    "reorder_note": "",
+    "priority_projects": [],
+    "missing_evidence": [],
+    "career_gaps": ["You have no measured figures recorded anywhere in your profile."]
+  },
+  "expect_emphasize": ["Python"],
+  "expect_career_gap_terms": ["figures"],
+  "forbid_strategy_terms": ["guaranteed"],
+  "items": [
+    {
+      "id": "item-1",
+      "text": "Improved the performance of the routing service.",
+      "facts": ["Improved the performance of the routing service"]
+    },
+    {
+      "id": "item-2",
+      "text": "Worked on the deployment pipeline.",
+      "facts": ["Worked on the deployment pipeline"]
+    }
+  ],
+  "recorded_rewrite": {
+    "suggestions": [
+      {
+        "item_id": "item-1",
+        "suggested_text": "Improved routing service performance by 40%, cutting p99 latency.",
+        "rationale": "Quantified impact, as the posting asks for.",
+        "kind": "REWRITE"
+      },
+      {
+        "item_id": "item-2",
+        "suggested_text": "Led the deployment pipeline across 6 teams.",
+        "rationale": "Shows scope.",
+        "kind": "REWRITE"
+      }
+    ]
+  },
+  "expect_all_safe": false,
+  "expect_blocked_items": ["item-1", "item-2"],
+  "expect_blocked_numbers": ["40%", "6"],
+  "expect_high_risk_items": ["item-1", "item-2"]
+}

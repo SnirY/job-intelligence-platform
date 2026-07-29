@@ -1,0 +1,52 @@
+{
+  "name": "Backend tailoring, well-evidenced",
+  "job_text": "Senior Backend Engineer. We need strong Python, REST API design, and someone who has mentored engineers. You will own our routing services.",
+  "match_summary": "Alignment: 78 (Good alignment)\nRecommendation: APPLY\n- Your profile covers the important requirements.",
+  "selected": [
+    "[SKILL] Python (USER_CONFIRMED)",
+    "[ACHIEVEMENT] Built the routing service that moves 12000 requests per second (USER_CONFIRMED)",
+    "[ACHIEVEMENT] Mentored two junior engineers through their first year (USER_CONFIRMED)"
+  ],
+  "withheld": ["[SKILL] Kubernetes (not confirmed by the user)"],
+  "recorded_strategy": {
+    "summary": "Lead with the routing service work and the mentoring, both of which the posting names directly.",
+    "emphasize": ["Python", "Routing services", "Mentoring"],
+    "reduce": ["Unrelated frontend tickets"],
+    "reorder_note": "Move the routing achievement above the frontend line.",
+    "priority_projects": [],
+    "missing_evidence": ["Your mentoring achievement is in your profile but not on this resume."],
+    "career_gaps": ["The posting asks for REST API design and nothing in your profile names it."]
+  },
+  "expect_emphasize": ["Python"],
+  "expect_career_gap_terms": ["REST"],
+  "forbid_strategy_terms": ["Kubernetes", "Docker", "guaranteed"],
+  "items": [
+    {
+      "id": "item-1",
+      "text": "Responsible for working on the development of the routing service.",
+      "facts": ["Built the routing service that moves 12000 requests per second"]
+    },
+    {
+      "id": "item-2",
+      "text": "Mentored two junior engineers through their first year.",
+      "facts": ["Mentored two junior engineers through their first year"]
+    }
+  ],
+  "recorded_rewrite": {
+    "suggestions": [
+      {
+        "item_id": "item-1",
+        "suggested_text": "Built the routing service that moves 12000 requests per second.",
+        "rationale": "Cuts four words of filler and leads with what was actually built.",
+        "kind": "REWRITE"
+      },
+      {
+        "item_id": "item-2",
+        "suggested_text": "Mentored two junior engineers.",
+        "rationale": "The posting asks for mentoring; the first-year detail costs a line.",
+        "kind": "SHORTEN"
+      }
+    ]
+  },
+  "expect_all_safe": true
+}

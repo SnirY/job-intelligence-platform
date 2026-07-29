@@ -17,12 +17,16 @@ from jip_prompts.job_analysis import JOB_ANALYSIS_V1
 from jip_prompts.job_parser import JOB_PARSER_V1
 from jip_prompts.match_explainer import MATCH_EXPLAINER_V1
 from jip_prompts.resume_parser import RESUME_PARSER_V1
+from jip_prompts.resume_rewrite import RESUME_REWRITE_V1
+from jip_prompts.resume_strategy import RESUME_STRATEGY_V1
 
 REGISTRY = PromptRegistry()
 REGISTRY.register(RESUME_PARSER_V1)
 REGISTRY.register(JOB_PARSER_V1)
 REGISTRY.register(JOB_ANALYSIS_V1)
 REGISTRY.register(MATCH_EXPLAINER_V1)
+REGISTRY.register(RESUME_STRATEGY_V1)
+REGISTRY.register(RESUME_REWRITE_V1)
 
 RESUME_PARSER_LATEST = RESUME_PARSER_V1.name
 """The version new extractions use.
@@ -35,6 +39,8 @@ extractions readable.
 JOB_PARSER_LATEST = JOB_PARSER_V1.name
 JOB_ANALYSIS_LATEST = JOB_ANALYSIS_V1.name
 MATCH_EXPLAINER_LATEST = MATCH_EXPLAINER_V1.name
+RESUME_STRATEGY_LATEST = RESUME_STRATEGY_V1.name
+RESUME_REWRITE_LATEST = RESUME_REWRITE_V1.name
 """The versions new analyses use. Both are recorded on every ``JobAnalysis``,
 separately, because the two steps version independently."""
 
@@ -54,6 +60,10 @@ __all__ = [
     "REGISTRY",
     "RESUME_PARSER_LATEST",
     "RESUME_PARSER_V1",
+    "RESUME_REWRITE_LATEST",
+    "RESUME_REWRITE_V1",
+    "RESUME_STRATEGY_LATEST",
+    "RESUME_STRATEGY_V1",
     "get_prompt",
 ]
 

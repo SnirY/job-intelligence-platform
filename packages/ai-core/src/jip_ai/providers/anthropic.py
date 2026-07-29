@@ -34,23 +34,32 @@ class AnthropicProvider:
         return PROVIDER_NAME
 
     def generate_structured(self, request: StructuredRequest, *, model: str) -> StructuredResult:
-        output_config: dict[str, Any] = {
+        output_config: dict[str, Any] = {}
+        if request.constrain_output:
             # Constrains generation to the schema. Checked again on the way back:
             # a provider honouring the schema is a convenience, and
             # `docs/11-engineering-standards.md` still treats the output as
             # untrusted until our own validation passes.
-            "format": {"type": "json_schema", "schema": request.json_schema}
-        }
+            #
+            # Skipped when the caller sets `constrain_output=False`, which exists
+            # for a schema this API will not compile into a grammar (DEV-017).
+            output_config["format"] = {"type": "json_schema", "schema": request.json_schema}
         if request.effort is not None:
             output_config["effort"] = request.effort
+
+        # Omitted entirely when empty rather than sent as `{}`: an unconstrained
+        # request with no effort set has nothing to say here, and the provider
+        # should see the same request it would have seen before this option
+        # existed.
+        extra: dict[str, Any] = {"output_config": output_config} if output_config else {}
 
         try:
             message = self._client.messages.create(
                 model=model,
                 max_tokens=request.max_output_tokens,
                 system=request.system,
-                output_config=output_config,
                 messages=[{"role": "user", "content": request.user}],
+                **extra,
             )
         except Exception as exc:
             raise _classify(exc) from exc

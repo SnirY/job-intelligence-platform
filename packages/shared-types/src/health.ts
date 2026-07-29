@@ -40,4 +40,8 @@ export const API_ROUTES = {
   processingJobs: "/api/v1/processing-jobs",
   jobs: "/api/v1/jobs",
   jobCompanies: "/api/v1/jobs/companies",
+  resumes: "/api/v1/resumes",
+  resumeVersions: "/api/v1/resume-versions",
+  resumeStrategies: "/api/v1/resume-strategies",
+  resumeSuggestions: "/api/v1/resume-suggestions",
 } as const;

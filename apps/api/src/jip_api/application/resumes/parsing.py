@@ -14,6 +14,7 @@ and keeps the AI layer from ever writing to one directly.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -37,6 +38,33 @@ from jip_api.application.resumes.validation import ValidatedExtraction, validate
 from jip_prompts import RESUME_PARSER_LATEST, get_prompt
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# DEV-017. Flip to True to restore provider-side schema enforcement.
+#
+# This is the only one of the platform's four schemas Anthropic refuses to
+# compile into a grammar: 6933 chars, 125 nodes, four arrays of objects, two of
+# which nest their own arrays of objects. `job_parse` (2941), `job_analysis`
+# (1962), and `match_explain` (396) all compile and are untouched by this flag.
+#
+# The cost is structural rather than textual — measured against claude-sonnet-5,
+# dropping every enum (6579), every description (4895), and both together (4541)
+# all still failed, while a flattened equivalent covering the same four sections
+# compiled at 1739. Shortening the schema text cannot fix it; only removing
+# nesting can.
+#
+# With the constraint off, a malformed answer becomes *possible* rather than
+# impossible. Everything that decides whether data is trustworthy is unchanged:
+# the schema is sent in the prompt, `ResumeParseResult` validates the reply, the
+# fabrication guard still requires `source_text` on every claim, and
+# `run_with_retry` still gets its attempts. What moved is only *when* a bad
+# answer is caught.
+#
+# The better long-term fix is one call per section — it keeps the constraint and
+# every field, at four calls instead of one. That is a pipeline change; this is
+# one boolean, and it unblocks seeing what the model actually produces first.
+# ---------------------------------------------------------------------------
+_CONSTRAIN_OUTPUT = False
 
 _FORMAT_LABELS = {
     "application/pdf": "PDF",
@@ -116,14 +144,33 @@ class ResumeParsingService:
             resume_text=prepared,
             document_format=_FORMAT_LABELS.get(content_type, "document"),
         )
-        input_hash = compute_input_hash(prompt.name, route.model, prompt.system, rendered)
+
+        schema = resume_parse_json_schema()
+
+        # The prompt tells the model to return "one JSON object matching the
+        # provided schema", and the schema used to be provided out of band by
+        # `output_config.format`. With that constraint off (DEV-017), the
+        # sentence would point at nothing and the model would infer the shape
+        # from prose — which it gets wrong in exactly the places prose is
+        # weakest: it returned `technologies: ["Python"]` where the schema wants
+        # `[{"name": "Python", ...}]`.
+        #
+        # So the schema moves into the prompt. It is appended to the system text
+        # *before* the input hash is computed, so the hash still describes what
+        # was actually sent and two runs remain comparable.
+        system = prompt.system
+        if not _CONSTRAIN_OUTPUT:
+            system = f"{system}\n\n## Schema\n\n```json\n{json.dumps(schema, indent=2)}\n```"
+
+        input_hash = compute_input_hash(prompt.name, route.model, system, rendered)
 
         request = StructuredRequest(
-            system=prompt.system,
+            system=system,
             user=rendered,
-            json_schema=resume_parse_json_schema(),
+            json_schema=schema,
             max_output_tokens=route.max_output_tokens,
             effort=route.effort,
+            constrain_output=_CONSTRAIN_OUTPUT,
         )
 
         traces: list[AIRunTrace] = []

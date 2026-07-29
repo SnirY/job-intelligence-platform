@@ -72,5 +72,6 @@ tests/
 - `docs/12-project-tracking.md` — tracking and continuity rules
 - `docs/adr/` — architecture decision records
 - `docs/development/local-environment.md` — running and verifying the stack
+- `docs/development/manual-verification-checklist.md` — what automated tests cannot establish
 
 The project should be developed one reliable vertical slice at a time.

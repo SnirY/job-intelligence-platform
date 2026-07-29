@@ -54,6 +54,12 @@ def build_model_router(settings: Settings) -> ModelRouter:
         match_explain_model=settings.ai_match_explain_model or None,
         match_explain_max_output_tokens=settings.ai_match_explain_max_output_tokens,
         match_explain_effort=settings.ai_match_explain_effort or None,
+        resume_strategy_model=settings.ai_resume_strategy_model or None,
+        resume_strategy_max_output_tokens=settings.ai_resume_strategy_max_output_tokens,
+        resume_strategy_effort=settings.ai_resume_strategy_effort or None,
+        resume_rewrite_model=settings.ai_resume_rewrite_model or None,
+        resume_rewrite_max_output_tokens=settings.ai_resume_rewrite_max_output_tokens,
+        resume_rewrite_effort=settings.ai_resume_rewrite_effort or None,
     )
 
 
