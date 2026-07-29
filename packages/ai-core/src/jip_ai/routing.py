@@ -44,6 +44,17 @@ class AIOperation(enum.StrEnum):
     and never to produce one.
     """
 
+    RESUME_STRATEGY = "RESUME_STRATEGY"
+    """Planning how to tailor a resume. Produces a plan, never resume text."""
+
+    RESUME_REWRITE = "RESUME_REWRITE"
+    """Proposing changes to individual resume lines.
+
+    Separate from RESUME_STRATEGY because ``docs/09-mvp-roadmap.md`` forbids
+    one call that rewrites a document: the plan is shown to the user before
+    any line changes, and each change is validated and accepted on its own.
+    """
+
 
 class ModelTier(enum.StrEnum):
     """Capability bands, so routing is expressed in intent rather than in model ids."""
@@ -130,6 +141,12 @@ def build_router(
     match_explain_model: str | None = None,
     match_explain_max_output_tokens: int = 1000,
     match_explain_effort: str | None = None,
+    resume_strategy_model: str | None = None,
+    resume_strategy_max_output_tokens: int = 3000,
+    resume_strategy_effort: str | None = None,
+    resume_rewrite_model: str | None = None,
+    resume_rewrite_max_output_tokens: int = 8000,
+    resume_rewrite_effort: str | None = None,
 ) -> ModelRouter:
     """Assemble the routing table from settings.
 
@@ -167,6 +184,18 @@ def build_router(
             match_explain_model,
             match_explain_max_output_tokens,
             match_explain_effort,
+        ),
+        (
+            AIOperation.RESUME_STRATEGY,
+            resume_strategy_model,
+            resume_strategy_max_output_tokens,
+            resume_strategy_effort,
+        ),
+        (
+            AIOperation.RESUME_REWRITE,
+            resume_rewrite_model,
+            resume_rewrite_max_output_tokens,
+            resume_rewrite_effort,
         ),
     ):
         resolved = model or resume_parse_model

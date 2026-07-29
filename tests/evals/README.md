@@ -103,5 +103,53 @@ One JSON file in `fixtures/jobs/`:
 | `expect_role_family` / `expect_seniority` | The correct judgements |
 | `forbid_requirements` | Requirements that must not appear. Where a known invention goes once it has been seen |
 
+## The tailoring invariant
+
+```text
+Invented metrics = 0
+```
+
+`docs/06-resume-engine.md` states it without qualification, and it is the only
+rule in Phase 7 that a suggestion cannot be shown to have broken and still be
+applied automatically. The check is deterministic
+(`jip_api.application.resumes.truth`), so these evaluations run the *real*
+validator over the recorded rewrite rather than asking a model whether its own
+output was truthful.
+
+A blocked suggestion is still shown to the user, with the figure quoted back —
+they may know it is real, and the fix is then their profile rather than this one
+document.
+
+The second guard is the distinction between a **resume gap** (evidence you have
+that this resume does not show, fixable by selecting differently) and a **career
+gap** (evidence you genuinely lack, which no amount of rewriting fixes). A
+career gap filed as a resume gap tells someone to rewrite their way out of
+something they cannot.
+
+**What these cannot catch**, per DEV-017: whether the API will compile the
+response schema at all. Replaying a recorded response through a fake provider
+proves the shape parses, not that Anthropic accepts it. Both tailoring schemas
+were checked against the live API separately, and any change to them has to be
+checked the same way.
+
+## Adding a tailoring fixture
+
+One JSON file in `fixtures/resumes/`:
+
+| Key | Meaning |
+|---|---|
+| `name` | Human-readable case name |
+| `job_text` / `match_summary` | What the strategy prompt is given |
+| `selected` / `withheld` | The deterministic selection, and what was held back as unverified |
+| `recorded_strategy` | A `resume_strategy_v1` response for the offline run |
+| `expect_emphasize` | Terms the plan must lead with |
+| `expect_career_gap_terms` | Terms that must appear under *career* gaps specifically |
+| `forbid_strategy_terms` | Text that must not appear anywhere in the plan. Withheld evidence goes here: a plan that leads with an unconfirmed skill is recommending a claim the user never made |
+| `items` | The resume lines, each with the career facts that support it |
+| `recorded_rewrite` | A `resume_rewrite_v1` response for the offline run |
+| `expect_all_safe` | True when nothing in the rewrite should need review |
+| `expect_blocked_items` / `expect_blocked_numbers` | Exact sets, not floors — a *missed* fabrication and a *spurious* block are both defects |
+| `expect_high_risk_items` | Items that must be marked for review |
+
 Keep the resumes and postings fictional. These files are committed, and a real
 resume would put someone's personal data in the repository.

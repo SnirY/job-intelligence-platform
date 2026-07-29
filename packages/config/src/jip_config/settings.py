@@ -213,6 +213,17 @@ class Settings(BaseSettings):
     ai_match_explain_max_output_tokens: int = 1000
     ai_match_explain_effort: str | None = None
 
+    # Tailoring routes two operations, because docs/09-mvp-roadmap.md forbids
+    # one call that rewrites a document. Rewriting gets the larger budget: it
+    # returns a suggestion per line, where strategy returns one plan.
+    ai_resume_strategy_model: str | None = None
+    ai_resume_strategy_max_output_tokens: int = 3000
+    ai_resume_strategy_effort: str | None = "medium"
+
+    ai_resume_rewrite_model: str | None = None
+    ai_resume_rewrite_max_output_tokens: int = 8000
+    ai_resume_rewrite_effort: str | None = "medium"
+
     ai_job_analysis_effort: str | None = Field(
         default="medium",
         description=(
