@@ -27,6 +27,7 @@ import {
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
 import { JobMatchPanel } from "@/features/jobs/job-match";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
+import { JobTailoringPanel } from "@/features/resumes/job-tailoring";
 import { ApiError } from "@/lib/api";
 
 /**
@@ -38,8 +39,7 @@ import { ApiError } from "@/lib/api";
  * visibly distinct from fact, and the cleanest way to keep that true is for the
  * two never to share a card.
  *
- * Still absent: match score, gaps against the profile, recommendations, resume
- * strategy, and application data. None of it exists, and rendering an empty
+ * Still absent: application data. It does not exist, and rendering an empty
  * version would look like a broken feature rather than an unbuilt one.
  */
 export function JobDetail({ jobId }: { jobId: string }) {
@@ -110,6 +110,10 @@ function JobView({ job }: { job: Job }) {
           {/* Below the analysis, because a match only means something once
               the posting has been read into requirements. */}
           <JobMatchPanel job={job} />
+          {/* Last, and in that order deliberately: the resume strategy is
+              built from the match, so seeing it above the score would invite
+              tailoring towards a job before knowing whether it fits. */}
+          <JobTailoringPanel job={job} />
         </>
       )}
 

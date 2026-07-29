@@ -413,22 +413,16 @@ describe("job detail", () => {
   });
 
   it("shows nothing that does not exist yet", async () => {
-    // Requirements, recommendations, and match verdicts all arrived with
-    // Phases 5 and 6 and are now legitimately on this screen. What is still
-    // unbuilt must stay absent — an empty version of it would read as broken
-    // rather than as forthcoming.
+    // Requirements, recommendations, match verdicts, and now resume tailoring
+    // all arrived with Phases 5 to 7 and are legitimately on this screen. What
+    // is still unbuilt must stay absent — an empty version of it would read as
+    // broken rather than as forthcoming.
     vi.stubGlobal("fetch", routes({ job: job() }));
 
     renderWithQuery(<JobDetail jobId="job-1" />);
     await screen.findByRole("heading", { name: "Senior Backend Engineer" });
 
-    for (const absent of [
-      /resume strategy/i,
-      /tailor/i,
-      /application status/i,
-      /mark as applied/i,
-      /career impact/i,
-    ]) {
+    for (const absent of [/application status/i, /mark as applied/i, /career impact/i]) {
       expect(screen.queryByText(absent)).not.toBeInTheDocument();
     }
   });
