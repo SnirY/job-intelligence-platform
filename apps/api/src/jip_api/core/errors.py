@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from jip_api.application.applications.service import TransitionNotAllowedError
 from jip_api.application.documents.upload import UploadRejected
 from jip_api.application.errors import (
     ApplicationError,
@@ -197,6 +198,10 @@ _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     # been met yet rather than a bad request — the same 409 Phase 6 returns for
     # matching a job that has never been analysed.
     StrategyNotPossibleError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # A lifecycle move the record forbids. A conflict with the resource's
+    # current state, the same reading as every other transition refusal
+    # here — and the message is written to be shown to whoever tried it.
+    TransitionNotAllowedError: (status.HTTP_409_CONFLICT, "CONFLICT"),
 }
 
 
