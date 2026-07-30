@@ -11,6 +11,7 @@ without an explicit human decision.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -27,6 +28,7 @@ from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher, get_storage
 from jip_api.application.processing import jobs as jobs_uc
 from jip_api.application.resumes import pipeline as pipeline_uc
+from jip_api.domain.documents.models import DocumentStatus, SourceDocument
 from jip_api.domain.processing.models import ProcessingJob, ProcessingJobStatus
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import new_session, reset_engine_cache
@@ -713,3 +715,96 @@ def test_a_missing_job_is_reported_not_raised(
     task = worker_task(monkeypatch, storage, [])
 
     assert task(str(uuid.uuid4()))["status"] == "MISSING"
+
+
+# --- stalled jobs ---------------------------------------------------------------
+
+
+def _age_job(job_id: str, seconds: int) -> None:
+    """Backdate a job so the reaper's threshold is already past.
+
+    Faster and more honest than sleeping: what is under test is the decision,
+    not the clock.
+    """
+    session = new_session()
+    try:
+        job = session.get(ProcessingJob, uuid.UUID(job_id))
+        assert job is not None
+        job.created_at = dt.datetime.now(tz=dt.UTC) - dt.timedelta(seconds=seconds)
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_a_job_that_never_started_becomes_actionable(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """DEV-013. The worker died before writing a status, so the row sat PENDING
+    with no retry, no cancel, and nothing to age it out — "Waiting to start"
+    forever, recoverable only by deleting the row in SQL.
+    """
+    data = upload(client, factory)
+    url = f"/api/v1/processing-jobs/{data['processing_job_id']}"
+
+    assert client.get(url, headers=auth(factory, ALICE)).json()["data"]["status"] == "PENDING"
+
+    _age_job(data["processing_job_id"], 3600)
+    job = client.get(url, headers=auth(factory, ALICE)).json()["data"]
+
+    assert job["status"] == ProcessingJobStatus.FAILED
+    assert job["error_code"] == "STALLED"
+    assert job["is_retriable"] is True
+    assert "Nothing was lost" in job["error_message"]
+
+
+def test_a_reaped_job_can_actually_be_retried(
+    client: TestClient,
+    factory: TokenFactory,
+    storage: InMemoryStorage,
+    dispatcher: RecordingDispatcher,
+) -> None:
+    """The point of the whole issue. A retry that returns 200 without enqueuing
+    anything would put the job straight back into the state it was rescued
+    from."""
+    data = upload(client, factory)
+    _age_job(data["processing_job_id"], 3600)
+    client.get(f"/api/v1/processing-jobs/{data['processing_job_id']}", headers=auth(factory, ALICE))
+
+    before = len(dispatcher.calls)
+    response = client.post(
+        f"/api/v1/processing-jobs/{data['processing_job_id']}/retry", headers=auth(factory, ALICE)
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["status"] == ProcessingJobStatus.PENDING
+    assert len(dispatcher.calls) == before + 1, "the retry enqueued nothing"
+
+
+def test_a_recently_queued_job_is_left_alone(client: TestClient, factory: TokenFactory) -> None:
+    """Queued behind other work is not the same as dead."""
+    data = upload(client, factory)
+
+    job = client.get(
+        f"/api/v1/processing-jobs/{data['processing_job_id']}", headers=auth(factory, ALICE)
+    ).json()["data"]
+
+    assert job["status"] == "PENDING"
+
+
+def test_reaping_releases_the_document(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """Otherwise the job reports failed while its document still says it is
+    being worked on, and the screen shows a spinner beside a retry button."""
+    data = upload(client, factory)
+    _age_job(data["processing_job_id"], 3600)
+
+    client.get(f"/api/v1/processing-jobs/{data['processing_job_id']}", headers=auth(factory, ALICE))
+
+    session = new_session()
+    try:
+        document = session.get(SourceDocument, uuid.UUID(data["source_document_id"]))
+        assert document is not None
+        assert document.status is DocumentStatus.FAILED
+    finally:
+        session.close()

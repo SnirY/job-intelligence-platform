@@ -15,7 +15,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from jip_api.api.dependencies import CurrentUser, DispatcherDep
+from jip_api.application.jobs import analysis_uc
 from jip_api.application.processing import jobs as jobs_uc
+from jip_api.application.processing import reaper
 from jip_api.application.resumes import imports as imports_uc
 from jip_api.core.responses import DataResponse
 from jip_api.domain.processing.models import (
@@ -26,6 +28,7 @@ from jip_api.domain.processing.models import (
 )
 from jip_api.infrastructure.db.session import get_session
 from jip_api.infrastructure.tasks.dispatcher import TaskDispatcher
+from jip_config import get_settings
 
 router = APIRouter(prefix="/processing-jobs", tags=["processing"])
 
@@ -56,7 +59,24 @@ class ProcessingJobPayload(BaseModel):
 def read_job(
     user: CurrentUser, session: SessionDep, job_id: uuid.UUID
 ) -> DataResponse[ProcessingJobPayload]:
+    """Status, with a stalled job failed on the way past.
+
+    The read is where a dead job is noticed, because this is what the frontend
+    polls — see DEV-013 and the reasoning in ``reaper.py``. Without it a worker
+    that died before writing a status leaves "Waiting to start" on screen with
+    no action available and nothing that will ever change it.
+    """
     job = jobs_uc.get_job(session, user.id, job_id)
+
+    settings = get_settings()
+    if reaper.reap_if_stalled(
+        session,
+        job,
+        pending_timeout_seconds=settings.processing_pending_timeout_seconds,
+        running_timeout_seconds=settings.processing_running_timeout_seconds,
+    ):
+        session.commit()
+
     return DataResponse(data=ProcessingJobPayload.model_validate(job))
 
 
@@ -84,6 +104,14 @@ def retry_job(
 
 
 def _dispatch(session: Session, dispatcher: TaskDispatcher, job: ProcessingJob) -> None:
-    """Re-queue a job by kind."""
-    if ProcessingJobKind(job.kind) is ProcessingJobKind.RESUME_IMPORT:
+    """Re-queue a job by kind.
+
+    Every kind must appear here. A missing branch is silent: the job is set back
+    to PENDING and never enqueued, so a retry returns 200 and puts it straight
+    back into the stalled state the retry was meant to escape.
+    """
+    kind = ProcessingJobKind(job.kind)
+    if kind is ProcessingJobKind.RESUME_IMPORT:
         imports_uc.dispatch(session, dispatcher, job)
+    elif kind is ProcessingJobKind.JOB_ANALYSIS:
+        analysis_uc.dispatch(session, dispatcher, job)
