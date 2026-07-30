@@ -179,17 +179,32 @@ def _parse(
         max_attempts=max_attempts,
     )
 
+    # Owned here rather than inside the service so the attempts survive a
+    # failure — DEV-016. Persisted before the commit below, because the worker's
+    # handler opens with session.rollback() and would otherwise discard them.
+    traces: list[AIRunTrace] = []
     try:
-        outcome = service.parse(text, content_type=document.content_type)
+        outcome = service.parse(text, content_type=document.content_type, traces=traces)
     except AIError:
+        _persist_traces(session, document, traces)
         document.status = DocumentStatus.FAILED
         session.commit()
         raise
 
-    for trace in outcome.traces:
+    _persist_traces(session, document, outcome.traces)
+    return outcome
+
+
+def _persist_traces(session: Session, document: SourceDocument, traces: list[AIRunTrace]) -> None:
+    """One ``ai_runs`` row per attempt, on the failure path as well.
+
+    A wholly failed parse used to leave no trace at all, so the only record of
+    what it cost was a generic message on ``processing_jobs`` — which is
+    precisely the case the trace exists for.
+    """
+    for trace in traces:
         session.add(_ai_run(trace, user_id=document.user_id, document_id=document.id))
     session.flush()
-    return outcome
 
 
 def _ai_run(trace: AIRunTrace, *, user_id: uuid.UUID, document_id: uuid.UUID) -> AIRun:

@@ -248,6 +248,18 @@ class Settings(BaseSettings):
     rather than hidden, so a partial parse is never presented as a full one.
     """
 
+    # How long a processing job may sit in each state before it is presumed
+    # dead. DEV-013: a worker that raised before writing a status left the row
+    # PENDING forever, with no retry, no cancel, and nothing to age it out.
+    #
+    # The two differ by an order of magnitude on purpose. A job that was never
+    # picked up is stuck the moment the queue is being drained at all, so five
+    # minutes is already generous. A job that started is doing real work — a
+    # resume parse with retries and backoff takes minutes legitimately — and
+    # killing it early would turn a slow success into a reported failure.
+    processing_pending_timeout_seconds: int = 300
+    processing_running_timeout_seconds: int = 1800
+
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
     _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)

@@ -163,6 +163,25 @@ def _classify(exc: Exception) -> AIError:
             AIFailureCode.RATE_LIMIT, "The AI provider is rate limiting us.", details=message
         )
 
+    # A 4xx means the provider read the request and refused it. Waiting cannot
+    # change that, so retrying spends live calls on a guaranteed failure —
+    # DEV-015, where a "credit balance too low" reply was retried five times
+    # while the user was told we could not reach the provider.
+    #
+    # 429 is the exception and is handled above: it is the one 4xx that a wait
+    # does fix. 5xx keeps the retriable default, because that genuinely is the
+    # provider having a bad moment.
+    if isinstance(status, int) and 400 <= status < 500:
+        return AIError(
+            AIFailureCode.PROVIDER_ERROR,
+            "The AI provider rejected the request. Trying again will not change the outcome.",
+            # The provider's own explanation names the cause — a billing limit,
+            # a schema it will not compile — and it goes to the log rather than
+            # the browser, per docs/10-api-contracts.md.
+            details=message,
+            retriable=False,
+        )
+
     return AIError(
         AIFailureCode.PROVIDER_ERROR, "The AI provider could not be reached.", details=message
     )

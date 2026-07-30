@@ -144,6 +144,108 @@ describe("SkillsSection", () => {
   });
 });
 
+// --- editing ------------------------------------------------------------------
+//
+// DEV-014. Every collection could be added to and deleted from, and none could
+// be corrected — so fixing a typo meant deleting the row and retyping it, which
+// on an experience also destroyed its achievements.
+
+const SKILL = {
+  id: "1",
+  skill_id: "s1",
+  name: "Pythonn",
+  category: "LANGUAGE",
+  proficiency: "ADVANCED",
+  years_of_experience: 3,
+  last_used_year: null,
+  verification_status: "USER_CONFIRMED",
+  source: "MANUAL",
+  notes: null,
+};
+
+function stubSkill() {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    void url;
+    if (init?.method === "PATCH") {
+      return { ok: true, status: 200, json: async () => ({ data: SKILL }) };
+    }
+    return list([SKILL]);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("editing a record", () => {
+  it("offers an edit control on every row", async () => {
+    stubSkill();
+
+    renderSection(<SkillsSection />);
+
+    expect(await screen.findByRole("button", { name: /edit pythonn/i })).toBeInTheDocument();
+  });
+
+  it("loads the record into the form rather than opening a second one", async () => {
+    // One form, not two: an edit form is the add form with values in it, and a
+    // second copy of the fields is a second place to forget a validation rule.
+    stubSkill();
+
+    renderSection(<SkillsSection />);
+    await userEvent.click(await screen.findByRole("button", { name: /edit pythonn/i }));
+
+    expect(screen.getByLabelText("Skill")).toHaveValue("Pythonn");
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add skill/i })).not.toBeInTheDocument();
+  });
+
+  it("PATCHes the edited record", async () => {
+    const fetchMock = stubSkill();
+
+    renderSection(<SkillsSection />);
+    await userEvent.click(await screen.findByRole("button", { name: /edit pythonn/i }));
+    await userEvent.clear(screen.getByLabelText("Skill"));
+    await userEvent.type(screen.getByLabelText("Skill"), "Python");
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+      expect(String(patch?.[0])).toContain("/1");
+      expect(JSON.parse(String((patch?.[1] as RequestInit).body))).toMatchObject({
+        name: "Python",
+      });
+    });
+  });
+
+  it("returns to an empty add form after saving", async () => {
+    stubSkill();
+
+    renderSection(<SkillsSection />);
+    await userEvent.click(await screen.findByRole("button", { name: /edit pythonn/i }));
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(await screen.findByRole("button", { name: /add skill/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Skill")).toHaveValue("");
+  });
+
+  it("abandons the edit on cancel without sending anything", async () => {
+    const fetchMock = stubSkill();
+
+    renderSection(<SkillsSection />);
+    await userEvent.click(await screen.findByRole("button", { name: /edit pythonn/i }));
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.getByLabelText("Skill")).toHaveValue("");
+    expect(screen.getByRole("button", { name: /add skill/i })).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("ExperienceSection", () => {
   it("clears and disables the end date when the role is current", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(list([])));

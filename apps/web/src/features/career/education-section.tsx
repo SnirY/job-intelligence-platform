@@ -1,14 +1,13 @@
 "use client";
 
 import { API_ROUTES, type Education, type EducationCreate } from "@jip/shared-types";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { CollectionSection, formatDateRange } from "@/features/career/section";
-import { useCollection } from "@/features/career/use-collection";
+import { useCollection, useDraft } from "@/features/career/use-collection";
 
 const EMPTY: EducationCreate = {
   institution: "",
@@ -32,14 +31,28 @@ function toPayload(draft: EducationCreate): EducationCreate {
   };
 }
 
+/** A stored record back into the shape the form edits. */
+function toDraft(record: Education): EducationCreate {
+  return {
+    institution: record.institution,
+    degree: record.degree ?? "",
+    field_of_study: record.field_of_study ?? "",
+    start_date: record.start_date ?? "",
+    end_date: record.end_date ?? "",
+    is_current: record.is_current,
+    grade: record.grade ?? "",
+  };
+}
+
 export function EducationSection() {
-  const { query, create, remove } = useCollection<Education, EducationCreate>(
+  const { query, create, remove, update } = useCollection<Education, EducationCreate>(
     ["career", "education"],
     API_ROUTES.careerEducation,
   );
-  const [draft, setDraft] = useState<EducationCreate>(EMPTY);
+  const { draft, setDraft, editingId, isEditing, edit, reset } = useDraft(EMPTY);
 
   const institutionIsBlank = draft.institution.trim() === "";
+  const saving = create.isPending || update.isPending;
 
   return (
     <CollectionSection
@@ -70,6 +83,15 @@ export function EducationSection() {
             type="button"
             variant="ghost"
             size="icon"
+            aria-label={`Edit ${record.institution}`}
+            onClick={() => edit(record.id, toDraft(record))}
+          >
+            <Pencil aria-hidden className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`Remove ${record.institution}`}
             disabled={remove.isPending}
             onClick={() => remove.mutate(record.id)}
@@ -84,7 +106,12 @@ export function EducationSection() {
           onSubmit={(event) => {
             event.preventDefault();
             if (institutionIsBlank) return;
-            create.mutate(toPayload(draft), { onSuccess: () => setDraft(EMPTY) });
+            const body = toPayload(draft);
+            if (editingId) {
+              update.mutate({ id: editingId, body }, { onSuccess: reset });
+            } else {
+              create.mutate(body, { onSuccess: reset });
+            }
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -164,12 +191,22 @@ export function EducationSection() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={institutionIsBlank || create.isPending}>
-              <Plus aria-hidden className="size-4" />
-              {create.isPending ? "Adding…" : "Add education"}
+            <Button type="submit" disabled={institutionIsBlank || saving}>
+              {isEditing ? (
+                <Pencil aria-hidden className="size-4" />
+              ) : (
+                <Plus aria-hidden className="size-4" />
+              )}
+              {saving ? "Saving…" : isEditing ? "Save changes" : "Add education"}
             </Button>
+            {isEditing && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                Cancel
+              </Button>
+            )}
             <p aria-live="polite" className="text-sm text-destructive">
               {create.isError && "Could not add that education entry."}
+              {update.isError && "Could not save those changes."}
               {remove.isError && "Could not remove that entry."}
             </p>
           </div>

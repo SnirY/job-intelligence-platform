@@ -115,7 +115,13 @@ class ResumeParsingService:
         self._max_attempts = max_attempts
         self._prompt_name = prompt_name
 
-    def parse(self, document_text: str, *, content_type: str) -> ResumeParseOutcome:
+    def parse(
+        self,
+        document_text: str,
+        *,
+        content_type: str,
+        traces: list[AIRunTrace] | None = None,
+    ) -> ResumeParseOutcome:
         """Parse ``document_text``.
 
         Raises :class:`AIError` when every attempt failed. The caller preserves
@@ -173,7 +179,7 @@ class ResumeParsingService:
             constrain_output=_CONSTRAIN_OUTPUT,
         )
 
-        traces: list[AIRunTrace] = []
+        collected: list[AIRunTrace] = traces if traces is not None else []
 
         def attempt(number: int) -> ResumeParseOutcome:
             trace = AIRunTrace(
@@ -184,7 +190,7 @@ class ResumeParsingService:
                 input_hash=input_hash,
                 attempt=number,
             )
-            traces.append(trace)
+            collected.append(trace)
 
             with timed(trace):
                 try:
@@ -219,7 +225,7 @@ class ResumeParsingService:
                 input_hash=input_hash,
                 model=response.model or route.model,
                 provider=self._provider.name,
-                traces=traces,
+                traces=collected,
                 warnings=[*warnings, *validated.warnings],
             )
 

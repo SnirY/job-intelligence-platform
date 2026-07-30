@@ -131,6 +131,11 @@ def mark_failed(session: Session, job: ProcessingJob, error: AIError) -> Process
             "error_code": job.error_code,
             "attempts": job.attempts,
             "retriable": job.is_retriable,
+            # The provider's own explanation, which the user-facing message
+            # deliberately does not carry. Without it here it is dropped
+            # entirely, and DEV-015 is the case that makes that expensive: the
+            # cause was "credit balance too low" and nothing recorded it.
+            "detail": error.details,
         },
     )
     return job

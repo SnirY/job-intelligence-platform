@@ -32,6 +32,33 @@ def test_content_unavailable_is_not_retriable() -> None:
     assert not AIError(AIFailureCode.CONTENT_UNAVAILABLE, "no text").is_retriable
 
 
+def test_an_explicit_override_beats_the_codes_default() -> None:
+    """DEV-015. PROVIDER_ERROR covers both "could not reach it" and "it
+    answered with an error", and those differ exactly on whether waiting
+    helps."""
+    assert not AIError(AIFailureCode.PROVIDER_ERROR, "refused", retriable=False).is_retriable
+    assert AIError(AIFailureCode.CONTENT_UNAVAILABLE, "odd", retriable=True).is_retriable
+
+
+def test_an_absent_override_leaves_the_default_alone() -> None:
+    assert AIError(AIFailureCode.PROVIDER_ERROR, "unreachable").is_retriable
+
+
+def test_a_permanent_provider_error_costs_exactly_one_call() -> None:
+    """The concrete cost DEV-015 recorded: five live calls against a billing
+    limit that no wait could clear."""
+    attempts: list[int] = []
+
+    def operation(attempt: int) -> str:
+        attempts.append(attempt)
+        raise AIError(AIFailureCode.PROVIDER_ERROR, "refused", retriable=False)
+
+    with pytest.raises(AIError):
+        run_with_retry(operation, max_attempts=5, sleep=lambda _: None)
+
+    assert attempts == [1]
+
+
 def test_returns_the_first_success() -> None:
     calls: list[int] = []
 

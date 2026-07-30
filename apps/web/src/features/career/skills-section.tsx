@@ -9,8 +9,7 @@ import {
   type UserSkill,
   type UserSkillCreate,
 } from "@jip/shared-types";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,19 +17,30 @@ import { FieldHint, Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { CollectionSection } from "@/features/career/section";
-import { useCollection } from "@/features/career/use-collection";
+import { useCollection, useDraft } from "@/features/career/use-collection";
 import { ApiError } from "@/lib/api";
 
 const EMPTY: UserSkillCreate = { name: "", category: "OTHER", proficiency: null };
 
+/** A stored skill back into the shape the form edits. */
+function toDraft(skill: UserSkill): UserSkillCreate {
+  return {
+    name: skill.name,
+    category: skill.category,
+    proficiency: skill.proficiency,
+    years_of_experience: skill.years_of_experience,
+  };
+}
+
 export function SkillsSection() {
-  const { query, create, remove } = useCollection<UserSkill, UserSkillCreate>(
+  const { query, create, remove, update } = useCollection<UserSkill, UserSkillCreate>(
     ["career", "skills"],
     API_ROUTES.careerSkills,
   );
-  const [draft, setDraft] = useState<UserSkillCreate>(EMPTY);
+  const { draft, setDraft, editingId, isEditing, edit, reset } = useDraft(EMPTY);
 
   const nameIsBlank = draft.name.trim() === "";
+  const saving = create.isPending || update.isPending;
 
   return (
     <CollectionSection
@@ -64,6 +74,16 @@ export function SkillsSection() {
             type="button"
             variant="ghost"
             size="icon"
+            aria-label={`Edit ${skill.name}`}
+            onClick={() => edit(skill.id, toDraft(skill))}
+          >
+            <Pencil aria-hidden className="size-4" />
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`Remove ${skill.name}`}
             disabled={remove.isPending}
             onClick={() => remove.mutate(skill.id)}
@@ -78,10 +98,12 @@ export function SkillsSection() {
           onSubmit={(event) => {
             event.preventDefault();
             if (nameIsBlank) return;
-            create.mutate(
-              { ...draft, name: draft.name.trim() },
-              { onSuccess: () => setDraft(EMPTY) },
-            );
+            const body = { ...draft, name: draft.name.trim() };
+            if (editingId) {
+              update.mutate({ id: editingId, body }, { onSuccess: reset });
+            } else {
+              create.mutate(body, { onSuccess: reset });
+            }
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -155,15 +177,25 @@ export function SkillsSection() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={nameIsBlank || create.isPending}>
-              <Plus aria-hidden className="size-4" />
-              {create.isPending ? "Adding…" : "Add skill"}
+            <Button type="submit" disabled={nameIsBlank || saving}>
+              {isEditing ? (
+                <Pencil aria-hidden className="size-4" />
+              ) : (
+                <Plus aria-hidden className="size-4" />
+              )}
+              {saving ? "Saving…" : isEditing ? "Save changes" : "Add skill"}
             </Button>
+            {isEditing && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                Cancel
+              </Button>
+            )}
             <p aria-live="polite" className="text-sm text-destructive">
               {create.isError &&
                 (create.error instanceof ApiError && create.error.status === 409
                   ? "That skill is already in your list."
                   : "Could not add that skill.")}
+              {update.isError && "Could not save those changes."}
               {remove.isError && "Could not remove that skill."}
             </p>
           </div>
