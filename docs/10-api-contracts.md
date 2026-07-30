@@ -242,11 +242,14 @@ Phase 7:
 POST  /api/v1/applications
 GET   /api/v1/applications
 GET   /api/v1/applications/{id}
+PATCH /api/v1/applications/{id}
 
 PATCH /api/v1/applications/{id}/status
+POST  /api/v1/applications/{id}/apply
 
 GET   /api/v1/applications/{id}/events
 POST  /api/v1/applications/{id}/notes
+POST  /api/v1/applications/{id}/feedback
 ```
 
 Every status change must:
@@ -255,7 +258,22 @@ Every status change must:
 2. update current status
 3. create an event
 
-preferably in one transaction.
+preferably in one transaction. All three happen in `applications/service.py`,
+which is the only place `Application.status` is assigned — a second write path
+would be indistinguishable from correct until someone read a timeline with a
+hole in it.
+
+Two additions to the first draft of this list, both made while building Phase 8:
+
+- **`POST .../apply`.** Marking an application sent is not a status change; it
+  also pins the exact resume version, freezes it, and records the date and
+  source. Folding four writes into `PATCH .../status` would hide them.
+- **`POST .../feedback`.** `docs/07` requires known employer feedback stored
+  apart from system inference. Its own route makes that separation visible
+  rather than a convention about which field a note goes in.
+
+`PATCH /applications/{id}` edits notes only. Status is deliberately absent from
+it.
 
 ## Dashboard API
 
