@@ -154,15 +154,19 @@ def _parse(
         max_attempts=max_attempts,
     )
 
+    # Owned here rather than inside the service so the attempts survive a
+    # failure. DEV-016: a wholly failed operation used to leave no ai_runs row
+    # at all, so the only evidence of what happened was a generic message on
+    # processing_jobs — which is exactly the case you most need the trace for.
+    traces: list[AIRunTrace] = []
     try:
-        outcome = service.parse(text, source_note=_source_note(target))
+        outcome = service.parse(text, source_note=_source_note(target), traces=traces)
     except AIError:
+        _persist_traces(session, target, traces)
         _mark_analysis_failed(session, target)
         raise
 
-    for trace in outcome.traces:
-        session.add(_ai_run(trace, user_id=target.user_id, job_id=target.id))
-    session.flush()
+    _persist_traces(session, target, outcome.traces)
     return outcome
 
 
@@ -190,16 +194,34 @@ def _analyze(
         max_attempts=max_attempts,
     )
 
+    traces: list[AIRunTrace] = []
     try:
-        outcome = service.analyze(text, parse.validated)
+        outcome = service.analyze(text, parse.validated, traces=traces)
     except AIError:
+        _persist_traces(session, target, traces)
         _mark_analysis_failed(session, target)
         raise
 
-    for trace in outcome.traces:
+    _persist_traces(session, target, outcome.traces)
+    return outcome
+
+
+def _persist_traces(session: Session, target: Job, traces: list[AIRunTrace]) -> None:
+    """Write one ``ai_runs`` row per attempt, on both paths.
+
+    Called from the ``except`` as well as the success path, which is the whole
+    point of DEV-016: the failed operation is the one whose cost and cause
+    nobody can reconstruct afterwards.
+
+    **Flushes rather than commits, and the order it is called in matters.** On
+    the failure path it must run *before* ``_mark_analysis_failed``, whose
+    commit is what actually persists these rows — the worker's handler opens
+    with ``session.rollback()``, so anything merely flushed by the time the
+    exception reaches it is discarded.
+    """
+    for trace in traces:
         session.add(_ai_run(trace, user_id=target.user_id, job_id=target.id))
     session.flush()
-    return outcome
 
 
 def _mark_analysis_failed(session: Session, target: Job) -> None:

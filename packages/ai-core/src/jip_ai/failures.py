@@ -63,6 +63,7 @@ class AIError(Exception):
         message: str,
         *,
         details: str | None = None,
+        retriable: bool | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -70,8 +71,24 @@ class AIError(Exception):
         """Provider-side detail. Logged, never returned to the browser
         (``docs/10-api-contracts.md``: no stack traces or provider keys)."""
 
+        self.retriable = retriable
+        """Overrides the code's default when the code alone cannot decide.
+
+        ``PROVIDER_ERROR`` covers both "we could not reach it" and "it answered
+        with an error", and those differ exactly on whether waiting helps. A
+        400 is a permanent PROVIDER_ERROR: the code is right and retrying is
+        not. See DEV-015 — before this existed, a "credit balance too low"
+        reply was retried five times, each one a live call that could not
+        succeed.
+
+        ``None`` means "use the code's default", which is what every failure
+        that is not classified by HTTP status still does.
+        """
+
     @property
     def is_retriable(self) -> bool:
+        if self.retriable is not None:
+            return self.retriable
         return self.code in _RETRIABLE
 
     def __str__(self) -> str:

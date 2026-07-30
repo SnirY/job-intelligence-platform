@@ -128,11 +128,10 @@ def client(
         monkeypatch.setenv("JIP_AUTH_ISSUER", ISSUER)
         monkeypatch.setenv("JIP_AUTH_JWKS_URL", jwks_url)
         monkeypatch.setenv("JIP_AUTH_AUTHORIZED_PARTIES", AUTHORIZED_PARTY)
-        # Explicitly unconfigured. A developer's own key is in the root .env,
-        # and without this the suite would quietly call the live API — slow,
-        # billed, and non-deterministic. Where these tests need a model they
-        # drive the service directly with a fake, as `test_job_match.py` does.
-        monkeypatch.setenv("JIP_AI_API_KEY", "")
+        # AI is left unconfigured by the autouse `no_live_ai` fixture in
+        # conftest, which is what makes "a strategy is produced without AI"
+        # mean anything. Where these tests need a model they drive the service
+        # directly with a fake.
 
         get_settings.cache_clear()
         reset_engine_cache()

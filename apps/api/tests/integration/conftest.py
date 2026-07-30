@@ -21,6 +21,27 @@ from sqlalchemy.engine import URL, make_url
 REQUIRE_INTEGRATION = os.environ.get("JIP_REQUIRE_INTEGRATION") == "1"
 
 
+@pytest.fixture(autouse=True)
+def no_live_ai(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every integration test run with AI unconfigured.
+
+    DEV-018. The repository root ``.env`` holds a working key, so a fixture that
+    sets the database and auth variables but leaves ``JIP_AI_API_KEY`` alone
+    lets any opportunistic AI call reach the live provider — slow, billed, and
+    non-deterministic. ``docs/11-engineering-standards.md`` forbids live model
+    calls in the normal suite outright.
+
+    Autouse and here rather than repeated in each file, because the failure
+    mode is silent: nothing about a test that quietly costs money looks wrong
+    until you read the model name in an assertion diff. Tests that need a model
+    inject a ``FakeLLMProvider`` directly, which this cannot affect.
+
+    Applied before the per-file fixtures clear the settings cache, so the empty
+    value is what they pick up.
+    """
+    monkeypatch.setenv("JIP_AI_API_KEY", "")
+
+
 def _require(url: str | None, variable: str) -> str:
     if url:
         return url

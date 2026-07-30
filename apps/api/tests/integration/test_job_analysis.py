@@ -28,6 +28,7 @@ from jip_ai import AIError, AIFailureCode, build_router
 from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher
 from jip_api.application.jobs.analysis_pipeline import run_analysis
+from jip_api.domain.ai.models import AIRun
 from jip_api.domain.career.skills import Skill
 from jip_api.domain.jobs.analysis import JobAnalysis, JobRequirement
 from jip_api.domain.processing.models import ProcessingJob
@@ -793,23 +794,85 @@ def test_a_retry_after_a_failure_succeeds(client: TestClient, factory: TokenFact
     assert read(client, factory, job_id)["analysis"]["version"] == 1
 
 
-def test_records_a_run_for_every_attempt_including_failures(
-    client: TestClient, factory: TokenFactory
-) -> None:
-    job_id = create_job(client, factory)
-    analyse(client, factory, job_id)
-
+def _runs_for(job_id: str) -> list[Any]:
     session = new_session()
     try:
-        from jip_api.domain.ai.models import AIRun
-
-        runs = list(
+        return list(
             session.execute(select(AIRun).where(AIRun.entity_id == uuid.UUID(job_id))).scalars()
         )
     finally:
         session.close()
 
-    assert {run.operation for run in runs} == {"JOB_PARSE", "JOB_ANALYSIS"}
+
+def test_records_a_run_for_each_operation_of_a_successful_analysis(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    job_id = create_job(client, factory)
+    analyse(client, factory, job_id)
+
+    assert {run.operation for run in _runs_for(job_id)} == {"JOB_PARSE", "JOB_ANALYSIS"}
+
+
+def test_a_wholly_failed_analysis_still_records_its_attempts(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """DEV-016. A failed operation used to leave `ai_runs` empty, so the only
+    evidence was a generic message on `processing_jobs` — and that is the case
+    you most need the trace for, because it is the one that cost money without
+    producing anything.
+    """
+    job_id = create_job(client, factory)
+    started = start(client, factory, job_id)
+
+    with pytest.raises(AIError):
+        run_pipeline(
+            started["processing_job_id"],
+            parse=AIError(AIFailureCode.PROVIDER_ERROR, "The provider is down."),
+        )
+
+    runs = _runs_for(job_id)
+    assert runs, "a failed parse recorded nothing at all"
+    assert {run.operation for run in runs} == {"JOB_PARSE"}
+    assert all(str(run.status) == "FAILED" for run in runs)
+    assert all(run.failure_code == "PROVIDER_ERROR" for run in runs)
+
+
+def test_those_attempts_survive_the_workers_rollback(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The subtlety that makes DEV-016 more than a missing `session.add`.
+
+    `run_job_analysis` opens its failure handler with `session.rollback()`, so
+    a trace that has only been flushed by the time the exception reaches it is
+    discarded. Persisting them before the commit in `_mark_analysis_failed` is
+    what makes them durable, and this asserts that rather than the flush.
+    """
+    job_id = create_job(client, factory)
+    started = start(client, factory, job_id)
+
+    session = new_session()
+    try:
+        job = session.get(ProcessingJob, uuid.UUID(started["processing_job_id"]))
+        assert job is not None
+        with pytest.raises(AIError):
+            run_analysis(
+                session,
+                FakeLLMProvider([AIError(AIFailureCode.PROVIDER_ERROR, "down")]),
+                build_router(
+                    resume_parse_model="fake-model",
+                    resume_parse_max_output_tokens=16000,
+                    resume_parse_effort=None,
+                ),
+                job=job,
+                max_input_chars=60_000,
+                max_attempts=1,
+            )
+        # Exactly what the worker does next.
+        session.rollback()
+    finally:
+        session.close()
+
+    assert _runs_for(job_id), "the rollback discarded the trace"
 
 
 # --- warnings -----------------------------------------------------------------

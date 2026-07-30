@@ -111,12 +111,23 @@ class JobParsingService:
         self._max_attempts = max_attempts
         self._prompt_name = prompt_name
 
-    def parse(self, job_text: str, *, source_note: str = "") -> JobParseOutcome:
+    def parse(
+        self,
+        job_text: str,
+        *,
+        source_note: str = "",
+        traces: list[AIRunTrace] | None = None,
+    ) -> JobParseOutcome:
         """Parse ``job_text``.
 
         Raises :class:`AIError` when every attempt failed. The caller keeps the
         job either way — ``GOAL.md`` requires a failure to leave the underlying
         resource intact.
+
+        ``traces`` lets the caller own the list, so the attempts survive the
+        exception. Kept locally, they are discarded the moment this raises,
+        which is DEV-016: a wholly failed operation left no ``ai_runs`` row at
+        all and the only evidence was a generic message on ``processing_jobs``.
         """
         text = job_text.strip()
         if not text:
@@ -150,7 +161,7 @@ class JobParsingService:
             effort=route.effort,
         )
 
-        traces: list[AIRunTrace] = []
+        collected: list[AIRunTrace] = traces if traces is not None else []
 
         def attempt(number: int) -> JobParseOutcome:
             trace = AIRunTrace(
@@ -161,7 +172,7 @@ class JobParsingService:
                 input_hash=input_hash,
                 attempt=number,
             )
-            traces.append(trace)
+            collected.append(trace)
 
             with timed(trace):
                 try:
@@ -198,7 +209,7 @@ class JobParsingService:
                 input_hash=input_hash,
                 model=response.model or route.model,
                 provider=self._provider.name,
-                traces=traces,
+                traces=collected,
                 warnings=[*warnings, *validated.warnings],
             )
 
@@ -237,8 +248,18 @@ class JobAnalyzerService:
         self._max_attempts = max_attempts
         self._prompt_name = prompt_name
 
-    def analyze(self, job_text: str, parse: ValidatedParse) -> JobAnalysisOutcome:
-        """Interpret a posting whose requirements have already been extracted."""
+    def analyze(
+        self,
+        job_text: str,
+        parse: ValidatedParse,
+        *,
+        traces: list[AIRunTrace] | None = None,
+    ) -> JobAnalysisOutcome:
+        """Interpret a posting whose requirements have already been extracted.
+
+        ``traces`` is caller-owned for the same reason as in ``parse`` above —
+        see DEV-016.
+        """
         prompt = get_prompt(self._prompt_name)
         route = self._router.route(AIOperation.JOB_ANALYSIS)
 
@@ -257,7 +278,7 @@ class JobAnalyzerService:
             effort=route.effort,
         )
 
-        traces: list[AIRunTrace] = []
+        collected: list[AIRunTrace] = traces if traces is not None else []
 
         def attempt(number: int) -> JobAnalysisOutcome:
             trace = AIRunTrace(
@@ -268,7 +289,7 @@ class JobAnalyzerService:
                 input_hash=input_hash,
                 attempt=number,
             )
-            traces.append(trace)
+            collected.append(trace)
 
             with timed(trace):
                 try:
@@ -299,7 +320,7 @@ class JobAnalyzerService:
                 prompt_version=prompt.name,
                 model=response.model or route.model,
                 provider=self._provider.name,
-                traces=traces,
+                traces=collected,
                 warnings=list(validated.warnings),
             )
 
