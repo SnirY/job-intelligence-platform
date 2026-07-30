@@ -91,6 +91,12 @@ function routes(handlers: Record<string, unknown>) {
     void init;
     if (url.includes("/companies")) return ok(handlers.companies ?? []);
     if (url.includes("/source")) return ok(handlers.source);
+    // Job Detail mounts a panel per phase, and each reads its own collection.
+    // Falling through to `handlers.job` would hand a list endpoint a single
+    // object — which is not a shape the API can ever return, so a component
+    // crashing on it says more about this mock than about the component.
+    if (url.includes("/applications")) return ok(handlers.applications ?? []);
+    if (url.includes("/resume")) return ok(handlers.resumes ?? []);
     // The list is the only call with a query string or a bare /jobs path.
     if (/\/jobs(\?|$)/.test(url)) return handlers.list ?? page([]);
     return ok(handlers.job);

@@ -9,6 +9,7 @@ Add every new model module here.
 """
 
 from jip_api.domain.ai import models as ai_models
+from jip_api.domain.applications import models as application_models
 from jip_api.domain.career import history as career_history
 from jip_api.domain.career import models as career_models
 from jip_api.domain.career import skills as career_skills
@@ -23,6 +24,7 @@ from jip_api.domain.users import models as user_models
 
 __all__ = [
     "ai_models",
+    "application_models",
     "career_history",
     "career_models",
     "career_skills",

@@ -27,6 +27,7 @@ import {
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
 import { JobMatchPanel } from "@/features/jobs/job-match";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
+import { JobApplicationPanel } from "@/features/applications/job-application-panel";
 import { JobTailoringPanel } from "@/features/resumes/job-tailoring";
 import { ApiError } from "@/lib/api";
 
@@ -39,8 +40,8 @@ import { ApiError } from "@/lib/api";
  * visibly distinct from fact, and the cleanest way to keep that true is for the
  * two never to share a card.
  *
- * Still absent: application data. It does not exist, and rendering an empty
- * version would look like a broken feature rather than an unbuilt one.
+ * Every phase from 5 onward adds a panel here, in the order the work happens:
+ * read the posting, match it, tailor a resume, track the application.
  */
 export function JobDetail({ jobId }: { jobId: string }) {
   const job = useJob(jobId);
@@ -114,6 +115,9 @@ function JobView({ job }: { job: Job }) {
               built from the match, so seeing it above the score would invite
               tailoring towards a job before knowing whether it fits. */}
           <JobTailoringPanel job={job} />
+          {/* Last: tracking is what happens once the preparation above is
+              done, and it is the only panel here that outlives the job. */}
+          <JobApplicationPanel job={job} />
         </>
       )}
 
