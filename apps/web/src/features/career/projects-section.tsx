@@ -9,8 +9,7 @@ import {
   type ProjectStatus,
   type ProjectType,
 } from "@jip/shared-types";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -18,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionSection, formatDateRange } from "@/features/career/section";
-import { useCollection } from "@/features/career/use-collection";
+import { useCollection, useDraft } from "@/features/career/use-collection";
 import { ApiError } from "@/lib/api";
 
 const EMPTY: ProjectCreate = {
@@ -47,14 +46,30 @@ function toPayload(draft: ProjectCreate): ProjectCreate {
   };
 }
 
+/** A stored project back into the shape the form edits. */
+function toDraft(project: Project): ProjectCreate {
+  return {
+    name: project.name,
+    project_type: project.project_type,
+    status: project.status,
+    summary: project.summary ?? "",
+    description: project.description ?? "",
+    start_date: project.start_date ?? "",
+    end_date: project.end_date ?? "",
+    repository_url: project.repository_url ?? "",
+    demo_url: project.demo_url ?? "",
+  };
+}
+
 export function ProjectsSection() {
-  const { query, create, remove } = useCollection<Project, ProjectCreate>(
+  const { query, create, remove, update } = useCollection<Project, ProjectCreate>(
     ["career", "projects"],
     API_ROUTES.careerProjects,
   );
-  const [draft, setDraft] = useState<ProjectCreate>(EMPTY);
+  const { draft, setDraft, editingId, isEditing, edit, reset } = useDraft(EMPTY);
 
   const nameIsBlank = draft.name.trim() === "";
+  const saving = create.isPending || update.isPending;
 
   return (
     <CollectionSection
@@ -94,6 +109,15 @@ export function ProjectsSection() {
             type="button"
             variant="ghost"
             size="icon"
+            aria-label={`Edit ${project.name}`}
+            onClick={() => edit(project.id, toDraft(project))}
+          >
+            <Pencil aria-hidden className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`Remove ${project.name}`}
             disabled={remove.isPending}
             onClick={() => remove.mutate(project.id)}
@@ -108,7 +132,12 @@ export function ProjectsSection() {
           onSubmit={(event) => {
             event.preventDefault();
             if (nameIsBlank) return;
-            create.mutate(toPayload(draft), { onSuccess: () => setDraft(EMPTY) });
+            const body = toPayload(draft);
+            if (editingId) {
+              update.mutate({ id: editingId, body }, { onSuccess: reset });
+            } else {
+              create.mutate(body, { onSuccess: reset });
+            }
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -205,15 +234,25 @@ export function ProjectsSection() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={nameIsBlank || create.isPending}>
-              <Plus aria-hidden className="size-4" />
-              {create.isPending ? "Adding…" : "Add project"}
+            <Button type="submit" disabled={nameIsBlank || saving}>
+              {isEditing ? (
+                <Pencil aria-hidden className="size-4" />
+              ) : (
+                <Plus aria-hidden className="size-4" />
+              )}
+              {saving ? "Saving…" : isEditing ? "Save changes" : "Add project"}
             </Button>
+            {isEditing && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                Cancel
+              </Button>
+            )}
             <p aria-live="polite" className="text-sm text-destructive">
               {create.isError &&
                 (create.error instanceof ApiError && create.error.status === 409
                   ? "You already have a project with that name."
                   : "Could not add that project.")}
+              {update.isError && "Could not save those changes."}
               {remove.isError && "Could not remove that project."}
             </p>
           </div>

@@ -7,8 +7,7 @@ import {
   type Experience,
   type ExperienceCreate,
 } from "@jip/shared-types";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionSection, formatDateRange } from "@/features/career/section";
-import { useCollection } from "@/features/career/use-collection";
+import { useCollection, useDraft } from "@/features/career/use-collection";
 
 const EMPTY: ExperienceCreate = {
   company: "",
@@ -44,14 +43,34 @@ function toPayload(draft: ExperienceCreate): ExperienceCreate {
   };
 }
 
+/** A stored role back into the shape the form edits.
+ *
+ * Achievements are deliberately absent: they are edited on the role itself and
+ * are not part of this form. Before edit existed, correcting a typo in a title
+ * meant deleting the role — which took its achievements with it (DEV-014).
+ */
+function toDraft(record: Experience): ExperienceCreate {
+  return {
+    company: record.company,
+    title: record.title,
+    employment_type: record.employment_type,
+    location: record.location ?? "",
+    start_date: record.start_date ?? "",
+    end_date: record.end_date ?? "",
+    is_current: record.is_current,
+    description: record.description ?? "",
+  };
+}
+
 export function ExperienceSection() {
-  const { query, create, remove } = useCollection<Experience, ExperienceCreate>(
+  const { query, create, remove, update } = useCollection<Experience, ExperienceCreate>(
     ["career", "experiences"],
     API_ROUTES.careerExperiences,
   );
-  const [draft, setDraft] = useState<ExperienceCreate>(EMPTY);
+  const { draft, setDraft, editingId, isEditing, edit, reset } = useDraft(EMPTY);
 
   const incomplete = draft.company.trim() === "" || draft.title.trim() === "";
+  const saving = create.isPending || update.isPending;
 
   return (
     <CollectionSection
@@ -81,6 +100,15 @@ export function ExperienceSection() {
             type="button"
             variant="ghost"
             size="icon"
+            aria-label={`Edit ${record.title} at ${record.company}`}
+            onClick={() => edit(record.id, toDraft(record))}
+          >
+            <Pencil aria-hidden className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`Remove ${record.title} at ${record.company}`}
             disabled={remove.isPending}
             onClick={() => remove.mutate(record.id)}
@@ -95,7 +123,12 @@ export function ExperienceSection() {
           onSubmit={(event) => {
             event.preventDefault();
             if (incomplete) return;
-            create.mutate(toPayload(draft), { onSuccess: () => setDraft(EMPTY) });
+            const body = toPayload(draft);
+            if (editingId) {
+              update.mutate({ id: editingId, body }, { onSuccess: reset });
+            } else {
+              create.mutate(body, { onSuccess: reset });
+            }
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -197,12 +230,22 @@ export function ExperienceSection() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={incomplete || create.isPending}>
-              <Plus aria-hidden className="size-4" />
-              {create.isPending ? "Adding…" : "Add experience"}
+            <Button type="submit" disabled={incomplete || saving}>
+              {isEditing ? (
+                <Pencil aria-hidden className="size-4" />
+              ) : (
+                <Plus aria-hidden className="size-4" />
+              )}
+              {saving ? "Saving…" : isEditing ? "Save changes" : "Add experience"}
             </Button>
+            {isEditing && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                Cancel
+              </Button>
+            )}
             <p aria-live="polite" className="text-sm text-destructive">
               {create.isError && "Could not add that experience."}
+              {update.isError && "Could not save those changes."}
               {remove.isError && "Could not remove that experience."}
             </p>
           </div>
