@@ -11,7 +11,7 @@ import pytest
 from jip_api.domain.jobs.models import normalize_title
 from jip_api.domain.jobs.urls import normalize_url
 from jip_api.infrastructure.fetching.content import (
-    MINIMUM_USEFUL_CHARS,
+    MINIMUM_PROSE_PARAGRAPH_CHARS,
     extract_content,
     has_useful_content,
 )
@@ -140,8 +140,82 @@ def test_a_javascript_shell_is_reported_as_not_useful() -> None:
     assert not has_useful_content(extract_content(shell).text)
 
 
+def _page(*paragraphs: str) -> str:
+    body = "".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
+    return f"<!doctype html><html><body>{body}</body></html>"
+
+
+def test_a_page_of_headlines_is_not_a_job_description() -> None:
+    """DEV-022. A sports news homepage, imported by hand during the Stage 2.4
+    walkthrough, was stored as a job description: 782 characters of football
+    headlines. It cleared the old total-length floor with room to spare and was
+    indistinguishable from a real posting to everything downstream.
+
+    The shape is what matters here — plenty of text, none of it prose — so the
+    test asserts the page is long before asserting it is rejected. Otherwise a
+    later change could make this pass for the boring reason.
+    """
+    page = _page(*["Barcelona lost on penalties, and Goren played 27 minutes"] * 19)
+
+    text = extract_content(page).text
+
+    assert len(text) > 3 * MINIMUM_PROSE_PARAGRAPH_CHARS
+    assert not has_useful_content(text)
+
+
+def test_a_jobs_listing_page_is_not_a_job_description() -> None:
+    """The other page from that walkthrough, and the more dangerous of the two:
+    a company's LinkedIn page, listing nine real jobs with real titles, real
+    companies and real locations. It is *about* jobs without being one, and
+    every word in it is plausible."""
+    page = _page(
+        *["Sr. DevOps Engineer", "Harmonic", "Caesarea, Israel", "2 days ago"] * 9,
+        "Al hacer clic en «Continuar» para unirte o iniciar sesión, aceptas las "
+        "Condiciones de uso y la Política de cookies de LinkedIn.",
+    )
+
+    text = extract_content(page).text
+
+    assert len(text) > 3 * MINIMUM_PROSE_PARAGRAPH_CHARS
+    assert not has_useful_content(text)
+
+
 def test_a_real_posting_is_useful() -> None:
-    assert has_useful_content("x" * MINIMUM_USEFUL_CHARS)
+    """One paragraph of prose is the entire signal. The furniture around it is
+    the same shape as the two pages above and changes nothing."""
+    about = (
+        "Acme Networks is seeking a Software Engineer with strong C++ expertise on Linux to "
+        "join our team. The ideal candidate demonstrates exceptional analytical and "
+        "logical thinking, the ability to independently infer system behaviour from "
+        "complex data flows, and a deep understanding of performance-critical software."
+    )
+    # Stated rather than assumed: if the threshold moves past this fixture, the
+    # test should fail loudly instead of quietly testing nothing.
+    assert len(about) >= MINIMUM_PROSE_PARAGRAPH_CHARS
+
+    page = _page("Junior Software Engineer C++", "Acme Networks", about, "Report this job")
+
+    assert has_useful_content(extract_content(page).text)
+
+
+def test_a_posting_written_only_in_short_bullets_is_rejected() -> None:
+    """The known cost of the rule, recorded so it stays a decision.
+
+    A posting with no paragraph of prose is indistinguishable from a listing
+    page, so this user is asked to paste. That is worse than accepting it and
+    far better than accepting a newspaper — and the job, the link and the raw
+    HTML are all kept either way.
+    """
+    page = _page(
+        "Backend Engineer",
+        "5+ years Python",
+        "PostgreSQL",
+        "Kubernetes",
+        "Remote, EU timezones",
+        "Apply by 30 June",
+    )
+
+    assert not has_useful_content(extract_content(page).text)
 
 
 # --- URL normalization --------------------------------------------------------

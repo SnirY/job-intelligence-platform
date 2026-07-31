@@ -41,12 +41,31 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 _TRAILING_SPACE = re.compile(r"[ \t]+\n")
 _INLINE_SPACE = re.compile(r"[ \t]{2,}")
 
-MINIMUM_USEFUL_CHARS = 200
-"""Below this, the extraction did not find a job description.
+MINIMUM_PROSE_PARAGRAPH_CHARS = 200
+"""A job description contains at least one paragraph this long.
 
-Job postings behind a JavaScript-rendered single-page app return a shell with
-almost no text. Reporting that plainly, so the user can paste instead, is more
-useful than storing forty characters of boilerplate and calling it a success.
+The question being asked is "is this a job description", and the first answer
+here was "is there this much text on the page", which is a different question
+with the same units. Every content-rich page passes a total-length floor. A
+newspaper front page passes it. A company's job *listing* passes it.
+
+Measuring the longest paragraph instead asks for prose, and navigation is never
+prose — a headline, a link, a menu item and a job title are all short by
+construction, because a person has to scan them. Three pages imported by hand
+during the Stage 2.4 walkthrough:
+
+    sports news homepage    782 chars total, longest paragraph  46
+    company jobs listing   1981 chars total, longest paragraph 154
+    an actual job posting  7296 chars total, longest paragraph 372
+
+The first two were stored as job descriptions under the old floor. Nothing
+downstream could tell they were not real postings, which is what makes this
+worth catching here: Phase 5 would have parsed football headlines for
+requirements and reported whatever it found.
+
+The gap is wide enough that the exact number is not delicate, and erring low is
+the safe direction. Rejecting a real posting costs the user a paste, and says
+so; accepting a newspaper costs them a phantom job they never notice.
 """
 
 
@@ -200,5 +219,9 @@ def _tidy_line(value: str | None) -> str | None:
 
 
 def has_useful_content(text: str) -> bool:
-    """Whether the extraction produced enough to be a job description."""
-    return len(text.strip()) >= MINIMUM_USEFUL_CHARS
+    """Whether the extraction found a job description rather than a web page.
+
+    ``_tidy`` has already stripped every line, so splitting on newlines gives
+    the paragraphs as they were laid out in the markup.
+    """
+    return any(len(paragraph) >= MINIMUM_PROSE_PARAGRAPH_CHARS for paragraph in text.split("\n"))
