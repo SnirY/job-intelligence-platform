@@ -201,7 +201,60 @@ describe("processing", () => {
     // A scan will not gain a text layer on a second attempt, and a button that
     // always fails reads as a broken product.
     expect(await screen.findByText(/will not help/)).toBeInTheDocument();
+    expect(screen.getByText(/Upload a different file/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+  });
+
+  it("does not send the user hunting for another file when the server is at fault", async () => {
+    // DEV-021. Found by unsetting the AI key and reading the screen: the
+    // advice was "upload a different file instead", which is true for a
+    // document with no text layer and useless for a server with no API key.
+    // Nothing the user does to their resume reaches this problem.
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        document: document({ status: "FAILED" }),
+        job: job({
+          status: "FAILED",
+          error_code: "PROVIDER_ERROR",
+          error_message: "AI is not configured on this server.",
+          is_retriable: false,
+        }),
+        extraction: null,
+      }),
+    );
+
+    renderWorkspace(<ImportWorkspace />);
+
+    expect(await screen.findByText(/attention on the server/)).toBeInTheDocument();
+    expect(screen.queryByText(/Upload a different file/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+  });
+
+  it("shows no proposals at all when AI is unavailable", async () => {
+    // The rule the whole product rests on: never return fake intelligence when
+    // AI is unavailable. An empty-but-plausible review screen would be worse
+    // than an error, because it looks like a result.
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        document: document({ status: "FAILED" }),
+        job: job({
+          status: "FAILED",
+          error_code: "PROVIDER_ERROR",
+          error_message: "AI is not configured on this server.",
+          is_retriable: false,
+        }),
+        extraction: null,
+      }),
+    );
+
+    renderWorkspace(<ImportWorkspace />);
+    await screen.findByText(/AI is not configured/);
+
+    expect(screen.queryByText(/Review what we found/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /accept/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add to my profile/i })).not.toBeInTheDocument();
   });
 });
 
