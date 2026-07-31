@@ -149,12 +149,19 @@ def _classify(exc: Exception) -> AIError:
             AIFailureCode.TIMEOUT, "The AI provider did not respond in time.", details=message
         )
     if name in {"AuthenticationError", "PermissionDeniedError"}:
-        # Not retriable in substance, but PROVIDER_ERROR is the documented code
-        # and the operator-facing message is what makes it actionable.
+        # PROVIDER_ERROR is the documented code, and the operator-facing message
+        # is what makes it actionable — but a rejected credential is as permanent
+        # as a failure gets. It needs an operator, not another attempt.
+        #
+        # This comment used to say "not retriable in substance" and leave it at
+        # that, because there was no way to express it. DEV-015 added one and
+        # only applied it to HTTP 4xx; the note sat here describing the same
+        # problem two lines above the fix. See DEV-021.
         return AIError(
             AIFailureCode.PROVIDER_ERROR,
             "The AI provider rejected our credentials.",
             details=message,
+            retriable=False,
         )
 
     status = getattr(exc, "status_code", None)

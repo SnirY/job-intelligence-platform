@@ -233,3 +233,25 @@ def test_provider_detail_is_not_in_the_user_message() -> None:
 
     assert "org_abc123" not in str(caught.value.args[0])
     assert caught.value.details is not None and "org_abc123" in caught.value.details
+
+
+def test_rejected_credentials_are_permanent() -> None:
+    """DEV-021. A key the provider refuses is as permanent as a failure gets —
+    it needs an operator, not another attempt. This case carried a comment
+    saying exactly that for weeks while still being marked retriable."""
+    client = StubClient(type("AuthenticationError", (Exception,), {})("bad key"))
+
+    with pytest.raises(AIError) as caught:
+        AnthropicProvider(client).generate_structured(request(), model="test-model")
+
+    assert caught.value.code is AIFailureCode.PROVIDER_ERROR
+    assert caught.value.is_retriable is False
+
+
+def test_permission_denied_is_permanent_too() -> None:
+    client = StubClient(type("PermissionDeniedError", (Exception,), {})("no access"))
+
+    with pytest.raises(AIError) as caught:
+        AnthropicProvider(client).generate_structured(request(), model="test-model")
+
+    assert caught.value.is_retriable is False

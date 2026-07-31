@@ -19,12 +19,19 @@ def build_provider(settings: Settings) -> LLMProvider:
     Raises a classified :class:`AIError` when AI is unconfigured, rather than
     returning a stub that answers plausibly. ``docs/11-engineering-standards.md``
     is explicit: never return fake intelligence when AI is unavailable.
+
+    Both failures here are **permanent**: a missing key and an unrecognised
+    provider name are configuration, and no number of attempts turns an unset
+    environment variable into a set one. Marked as such so the user is not
+    offered a retry button that cannot work — DEV-021, found by unsetting the
+    key and watching the UI offer "Try again, attempt 0 of 5" forever.
     """
     if not settings.ai_api_key:
         raise AIError(
             AIFailureCode.PROVIDER_ERROR,
             "AI is not configured on this server.",
             details="JIP_AI_API_KEY is unset",
+            retriable=False,
         )
 
     if settings.ai_provider == "anthropic":
@@ -36,6 +43,7 @@ def build_provider(settings: Settings) -> LLMProvider:
         AIFailureCode.PROVIDER_ERROR,
         "AI is not configured on this server.",
         details=f"unknown provider {settings.ai_provider!r}",
+        retriable=False,
     )
 
 

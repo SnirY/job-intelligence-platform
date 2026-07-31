@@ -132,8 +132,16 @@ function FailureCard({
         ) : (
           // No retry button when a retry cannot help. Offering one for a
           // scanned PDF would just fail again and look broken.
+          //
+          // Which advice to give depends on *whose* problem it is. A document
+          // with no text layer is fixed by a different file; a server with no
+          // AI key is not fixed by anything the user does, and sending them to
+          // hunt for another copy of their resume wastes their time on a
+          // problem they cannot reach.
           <p className="text-sm text-muted-foreground">
-            Trying again will not help with this one. Upload a different file instead.
+            {job.error_code === "CONTENT_UNAVAILABLE"
+              ? "Trying again will not help with this one. Upload a different file instead."
+              : "Trying again will not help. This needs attention on the server — another file would fail the same way."}
           </p>
         )}
 
