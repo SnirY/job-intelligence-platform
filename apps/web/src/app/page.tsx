@@ -2,6 +2,28 @@ import { Show } from "@clerk/nextjs";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import {
+  CURRENT_PHASE,
+  TOTAL_PHASES,
+  destinationsByAvailability,
+} from "@/features/navigation/destinations";
+
+/** Starts a sentence with a summary written to sit mid-sentence. */
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** "a, b, and c".
+ *
+ * With the serial comma, unusually for this codebase's prose: several of these
+ * summaries contain their own "and", and without it the final two items read as
+ * a single clause.
+ */
+function formatList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return items.join(" and ");
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
 
 /**
  * Public landing page.
@@ -10,6 +32,8 @@ import { Button } from "@/components/ui/button";
  * It describes the product and routes onward — it holds no user data.
  */
 export default function LandingPage() {
+  const { available, upcoming } = destinationsByAvailability();
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-10 px-6 py-16">
       <div className="space-y-4">
@@ -41,12 +65,21 @@ export default function LandingPage() {
         </Show>
       </div>
 
-      {/* Kept accurate as phases land. A page claiming less than the product
-          does is as misleading as one claiming more. */}
+      {/* Derived, not written out. This paragraph said "Phase 6" for two phases
+          after resume tailoring and application tracking had shipped — claiming
+          the product did less than it does, which is as misleading as claiming
+          more. A comment asking the next person to keep it accurate is not a
+          mechanism; reading the same table the navigation reads is. */}
       <p className="text-sm text-muted-foreground">
-        In development — Phase 6 of 11. You can build a career profile, import one from a resume,
-        save jobs, have a posting read into its requirements, and see how your profile lines up
-        against it. Resume tailoring and application tracking are not built yet.
+        In development — Phase {CURRENT_PHASE} of {TOTAL_PHASES}. You can{" "}
+        {formatList(available.map((destination) => destination.landingSummary))}.
+        {upcoming.length > 0 && (
+          <>
+            {" "}
+            {capitalise(formatList(upcoming.map((d) => d.landingSummary)))}{" "}
+            {upcoming.length === 1 ? "is" : "are"} not built yet.
+          </>
+        )}
       </p>
     </main>
   );
