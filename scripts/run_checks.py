@@ -7,6 +7,10 @@
 
 Every command is reported with its exit status, and the script keeps going after
 a failure so one run surfaces every problem rather than only the first.
+
+``--integration`` runs a five-second preflight first. Without it a stopped
+Docker Desktop makes the suite hang silently instead of failing, which has cost
+real time three separate times.
 """
 
 from __future__ import annotations
@@ -14,8 +18,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,6 +64,83 @@ def run(check: Check) -> bool:
     return True
 
 
+PREFLIGHT_TIMEOUT_SECONDS = 5.0
+"""Long enough for a container that is up, far too short to look like work.
+
+The whole point is that this either answers immediately or tells you the
+service is gone. A generous timeout here would reintroduce exactly the wait it
+exists to remove.
+"""
+
+
+def _reachable(url: str) -> str | None:
+    """Open a TCP connection to whatever ``url`` points at. Returns the failure.
+
+    Deliberately a socket connect rather than a real client handshake. It needs
+    no driver, cannot be confused by credentials, and answers the only question
+    being asked: is anything listening?
+    """
+    parsed = urllib.parse.urlparse(url)
+    host, port = parsed.hostname, parsed.port
+    if not host or not port:
+        return f"could not read a host and port from {url!r}"
+
+    try:
+        with socket.create_connection((host, port), timeout=PREFLIGHT_TIMEOUT_SECONDS):
+            return None
+    except OSError as exc:
+        return f"{host}:{port} — {exc.strerror or exc}"
+
+
+def preflight() -> bool:
+    """Fail fast when the services the integration tests need are not there.
+
+    Three times now a run has *hung* rather than failed because Docker Desktop
+    had stopped: a connect that never answers reads as "slow" instead of "down",
+    and pytest gives no output at all while it waits. The last one cost fifteen
+    minutes of not knowing, and the answer was one `docker compose ps` away.
+
+    So the wait is spent here instead, bounded to five seconds, with the layer
+    below named in the failure. The tests themselves skip when these variables
+    are unset, which is correct — but a variable that is set and pointing at
+    nothing is a different situation, and the one that used to hang.
+    """
+    print("\n=== preflight: live services ===", flush=True)
+
+    required = {
+        "JIP_TEST_DATABASE_URL": os.environ.get("JIP_TEST_DATABASE_URL"),
+        "JIP_TEST_REDIS_URL": os.environ.get("JIP_TEST_REDIS_URL"),
+    }
+
+    problems: list[str] = []
+    for name, url in required.items():
+        if not url:
+            # Unset is the documented "I have no stack" case: pytest skips, and
+            # that is a decision rather than a fault.
+            print(f"  {name} is unset — those tests will skip", flush=True)
+            continue
+
+        failure = _reachable(url)
+        if failure is None:
+            print(f"  {name} reachable", flush=True)
+        else:
+            problems.append(f"{name}: {failure}")
+
+    if not problems:
+        return True
+
+    print("\n--- preflight FAILED ---", flush=True)
+    for problem in problems:
+        print(f"  {problem}", flush=True)
+    print(
+        "\nThe integration tests would hang on this rather than fail, so the run "
+        "stops here.\nIf the stack should be up:\n"
+        "  docker compose up -d postgres redis minio minio-init",
+        flush=True,
+    )
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", action="store_true", help="run backend checks only")
@@ -71,6 +154,10 @@ def main() -> int:
 
     run_backend = args.backend or not args.frontend
     run_frontend = args.frontend or not args.backend
+
+    # Before anything slow, and before anything that could hang.
+    if run_backend and args.integration and not preflight():
+        return 1
 
     checks: list[Check] = []
     if run_backend:
