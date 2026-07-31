@@ -175,7 +175,12 @@ def confirm_extraction(
         extra={
             "extraction_id": str(extraction.id),
             "decided": len(ordered),
-            "created": result.created_count,
+            # Not "created": that is a reserved LogRecord attribute (the
+            # record's own timestamp), and logging refuses to overwrite it with
+            # a KeyError. Raised here it aborted the whole confirmation before
+            # the route could commit — a log line destroying the operation it
+            # was describing. See test_logging_extra_keys.py.
+            "created_records": result.created_count,
             "pending": result.remaining_pending,
         },
     )
