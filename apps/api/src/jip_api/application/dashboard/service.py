@@ -37,7 +37,7 @@ from jip_api.application.matching.queries import assess_staleness
 from jip_api.application.ownership import owned
 from jip_api.domain.applications.models import Application, ApplicationEvent, ApplicationStatus
 from jip_api.domain.career.skills import Skill, UserSkill
-from jip_api.domain.jobs.analysis import JobRequirement
+from jip_api.domain.jobs.analysis import JobAnalysis, JobRequirement
 from jip_api.domain.jobs.models import Job, JobProcessingStatus
 from jip_api.domain.matching.models import JobMatch
 
@@ -122,6 +122,7 @@ def build_dashboard(
     jobs = list(session.scalars(_live_jobs(user_id)))
     applications = list(session.scalars(owned(Application, user_id)))
     matches = _latest_matches(session, user_id)
+    analysis_versions = _latest_analysis_versions(session, user_id)
     skills_held = set(
         session.scalars(select(UserSkill.skill_id).where(UserSkill.user_id == user_id))
     )
@@ -129,8 +130,12 @@ def build_dashboard(
     return DashboardView(
         state=_state(jobs, applications, matches, skills_held),
         pipeline=_pipeline(applications),
-        opportunities=_opportunities(session, user_id, jobs, matches, applications),
-        actions=_actions(session, user_id, jobs, matches, applications, skills_held, moment),
+        opportunities=_opportunities(
+            session, user_id, jobs, matches, applications, analysis_versions
+        ),
+        actions=_actions(
+            session, user_id, jobs, matches, applications, skills_held, analysis_versions, moment
+        ),
         activity=_activity(session, user_id, jobs),
         skill_gaps=_skill_gaps(session, user_id, skills_held),
     )
@@ -143,6 +148,30 @@ def _live_jobs(user_id: uuid.UUID) -> Select[tuple[Job]]:
     entirely a list of things being shown.
     """
     return owned(Job, user_id).where(Job.archived_at.is_(None)).order_by(Job.created_at.desc())
+
+
+def _latest_analysis_versions(session: Session, user_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """The newest reading of each job, by job id.
+
+    Needed because staleness is a comparison between what a match read and what
+    the job says now. Passing a match's own ``analysis_version`` as the current
+    one compares a number to itself, which is never unequal — and the reason it
+    silently suppresses is the most important of the three: a match against a
+    posting that has since been re-read.
+
+    Batched rather than one `latest_analysis` call per job, so a user with
+    forty saved jobs does not cost forty queries to draw one screen.
+    """
+    rows = session.execute(
+        select(JobAnalysis.job_id, func.max(JobAnalysis.version))
+        .where(JobAnalysis.user_id == user_id)
+        .group_by(JobAnalysis.job_id)
+    ).tuples()
+    # Written out rather than `dict(rows)`, which ruff suggests and which does
+    # not work: the result is consumed by the call in a way that leaves the
+    # mapping empty, and mypy rejects the untyped variant of it besides. The
+    # comprehension is the form that both tools and the database agree on.
+    return {job_id: version for job_id, version in rows}  # noqa: C416
 
 
 def _latest_matches(session: Session, user_id: uuid.UUID) -> dict[uuid.UUID, JobMatch]:
@@ -204,6 +233,7 @@ def _opportunities(
     jobs: list[Job],
     matches: dict[uuid.UUID, JobMatch],
     applications: list[Application],
+    analysis_versions: dict[uuid.UUID, int],
 ) -> list[Opportunity]:
     """The best-scoring matched jobs, worst-case first for staleness.
 
@@ -224,7 +254,7 @@ def _opportunities(
             session,
             user_id,
             match,
-            current_analysis_version=match.analysis_version,
+            current_analysis_version=analysis_versions.get(job.id),
         )
         scored.append(
             (
@@ -252,6 +282,7 @@ def _actions(
     matches: dict[uuid.UUID, JobMatch],
     applications: list[Application],
     skills_held: set[uuid.UUID],
+    analysis_versions: dict[uuid.UUID, int],
     now: dt.datetime,
 ) -> list[NextAction]:
     """Every rule fires, then :func:`rank` keeps the top few.
@@ -315,7 +346,7 @@ def _actions(
             continue
 
         staleness = assess_staleness(
-            session, user_id, match, current_analysis_version=match.analysis_version
+            session, user_id, match, current_analysis_version=analysis_versions.get(job.id)
         )
         if staleness.is_stale:
             found.append(

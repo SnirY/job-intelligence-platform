@@ -29,9 +29,13 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 
+from jip_ai import build_router
+from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher
+from jip_api.application.jobs.analysis_pipeline import run_analysis
+from jip_api.domain.processing.models import ProcessingJob
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
-from jip_api.infrastructure.db.session import reset_engine_cache
+from jip_api.infrastructure.db.session import new_session, reset_engine_cache
 from jip_api.infrastructure.tasks.dispatcher import reset_task_caches
 from jip_config import get_settings
 from tests.auth_fixtures import AUTHORIZED_PARTY, ISSUER, TokenFactory, serve_jwks
@@ -43,6 +47,7 @@ API_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD = "/api/v1/dashboard"
 JOBS = "/api/v1/jobs"
 APPLICATIONS = "/api/v1/applications"
+CAREER = "/api/v1/career"
 ALICE = "user_alice"
 BOB = "user_bob"
 
@@ -50,8 +55,74 @@ POSTING = (
     "Senior Backend Engineer at Verdant Logistics.\n\n"
     "Requirements:\n"
     "- 5+ years of backend engineering experience\n"
-    "- Strong Python and Postgres\n"
+    "- Strong Python\n"
+    "- Spring Boot for our services\n"
+    "- Rust for the routing core\n"
+    "- Right to work in Portugal\n\n"
+    "You will design and build our routing services and mentor two junior engineers."
 )
+
+PARSE_RESPONSE: dict[str, Any] = {
+    "summary": "Senior backend role.",
+    "requirements": [
+        {
+            "normalized_text": "5+ years backend engineering",
+            "requirement_type": "EXPERIENCE",
+            "importance": "REQUIRED",
+            "explicitness": "EXPLICIT",
+            "source_text": "5+ years of backend engineering experience",
+            "confidence": 95,
+            "years_min": 5,
+        },
+        {
+            "normalized_text": "Python",
+            "requirement_type": "TECHNICAL_SKILL",
+            "importance": "CORE",
+            "explicitness": "EXPLICIT",
+            "source_text": "Strong Python",
+            "confidence": 95,
+            "skill_name": "Python",
+        },
+        {
+            "normalized_text": "Spring Boot",
+            "requirement_type": "TECHNICAL_SKILL",
+            "importance": "REQUIRED",
+            "explicitness": "EXPLICIT",
+            "source_text": "Spring Boot for our services",
+            "confidence": 90,
+            "skill_name": "Spring Boot",
+        },
+        {
+            "normalized_text": "Rust",
+            "requirement_type": "TECHNICAL_SKILL",
+            "importance": "CORE",
+            "explicitness": "EXPLICIT",
+            "source_text": "Rust for the routing core",
+            "confidence": 92,
+            "skill_name": "Rust",
+        },
+        {
+            "normalized_text": "Right to work in Portugal",
+            "requirement_type": "WORK_AUTHORIZATION",
+            "importance": "REQUIRED",
+            "explicitness": "EXPLICIT",
+            "source_text": "Right to work in Portugal",
+            "confidence": 96,
+        },
+    ],
+    "responsibilities": [],
+    "years_experience_min": 5,
+}
+
+ANALYSIS_RESPONSE: dict[str, Any] = {
+    "role_family": "BACKEND",
+    "role_family_confidence": 92,
+    "role_family_reasoning": "Server-side routing services in Python.",
+    "seniority": "SENIOR",
+    "seniority_confidence": 88,
+    "seniority_reasoning": "Asks for 5+ years and expects mentoring.",
+    "summary": "A senior backend role.",
+}
 
 
 @pytest.fixture(scope="module")
@@ -122,6 +193,55 @@ def save_job(
     assert response.status_code == 201, response.text
     job_id: str = response.json()["data"]["id"]
     return job_id
+
+
+def add_skill(client: TestClient, factory: TokenFactory, name: str, subject: str = ALICE) -> None:
+    """Enough profile for a match to produce a number.
+
+    Without one the match scores null and the opportunity is correctly left out
+    of the ranking, which is a different test.
+    """
+    response = client.post(
+        f"{CAREER}/skills",
+        headers=auth(factory, subject),
+        json={"name": name, "category": "LANGUAGE"},
+    )
+    assert response.status_code == 201, response.text
+
+
+def analysed_job(client: TestClient, factory: TokenFactory, subject: str = ALICE) -> str:
+    """A job with a completed analysis, ready to match against."""
+    job_id = save_job(client, factory, subject)
+    reanalyse(client, factory, job_id, subject)
+    return job_id
+
+
+def reanalyse(client: TestClient, factory: TokenFactory, job_id: str, subject: str = ALICE) -> None:
+    """Run the real pipeline with a scripted provider, appending a version."""
+    started = client.post(f"{JOBS}/{job_id}/analysis", headers=auth(factory, subject))
+    assert started.status_code == 202, started.text
+
+    router = build_router(
+        resume_parse_model="fake-model",
+        resume_parse_max_output_tokens=16000,
+        resume_parse_effort=None,
+    )
+    session = new_session()
+    try:
+        processing = session.get(
+            ProcessingJob, uuid.UUID(started.json()["data"]["processing_job_id"])
+        )
+        assert processing is not None
+        run_analysis(
+            session,
+            FakeLLMProvider([PARSE_RESPONSE, ANALYSIS_RESPONSE]),
+            router,
+            job=processing,
+            max_input_chars=60_000,
+            max_attempts=1,
+        )
+    finally:
+        session.close()
 
 
 # --- an account with nothing in it --------------------------------------------
@@ -286,3 +406,53 @@ def test_an_unknown_job_id_is_never_returned(client: TestClient, factory: TokenF
 
     for opportunity in data["opportunities"]:
         assert uuid.UUID(opportunity["job_id"])
+
+
+# --- staleness ----------------------------------------------------------------
+
+
+def test_a_match_against_an_older_reading_is_reported_stale(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Found walking 2.10.3, on a real dashboard.
+
+    The first version of `_opportunities` and `_actions` passed the match's own
+    `analysis_version` as the *current* one — comparing a number to itself,
+    which is never unequal. So a match against a posting that had since been
+    re-read reported `is_stale = false`, showed no badge, and produced no
+    action, while the match panel two clicks away said the opposite.
+
+    Only visible when the analysis moves and nothing else does. The account
+    that found it had also edited its profile, so the screen showed a *true*
+    staleness reason for a different cause and the missing one was invisible.
+    """
+    add_skill(client, factory, "Python")
+    job_id = analysed_job(client, factory)
+    matched = client.post(f"{JOBS}/{job_id}/match", headers=auth(factory))
+    assert matched.status_code == 200, matched.text
+    assert read(client, factory)["opportunities"][0]["is_stale"] is False
+
+    reanalyse(client, factory, job_id)
+
+    opportunity = read(client, factory)["opportunities"][0]
+    assert opportunity["is_stale"] is True
+
+    kinds = {action["kind"] for action in read(client, factory)["actions"]}
+    assert "REFRESH_MATCH" in kinds
+
+
+def test_the_stale_action_names_the_reading_that_changed(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The reason is the evidence, and a reason naming the wrong cause sends
+    the user to check the wrong thing."""
+    add_skill(client, factory, "Python")
+    job_id = analysed_job(client, factory)
+    client.post(f"{JOBS}/{job_id}/match", headers=auth(factory))
+    reanalyse(client, factory, job_id)
+
+    refresh = next(
+        action for action in read(client, factory)["actions"] if action["kind"] == "REFRESH_MATCH"
+    )
+
+    assert "re-read" in refresh["reason"]
