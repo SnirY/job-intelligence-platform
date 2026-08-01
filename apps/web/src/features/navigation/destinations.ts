@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export const CURRENT_PHASE = 8;
+export const CURRENT_PHASE = 9;
 /** The last phase that has shipped.
  *
  * Exists because it was previously written out by hand on the landing page and
@@ -111,9 +111,14 @@ export function isActiveDestination(pathname: string, href: string): boolean {
  * The destinations that do something today, and the ones still to come.
  *
  * Derived from the phase each destination waits on, so a page describing the
- * product's progress cannot disagree with the navigation beside it. Home is
- * excluded from both: it exists from Phase 1 and grows into a dashboard in
- * Phase 9, so it is never "not built" and never quite finished either.
+ * product's progress cannot disagree with the navigation beside it.
+ *
+ * Home is excluded from both lists, and now for a narrower reason than before.
+ * It used to be "never built and never finished" — reachable from Phase 1,
+ * showing only session state. Phase 9 made it the dashboard, so it is built.
+ * It stays out of a list headed "what you can do" because it is where that list
+ * is read from: a landing page offering Home as a feature is offering the door
+ * as a room.
  */
 export function destinationsByAvailability(phase: number = CURRENT_PHASE): {
   available: Destination[];
