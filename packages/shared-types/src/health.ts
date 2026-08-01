@@ -45,4 +45,5 @@ export const API_ROUTES = {
   resumeStrategies: "/api/v1/resume-strategies",
   resumeSuggestions: "/api/v1/resume-suggestions",
   applications: "/api/v1/applications",
+  dashboard: "/api/v1/dashboard",
 } as const;

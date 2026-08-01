@@ -6,3 +6,4 @@ export * from "./resumes";
 export * from "./user";
 export * from "./resumes-engine";
 export * from "./applications";
+export * from "./dashboard";

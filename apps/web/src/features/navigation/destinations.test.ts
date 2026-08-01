@@ -82,9 +82,12 @@ describe("what the product claims about itself", () => {
   it("matches the phase every shipped destination waits on", () => {
     // If a destination ships, CURRENT_PHASE must have reached its phase. This
     // is what fails when a phase merges and the constant is not bumped.
-    const shipped = DESTINATIONS.filter(
-      (d) => d.href !== "/home" && d.availableInPhase <= CURRENT_PHASE,
-    );
+    //
+    // Home is included. It was excluded while it was a placeholder reachable
+    // from Phase 1, and that exclusion made this assertion blind to the one
+    // phase whose entire deliverable is Home — which is exactly what it missed
+    // when Phase 9 shipped.
+    const shipped = DESTINATIONS.filter((d) => d.availableInPhase <= CURRENT_PHASE);
 
     expect(Math.max(...shipped.map((d) => d.availableInPhase))).toBe(CURRENT_PHASE);
   });
