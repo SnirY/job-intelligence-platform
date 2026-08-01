@@ -46,4 +46,7 @@ export const API_ROUTES = {
   resumeSuggestions: "/api/v1/resume-suggestions",
   applications: "/api/v1/applications",
   dashboard: "/api/v1/dashboard",
+  insightsOverview: "/api/v1/insights/overview",
+  insightsSkillDemand: "/api/v1/insights/skills/demand",
+  insightsSkillGaps: "/api/v1/insights/skills/gaps",
 } as const;

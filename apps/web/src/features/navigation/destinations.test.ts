@@ -44,8 +44,9 @@ describe("what the product claims about itself", () => {
       "Jobs",
       "Resumes",
       "Applications",
+      "Insights",
     ]);
-    expect(upcoming.map((d) => d.label)).toEqual(["Insights", "Settings"]);
+    expect(upcoming.map((d) => d.label)).toEqual(["Settings"]);
   });
 
   it("never describes a shipped destination as unbuilt", () => {
