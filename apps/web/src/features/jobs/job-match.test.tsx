@@ -236,6 +236,32 @@ describe("the score", () => {
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
+  it("withholds the recommendation when nothing could be scored", async () => {
+    /* Same principle as the dash: "not measured" is not a verdict. Found in
+       checklist item 2.6.4 — an empty profile rendered "Worth considering"
+       directly beside "There is not enough in your profile yet to compare
+       against this job", which is a recommendation made on no evidence next
+       to the sentence saying there was none. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          match: match({
+            overall_score: null,
+            alignment_label: "Not enough profile data",
+            recommendation: "CONSIDER",
+          }),
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Not enough profile data");
+
+    expect(screen.queryByText("Worth considering")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recommendation")).not.toBeInTheDocument();
+  });
+
   it("says how much of the posting was actually checked", async () => {
     vi.stubGlobal("fetch", routes(view()));
 

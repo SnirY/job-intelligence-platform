@@ -37,6 +37,7 @@ from jip_api.application.jobs.analysis_services import (
     JobParsingService,
 )
 from jip_api.application.jobs.analysis_uc import analysis_source_hash
+from jip_api.application.jobs.analysis_validation import RequirementDraft
 from jip_api.application.jobs.requirement_skills import resolve_known_skills
 from jip_api.application.processing import jobs as jobs_uc
 from jip_api.domain.ai.models import AIRun, AIRunStatus
@@ -44,6 +45,7 @@ from jip_api.domain.jobs.analysis import (
     JobAnalysis,
     JobRequirement,
     JobResponsibility,
+    RequirementImportance,
 )
 from jip_api.domain.jobs.models import Job, JobImportMethod, JobProcessingStatus
 from jip_api.domain.processing.models import ProcessingJob, ProcessingStep
@@ -348,6 +350,68 @@ def _persist(
     return stored
 
 
+STRENGTH_ORDER: dict[RequirementImportance, int] = {
+    RequirementImportance.CORE: 4,
+    RequirementImportance.REQUIRED: 3,
+    RequirementImportance.UNKNOWN: 2,
+    RequirementImportance.PREFERRED: 1,
+    RequirementImportance.OPTIONAL: 0,
+}
+"""Which importance wins when one skill is asked for twice.
+
+Must agree with ``IMPORTANCE_WEIGHTS`` in the matching rules — a strength
+ordering that disagrees with the scoring weights would resolve a duplicate in
+favour of the one that counts for less. A test asserts they rank identically
+rather than a comment asking someone to remember.
+"""
+
+
+def _strongest_per_skill(
+    drafts: list[tuple[RequirementDraft, uuid.UUID | None]],
+) -> list[RequirementDraft]:
+    """Drop repeats of the same catalogued skill, keeping the strongest.
+
+    DEV-025. A posting that names a technology twice — once in its opening
+    prose and once in its requirement list, at different strengths — produces
+    two requirements for it. Both are faithful readings of the text taken
+    alone, and nothing reconciled them.
+
+    They are duplicates in the sense that matters: the matcher resolves both
+    against the same profile skill and reaches the same verdict for both, so
+    keeping the pair counts one piece of evidence twice, on both sides. The
+    Acme Networks posting's "C++ expertise on Linux" and "Linux environment, an
+    Advantage" scored MATCH twice, adding 2.50 of weight for one skill against
+    C++'s 2.00 in a C++ role.
+
+    Requirements with no resolved skill are never merged. Two unmatched phrases
+    that happen to read alike are not known to be the same thing, and the
+    matcher treats them separately too.
+    """
+    strongest: dict[uuid.UUID, int] = {}
+    for draft, skill_id in drafts:
+        if skill_id is None:
+            continue
+        rank = STRENGTH_ORDER[draft.importance]
+        if skill_id not in strongest or rank > strongest[skill_id]:
+            strongest[skill_id] = rank
+
+    kept: list[RequirementDraft] = []
+    seen: set[uuid.UUID] = set()
+    for draft, skill_id in drafts:
+        if skill_id is None:
+            kept.append(draft)
+            continue
+        # Ties go to the earlier mention: the drafts arrive in the posting's
+        # own order, and the first time it asks for something is the one whose
+        # wording the user will recognise.
+        if skill_id in seen or STRENGTH_ORDER[draft.importance] < strongest[skill_id]:
+            continue
+        seen.add(skill_id)
+        kept.append(draft)
+
+    return kept
+
+
 def _persist_requirements(
     session: Session,
     *,
@@ -361,7 +425,24 @@ def _persist_requirements(
     ]
     resolved = resolve_known_skills(session, names) if names else {}
 
+    paired: list[tuple[RequirementDraft, uuid.UUID | None]] = []
     for draft in parse.validated.requirements:
+        resolved_skill = resolved.get(draft.skill_name) if draft.skill_name else None
+        paired.append((draft, resolved_skill.id if resolved_skill else None))
+
+    kept = _strongest_per_skill(paired)
+
+    if len(kept) < len(paired):
+        logger.info(
+            "Merged repeated skills in a reading",
+            extra={
+                "job_id": str(target.id),
+                "dropped": len(paired) - len(kept),
+                "kept_count": len(kept),
+            },
+        )
+
+    for draft in kept:
         skill = resolved.get(draft.skill_name) if draft.skill_name else None
         session.add(
             JobRequirement(
