@@ -57,9 +57,13 @@ export function DashboardScreen({ greeting }: { greeting: string }) {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">{greeting}</h1>
         <p className="text-muted-foreground">
+          {/* No count. The first draft said "the two steps below" and a new
+              account is offered exactly one — the profile action, since every
+              other rule needs a saved job to fire against. A number written
+              into copy is a claim about data it cannot see. */}
           {started
             ? "Where everything stands, and what is worth doing next."
-            : "Nothing here yet. The two steps below are where this starts."}
+            : "Nothing here yet. Below is where this starts."}
         </p>
       </header>
 

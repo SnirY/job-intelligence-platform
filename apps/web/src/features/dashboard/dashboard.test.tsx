@@ -53,6 +53,38 @@ describe("a new account", () => {
     expect(screen.queryByText("Jobs saved")).not.toBeInTheDocument();
   });
 
+  it("does not promise more first steps than it offers", async () => {
+    /* Found walking 2.10.8 on a second account. The copy read "the two steps
+       below" and exactly one action was rendered: a new profile has no saved
+       job, so every rule but BUILD_PROFILE has nothing to fire against.
+
+       Asserted as the absence of a count rather than the presence of a
+       particular sentence, because the defect was a number written into copy
+       that could not see the data it described. */
+    vi.stubGlobal(
+      "fetch",
+      serving(
+        dashboard({
+          actions: [
+            {
+              kind: "BUILD_PROFILE",
+              subject: "Your career profile",
+              reason: "There are no skills on your profile yet.",
+              job_id: null,
+              application_id: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+
+    const intro = await screen.findByText(/Nothing here yet/);
+    expect(intro.textContent).not.toMatch(/\b(one|two|three|\d+)\b/i);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
   it("surfaces a load failure without claiming data is gone", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
