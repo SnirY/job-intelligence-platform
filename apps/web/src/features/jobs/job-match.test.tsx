@@ -504,6 +504,28 @@ describe("staleness and history", () => {
     expect(await screen.findByRole("button", { name: /recalculate/i })).toBeInTheDocument();
   });
 
+  it("says so when a recalculation fails", async () => {
+    /* Same shape as the analysis panel's silent refusal: the empty state
+       reported a failed request, a match already on screen had nowhere to, so
+       the click read as ignored. Feedback belongs beside the button. */
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return { ok: false, status: 500, json: async () => ({ error: { message: "boom" } }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: view() }) };
+      }),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /recalculate/i }));
+
+    expect(await screen.findByText(/could not be recalculated/i)).toBeInTheDocument();
+    // The existing match stays put. A failed request changes nothing.
+    expect(screen.getByText("78%")).toBeInTheDocument();
+  });
+
   it("offers earlier matches once there is more than one", async () => {
     vi.stubGlobal(
       "fetch",

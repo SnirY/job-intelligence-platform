@@ -211,6 +211,73 @@ describe("analysis states", () => {
       expect(posted).toBe(true);
     });
   });
+
+  it("says which of the two steps is running", async () => {
+    vi.stubGlobal("fetch", routes(view({ analysis: null, job_status: "ANALYZING" })));
+
+    renderWithQuery(<JobIntelligence job={job({ status: "ANALYZING" })} />);
+
+    expect(await screen.findByText(/Step 2 of 2/)).toBeInTheDocument();
+  });
+
+  it("says which attempt this is once the first has failed", async () => {
+    /* "Working…" for a minute is indistinguishable from nothing happening.
+       When the first attempt failed and a second is running, saying so is the
+       difference between waiting and giving up. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          analysis: null,
+          job_status: "PARSING",
+          processing: {
+            id: "pj-1",
+            status: "RUNNING",
+            step: "PARSING",
+            attempts: 2,
+            error_code: null,
+            error_message: null,
+            is_retriable: true,
+          },
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobIntelligence job={job({ status: "PARSING" })} />);
+
+    expect(await screen.findByText(/Attempt 2/)).toBeInTheDocument();
+  });
+
+  it("reports progress beside the button that started it, not at the top", async () => {
+    /* The user's complaint: with a reading already on screen, "Analyse again"
+       sits below a requirement list several screens long. Reporting the click
+       at the top of the panel reports it nowhere they are looking.
+
+       Asserted as document order against the requirements, which are what sits
+       between the two positions — the thing that made the old placement
+       useless. */
+    vi.stubGlobal("fetch", routes(view({ job_status: "PARSING" })));
+
+    renderWithQuery(<JobIntelligence job={job({ status: "PARSING" })} />);
+
+    const progress = await screen.findByText(/Step 1 of 2/);
+    const requirements = screen.getByRole("heading", { name: /^requirements$/i });
+    const button = screen.getByRole("button", { name: /analysing/i });
+
+    const follows = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(follows(requirements, progress)).toBe(true);
+    expect(follows(progress, button)).toBe(true);
+  });
+
+  it("disables Analyse again while an analysis is already running", async () => {
+    vi.stubGlobal("fetch", routes(view({ job_status: "ANALYZING" })));
+
+    renderWithQuery(<JobIntelligence job={job({ status: "ANALYZING" })} />);
+
+    expect(await screen.findByRole("button", { name: /analysing/i })).toBeDisabled();
+  });
 });
 
 // --- failure ------------------------------------------------------------------

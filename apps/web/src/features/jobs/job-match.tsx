@@ -76,6 +76,7 @@ export function JobMatchPanel({ job }: { job: Job }) {
       onVersion={setVersion}
       onRecalculate={() => compute.mutate()}
       recalculating={compute.isPending}
+      failed={compute.isError}
     />
   );
 }
@@ -87,6 +88,7 @@ function MatchView({
   onVersion,
   onRecalculate,
   recalculating,
+  failed,
 }: {
   view: JobMatchView;
   match: JobMatch;
@@ -94,6 +96,9 @@ function MatchView({
   onVersion: (version: number | undefined) => void;
   onRecalculate: () => void;
   recalculating: boolean;
+  /** The last Recalculate failed. The empty state already reported this; a job
+      with a match on screen had nowhere to, so the click looked ignored. */
+  failed: boolean;
 }) {
   const latest = Math.max(...view.available_versions);
   const isLatest = match.version === latest;
@@ -179,39 +184,47 @@ function MatchView({
       )}
 
       <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 pt-6">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={recalculating}
-            onClick={onRecalculate}
-          >
-            <RotateCw aria-hidden className="size-4" />
-            {recalculating ? "Recalculating…" : "Recalculate"}
-          </Button>
-
-          {view.available_versions.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Earlier matches:</span>
-              {view.available_versions.map((number) => (
-                <button
-                  key={number}
-                  type="button"
-                  aria-current={number === match.version}
-                  className={
-                    number === match.version
-                      ? "rounded border px-2 py-0.5 text-xs font-medium"
-                      : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                  }
-                  onClick={() => onVersion(number === viewingVersion ? undefined : number)}
-                >
-                  v{number}
-                </button>
-              ))}
-            </div>
+        <CardContent className="space-y-4 pt-6">
+          {failed && (
+            <Notice tone="warning">
+              That could not be recalculated. Your existing match is unchanged — try again.
+            </Notice>
           )}
 
-          <p className="w-full text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={recalculating}
+              onClick={onRecalculate}
+            >
+              <RotateCw aria-hidden className={recalculating ? "size-4 animate-spin" : "size-4"} />
+              {recalculating ? "Recalculating…" : "Recalculate"}
+            </Button>
+
+            {view.available_versions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Earlier matches:</span>
+                {view.available_versions.map((number) => (
+                  <button
+                    key={number}
+                    type="button"
+                    aria-current={number === match.version}
+                    className={
+                      number === match.version
+                        ? "rounded border px-2 py-0.5 text-xs font-medium"
+                        : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                    }
+                    onClick={() => onVersion(number === viewingVersion ? undefined : number)}
+                  >
+                    v{number}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
             Scored deterministically by matching engine {match.engine_version} against reading v
             {match.analysis_version} of the posting. The same profile and posting always produce the
             same number.

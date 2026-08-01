@@ -27,8 +27,15 @@ export const IMPORT_METHOD_LABELS: Record<JobImportMethod, string> = {
 export type JobStatus =
   "FETCHING" | "RAW" | "PARSING" | "ANALYZING" | "ANALYZED" | "FAILED" | "ANALYSIS_FAILED";
 
-/** Whether an analysis is running right now. */
-export function isAnalysisRunning(status: JobStatus): boolean {
+/** The two steps an analysis passes through, in order. */
+export type RunningAnalysisStatus = Extract<JobStatus, "PARSING" | "ANALYZING">;
+
+/** Whether an analysis is running right now.
+ *
+ * A type guard rather than a plain predicate so a caller that has checked can
+ * then say *which* step is running without re-narrowing by hand.
+ */
+export function isAnalysisRunning(status: JobStatus): status is RunningAnalysisStatus {
   return status === "PARSING" || status === "ANALYZING";
 }
 
