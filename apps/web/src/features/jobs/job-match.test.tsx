@@ -377,7 +377,7 @@ describe("requirements and evidence", () => {
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    const control = screen.getAllByRole("button", { name: /why this verdict/i })[0];
+    const control = screen.getByRole("button", { name: /why this verdict/i });
 
     expect(control).toHaveAttribute("aria-expanded", "false");
     expect(control).toHaveAccessibleName(expect.stringContaining("1"));
