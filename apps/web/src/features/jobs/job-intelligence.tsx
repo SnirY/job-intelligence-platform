@@ -22,6 +22,7 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAnalyzeJob, useJobAnalysis } from "@/features/jobs/api";
 
@@ -436,15 +437,13 @@ function RequirementRow({ requirement }: { requirement: JobRequirement }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:underline"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-      >
-        <Quote aria-hidden className="size-3" />
-        {open ? "Hide the posting's words" : "Show the posting's words"}
-      </button>
+      <Disclosure
+        open={open}
+        onToggle={() => setOpen((value) => !value)}
+        label="Show the posting's words"
+        openLabel="Hide the posting's words"
+        icon={<Quote aria-hidden className="size-3 shrink-0" />}
+      />
 
       {open && (
         <blockquote className="mt-2 border-l-2 pl-3 text-xs leading-relaxed text-muted-foreground">

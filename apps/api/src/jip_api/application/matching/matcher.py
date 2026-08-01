@@ -176,7 +176,7 @@ def _evaluate(
     if requirement_type is RequirementType.EDUCATION:
         return _match_education(requirement, snapshot)
     if requirement_type in {RequirementType.DOMAIN_KNOWLEDGE, RequirementType.SOFT_SKILL}:
-        return _match_by_text(requirement, snapshot)
+        return _match_by_text(requirement, requirement_type, snapshot)
     if requirement_type in {
         RequirementType.WORK_AUTHORIZATION,
         RequirementType.LOCATION,
@@ -575,13 +575,35 @@ def _match_education(
 
 
 def _match_by_text(
-    requirement: MatchableRequirement, snapshot: ProfileSnapshot
+    requirement: MatchableRequirement,
+    requirement_type: RequirementType,
+    snapshot: ProfileSnapshot,
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
     """Domain knowledge and soft skills, found by keyword.
 
     Never better than PARTIAL_MATCH. A word appearing in a project description
     is weak evidence of domain knowledge, and calling it a strong match would
     put keyword overlap on the same footing as a confirmed, demonstrated skill.
+
+    The same caution applies downward, and used not to. A keyword *missing* is
+    weak evidence of absence, and only one of the two types this handles can
+    carry a real gap:
+
+    - **Domain knowledge** is the kind of thing a career profile records. Its
+      absence is informative — a profile with no mention of telecom anywhere is
+      genuine evidence about telecom.
+    - **A soft skill** is not. Nothing in the profile is a place to put
+      "analytical thinking", so failing to find the phrase says nothing about
+      the person. Scoring that as a GAP made the strongest negative claim
+      available on the weakest possible evidence, at whatever weight the
+      posting's wording happened to earn — 2.00 apiece for three of them on the
+      posting this was found on, 30% of the score, all of it noise.
+
+    UNKNOWN instead, which is what this module already returns for everything
+    else the profile has no field for — work authorisation, location, spoken
+    languages. It still counts toward the score, at the constant that means we
+    could not tell rather than at the zero that means we looked and it was not
+    there.
     """
     if snapshot.is_empty:
         return (
@@ -598,6 +620,14 @@ def _match_by_text(
             50,
             "Your profile mentions this, though not in a way that proves depth.",
             evidence,
+        )
+
+    if requirement_type is RequirementType.SOFT_SKILL:
+        return (
+            MatchStatus.UNKNOWN,
+            20,
+            "A profile has nowhere to record this, so it is not something we can check.",
+            [],
         )
 
     return (

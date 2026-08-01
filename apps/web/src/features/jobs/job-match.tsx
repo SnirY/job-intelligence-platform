@@ -27,6 +27,7 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useJobMatch, useMatchJob } from "@/features/jobs/api";
 
@@ -420,14 +421,13 @@ function RequirementRow({ item }: { item: MatchItem }) {
 
       {item.evidence.length > 0 ? (
         <>
-          <button
-            type="button"
-            className="mt-2 text-xs text-muted-foreground underline-offset-4 hover:underline"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-          >
-            {open ? "Hide the evidence" : `Why? (${item.evidence.length})`}
-          </button>
+          <Disclosure
+            open={open}
+            onToggle={() => setOpen((value) => !value)}
+            label="Why this verdict?"
+            openLabel="Hide the evidence"
+            count={item.evidence.length}
+          />
 
           {open && (
             <ul className="mt-2 space-y-2 border-l-2 pl-3">

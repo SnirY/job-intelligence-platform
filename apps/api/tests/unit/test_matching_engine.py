@@ -644,3 +644,96 @@ def test_every_verdict_carries_an_explanation() -> None:
 
     for verdict in match_requirements(requirements, profile(skill("Python"))):
         assert verdict.explanation.strip()
+
+
+# --- soft skills, which a profile has nowhere to record ------------------------
+
+
+def test_an_unevidenced_soft_skill_is_unknown_rather_than_a_gap() -> None:
+    """The asymmetry this file's own rule implies and the code used to miss.
+
+    `_match_by_text` already refuses to call a keyword hit a strong match, on
+    the grounds that a word in a project description is weak evidence. A word
+    *missing* is weak evidence too, and it used to produce GAP — the strongest
+    negative available — for a trait the profile has no field for.
+
+    Found on a real posting: three soft skills, all marked REQUIRED, carrying
+    2.00 apiece and 30% of the score between them, one of them scored zero for
+    the absence of the word "analytical".
+    """
+    result = verdict_for(
+        [requirement("Strong analytical and logical thinking", "SOFT_SKILL")],
+        profile(skill("Python"), with_experience=True),
+    )
+
+    assert result.status is MatchStatus.UNKNOWN
+
+
+def test_an_unevidenced_soft_skill_costs_less_than_a_real_gap() -> None:
+    """UNKNOWN carries its documented 35 rather than a gap's zero.
+
+    Not dropped from the number — that is NO_EVIDENCE's behaviour, and the
+    profile here is not empty. This is the same treatment work authorisation
+    already gets: counted, at the constant that says we could not tell, instead
+    of at the zero that says we looked and it was not there.
+
+    Compared against an identically weighted requirement the engine *can*
+    assess, so the assertion is about the change rather than about a constant.
+    """
+    soft = score_match(
+        match_requirements(
+            [
+                requirement("Python", order=0),
+                requirement("Strong analytical thinking", "SOFT_SKILL", order=1),
+            ],
+            profile(skill("Python"), with_experience=True),
+        )
+    )
+    assessable = score_match(
+        match_requirements(
+            [
+                requirement("Python", order=0),
+                requirement("Telecom billing", "DOMAIN_KNOWLEDGE", order=1),
+            ],
+            profile(skill("Python"), with_experience=True),
+        )
+    )
+
+    assert soft.overall_score is not None and assessable.overall_score is not None
+    assert soft.overall_score > assessable.overall_score
+
+
+def test_domain_knowledge_still_carries_a_real_gap() -> None:
+    """The other half of the same branch, and the reason this is not a blanket
+    change. A career profile does record the domains someone has worked in, so
+    finding no mention of telecom anywhere is genuine evidence about telecom.
+    """
+    result = verdict_for(
+        [requirement("Telecom billing systems", "DOMAIN_KNOWLEDGE")],
+        profile(skill("Python"), with_experience=True),
+    )
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_a_soft_skill_the_profile_does_mention_is_still_credited() -> None:
+    """Only the negative side changed. A keyword hit remains a PARTIAL_MATCH,
+    capped as it always was."""
+    result = verdict_for(
+        [requirement("Mentored engineers", "SOFT_SKILL")],
+        profile(skill("Python"), with_experience=True),
+    )
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+
+
+def test_a_soft_skill_can_never_block() -> None:
+    """Even promoted to CORE by a posting that insists on it, an unevidencable
+    trait must not cap the score — a blocker built from an absence the profile
+    cannot express is exactly what UNKNOWN exists to prevent."""
+    result = verdict_for(
+        [requirement("Exceptional communication", "SOFT_SKILL", importance="CORE")],
+        profile(skill("Python"), with_experience=True),
+    )
+
+    assert result.is_blocker is False

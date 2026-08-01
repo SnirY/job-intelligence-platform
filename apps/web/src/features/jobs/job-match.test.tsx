@@ -357,9 +357,35 @@ describe("requirements and evidence", () => {
 
     expect(screen.queryByText("Expert, 6 years")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /why\?/i }));
+    await userEvent.click(screen.getByRole("button", { name: /why this verdict/i }));
 
     expect(await screen.findByText("Expert, 6 years")).toBeInTheDocument();
+  });
+
+  it("makes the evidence control say what is behind it", async () => {
+    /* DEV-029. The test above proves the drawer opens, and could never ask
+       whether anyone would open it — it finds the control by accessible name,
+       which is knowing the answer in advance. The person who commissioned this
+       feature, told to look for it, could not find it.
+
+       So assert the parts that make it read as a control to someone who is not
+       looking for one: a name that says what opens rather than a bare "Why?",
+       a count so the click has a visible promise behind it, and the expanded
+       state a screen reader announces. */
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
+
+    const control = screen.getAllByRole("button", { name: /why this verdict/i })[0];
+
+    expect(control).toHaveAttribute("aria-expanded", "false");
+    expect(control).toHaveAccessibleName(expect.stringContaining("1"));
+
+    await userEvent.click(control);
+
+    expect(control).toHaveAttribute("aria-expanded", "true");
+    expect(control).toHaveAccessibleName(expect.stringMatching(/hide the evidence/i));
   });
 
   it("flags evidence the user has not confirmed", async () => {
@@ -392,7 +418,7 @@ describe("requirements and evidence", () => {
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    await userEvent.click(screen.getByRole("button", { name: /why\?/i }));
+    await userEvent.click(screen.getByRole("button", { name: /why this verdict/i }));
 
     expect(await screen.findByText("Not yet confirmed by you")).toBeInTheDocument();
   });

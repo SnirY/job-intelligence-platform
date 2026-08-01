@@ -24,7 +24,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -366,6 +366,69 @@ rather than a comment asking someone to remember.
 """
 
 
+def _named_in_title(needle: str, title: str) -> bool:
+    """Whether ``needle`` appears in ``title`` as a whole word.
+
+    Boundary-checked rather than a plain substring test, so "Go" does not match
+    "Google". Not a regex, because skill names contain characters a pattern
+    would have to escape — C++, C#, .NET, F#.
+    """
+    hay = title.casefold()
+    needle = needle.casefold().strip()
+    if not needle:
+        return False
+
+    found = hay.find(needle)
+    while found != -1:
+        before = hay[found - 1] if found > 0 else " "
+        end = found + len(needle)
+        after = hay[end] if end < len(hay) else " "
+        if not before.isalnum() and not after.isalnum():
+            return True
+        found = hay.find(needle, found + 1)
+    return False
+
+
+def _promote_title_skills(drafts: list[RequirementDraft], title: str) -> list[RequirementDraft]:
+    """A requirement the job title names is CORE, whatever the model said.
+
+    DEV-028. Across 31 requirements from two analyses of a real posting the
+    model assigned CORE **zero** times. The prompt asked it to "use sparingly",
+    which is a statement about frequency and not a test it could apply, so it
+    applied the only reading that always satisfies the instruction.
+
+    Two mechanisms depend on CORE and both were therefore dead: the 3.00
+    weight, the highest there is, and ``BLOCKER_CAP``, which
+    ``rules.can_block`` gates on CORE alone. Neither had ever applied to a real
+    match.
+
+    The prompt now gives a test instead of a frequency. This is the part that
+    does not depend on the model following it: a posting titled *Junior
+    Software Engineer C++* is defined by C++, and a candidate without it is not
+    a candidate for that job — which is exactly the case ``BLOCKER_CAP``
+    exists to catch.
+
+    Only promotes. A requirement the model already called CORE stays CORE, and
+    nothing is ever moved down here.
+    """
+    if not title.strip():
+        return drafts
+
+    promoted: list[RequirementDraft] = []
+    for draft in drafts:
+        name = draft.skill_name
+        if (
+            name
+            and draft.importance is not RequirementImportance.CORE
+            and _named_in_title(name, title)
+        ):
+            promoted.append(replace(draft, importance=RequirementImportance.CORE))
+            continue
+        promoted.append(draft)
+
+    return promoted
+
+
 def _strongest_per_skill(
     drafts: list[tuple[RequirementDraft, uuid.UUID | None]],
 ) -> list[RequirementDraft]:
@@ -425,8 +488,12 @@ def _persist_requirements(
     ]
     resolved = resolve_known_skills(session, names) if names else {}
 
+    # Promote before merging, so a mention the title makes core wins the merge
+    # rather than being dropped in favour of whichever came first.
+    promoted = _promote_title_skills(parse.validated.requirements, target.title)
+
     paired: list[tuple[RequirementDraft, uuid.UUID | None]] = []
-    for draft in parse.validated.requirements:
+    for draft in promoted:
         resolved_skill = resolved.get(draft.skill_name) if draft.skill_name else None
         paired.append((draft, resolved_skill.id if resolved_skill else None))
 
