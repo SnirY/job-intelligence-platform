@@ -76,6 +76,7 @@ export function JobIntelligence({ job }: { job: Job }) {
           onVersion={setVersion}
           onReanalyze={() => analyze.mutate()}
           reanalyzing={analyze.isPending}
+          rejected={analyze.isError}
         />
       ) : (
         view.job_status !== "PARSING" &&
@@ -99,6 +100,7 @@ function AnalysisView({
   onVersion,
   onReanalyze,
   reanalyzing,
+  rejected,
 }: {
   view: JobAnalysisView;
   analysis: JobAnalysis;
@@ -106,6 +108,10 @@ function AnalysisView({
   onVersion: (version: number | undefined) => void;
   onReanalyze: () => void;
   reanalyzing: boolean;
+  /** The last "Analyse again" was refused. The empty state already showed
+      this; a job that has been analysed once had nowhere to say it, so the
+      click looked like it had done nothing. */
+  rejected: boolean;
 }) {
   const isLatest = analysis.version === Math.max(...view.available_versions);
 
@@ -137,6 +143,13 @@ function AnalysisView({
       <Responsibilities view={view} />
 
       {analysis.warnings.length > 0 && <Warnings warnings={analysis.warnings} />}
+
+      {rejected && (
+        <Notice tone="warning">
+          That could not be started. If an analysis is already running, wait for it to finish and
+          try again.
+        </Notice>
+      )}
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 pt-6">

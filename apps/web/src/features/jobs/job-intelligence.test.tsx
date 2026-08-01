@@ -320,6 +320,35 @@ describe("a failed analysis", () => {
     expect(await screen.findByText(/took too long/)).toBeInTheDocument();
     expect(screen.getByText("Senior")).toBeInTheDocument();
   });
+
+  it("says so when Analyse again is refused", async () => {
+    /* Checklist item 2.5.4. A job with no analysis yet reports a refused
+       request through its empty state; a job that had already been analysed
+       had nowhere to put one, so a 409 — the response to asking while an
+       analysis is in flight — produced no change on screen whatsoever. The
+       user clicked, read the same page back, and concluded the button was
+       broken. */
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({ error: { message: "This job is already being analysed." } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: view() }) };
+      }),
+    );
+
+    renderWithQuery(<JobIntelligence job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /analyse again/i }));
+
+    expect(await screen.findByText(/could not be started/i)).toBeInTheDocument();
+    // The reading itself stays put. A refused request changes nothing.
+    expect(screen.getByText("Senior")).toBeInTheDocument();
+  });
 });
 
 // --- the analysis itself ------------------------------------------------------
