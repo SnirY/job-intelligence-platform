@@ -258,12 +258,21 @@ function Overview({ match }: { match: JobMatch }) {
             <p className="text-sm text-muted-foreground">{match.alignment_label}</p>
           </div>
 
-          <div>
-            <p className="text-xs text-muted-foreground">Recommendation</p>
-            <Badge variant={match.has_blockers ? "outline" : "default"} className="mt-1">
-              {RECOMMENDATION_LABELS[match.recommendation]}
-            </Badge>
-          </div>
+          {/* Withheld when nothing was scored, for the same reason the score
+              itself is null rather than 0: "not measured" is not a verdict.
+              The engine still stores a neutral CONSIDER so the column is never
+              null, but rendering it put "Worth considering" directly beside
+              "There is not enough in your profile yet to compare against this
+              job" — a recommendation made on no evidence, next to the sentence
+              saying there was none. */}
+          {match.overall_score !== null && (
+            <div>
+              <p className="text-xs text-muted-foreground">Recommendation</p>
+              <Badge variant={match.has_blockers ? "outline" : "default"} className="mt-1">
+                {RECOMMENDATION_LABELS[match.recommendation]}
+              </Badge>
+            </div>
+          )}
 
           <div>
             <p className="text-xs text-muted-foreground">Requirements checked</p>
