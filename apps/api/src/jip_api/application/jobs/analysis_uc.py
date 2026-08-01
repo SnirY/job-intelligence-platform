@@ -23,7 +23,7 @@ from jip_api.application.errors import ApplicationError, ResourceNotFoundError
 from jip_api.application.ownership import owned
 from jip_api.application.processing import jobs as jobs_uc
 from jip_api.domain.jobs.analysis import JobAnalysis, JobRequirement, JobResponsibility
-from jip_api.domain.jobs.models import Job
+from jip_api.domain.jobs.models import Job, JobProcessingStatus
 from jip_api.domain.processing.models import ProcessingJob, ProcessingJobKind
 from jip_api.infrastructure.tasks.dispatcher import TaskDispatcher
 
@@ -101,6 +101,7 @@ def start_analysis(
         entity_type=ENTITY_TYPE,
         entity_id=job.id,
     )
+
     session.commit()
 
     dispatch(session, dispatcher, processing_job)
@@ -108,7 +109,14 @@ def start_analysis(
 
 
 def dispatch(session: Session, dispatcher: TaskDispatcher, job: ProcessingJob) -> ProcessingJob:
-    """Enqueue an analysis, recording a queue outage as a retriable failure."""
+    """Enqueue an analysis, recording a queue outage as a retriable failure.
+
+    Also moves the job itself into a running state, because this is the one
+    place every analysis passes through — a first run and a retry both arrive
+    here, and the retry path had no other opportunity to say anything.
+    """
+    target = session.get(Job, job.entity_id)
+
     try:
         task = dispatcher.enqueue(ANALYZE_JOB_TASK, str(job.id))
     except Exception as exc:
@@ -122,10 +130,41 @@ def dispatch(session: Session, dispatcher: TaskDispatcher, job: ProcessingJob) -
                 details=f"{type(exc).__name__}: {exc}",
             ),
         )
+        if target is not None and target.status.has_content:
+            # Nothing was queued, so nothing will ever move this on — and the
+            # screen only renders a failure when the *job* says one happened.
+            # Left as it was, this outage would be invisible: an Analyse button
+            # that had apparently done nothing, twice.
+            target.status = JobProcessingStatus.ANALYSIS_FAILED
         session.commit()
         return job
 
     job.task_id = task.id
+
+    # Set by the request that queues the work rather than left to the worker's
+    # first write. Two things read this and both were broken while it was
+    # missing:
+    #
+    # 1. **The client's poll never started.** It begins polling when the status
+    #    says an analysis is running, and it evaluates that as soon as this
+    #    request returns — before any worker has touched the row. It read RAW,
+    #    concluded nothing was happening, and went quiet. The screen then sat
+    #    unchanged until some unrelated refetch happened to notice the finished
+    #    analysis, which reads exactly like the button having done nothing.
+    #
+    # 2. **The already-running guard could not fire.** `start_analysis` asks
+    #    whether an analysis is in flight, and nothing had ever put one in
+    #    flight, so the only thing stopping a second click was the worker
+    #    having already started. That window is milliseconds on an idle queue
+    #    and the whole backlog on a busy one — and every click through it is
+    #    another billed pair of model calls.
+    #
+    # PARSING rather than a queued-specific state: the worker writes the same
+    # value when it genuinely begins, so this is early rather than wrong, and
+    # "we are working on this" is what both readers need from it.
+    if target is not None:
+        target.status = JobProcessingStatus.PARSING
+
     session.commit()
     return job
 

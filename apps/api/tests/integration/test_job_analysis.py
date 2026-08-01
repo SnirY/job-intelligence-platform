@@ -13,6 +13,7 @@ here is to prove the API asked for the work. What these tests protect:
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -31,7 +32,7 @@ from jip_api.application.jobs.analysis_pipeline import run_analysis
 from jip_api.domain.ai.models import AIRun
 from jip_api.domain.career.skills import Skill
 from jip_api.domain.jobs.analysis import JobAnalysis, JobRequirement
-from jip_api.domain.processing.models import ProcessingJob
+from jip_api.domain.processing.models import ProcessingJob, ProcessingJobStatus
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import new_session, reset_engine_cache
 from jip_api.infrastructure.tasks.dispatcher import reset_task_caches
@@ -292,6 +293,112 @@ def test_queues_an_analysis(
     assert started["job_id"] == job_id
     assert started["status"] == "PENDING"
     assert dispatcher.calls[-1][0] == "jip_worker.tasks.jobs.run_job_analysis"
+
+
+def test_queuing_moves_the_job_into_a_running_state(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The request that queues the work says so, without waiting for a worker.
+
+    Found in checklist item 2.5.1: clicking Analyse produced no visible change
+    at all. The screen starts polling when this field says an analysis is
+    running and reads it the instant the POST returns — before any worker has
+    touched the row. It saw RAW, concluded nothing was happening, stopped, and
+    the result appeared only when some unrelated refetch stumbled over it.
+
+    Deliberately asserted without running the pipeline: that is the entire
+    window the bug lived in.
+    """
+    job_id = create_job(client, factory)
+
+    start(client, factory, job_id)
+
+    assert read(client, factory, job_id)["job_status"] == "PARSING"
+
+
+def test_a_second_analysis_is_refused_while_one_is_queued(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher
+) -> None:
+    """The already-running guard, at the moment it has to hold.
+
+    It asks whether an analysis is in flight, and nothing used to put one in
+    flight, so it could only ever be answered by a worker that had already
+    started. On an idle queue that window is milliseconds; on a busy one it is
+    the whole backlog — and every click through it is another billed pair of
+    model calls on the same text.
+    """
+    job_id = create_job(client, factory)
+    start(client, factory, job_id)
+    queued = len(dispatcher.calls)
+
+    body = start(client, factory, job_id, expect=409)
+
+    assert "already being analysed" in body["error"]["message"]
+    assert len(dispatcher.calls) == queued, "the refused request must not also queue work"
+    assert read(client, factory, job_id)["can_analyze"] is False
+
+
+def test_a_queue_outage_leaves_the_job_analysable(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher
+) -> None:
+    """Nothing was queued, so nothing will ever move it on.
+
+    The other half of the state above: setting it optimistically means the one
+    path that never reaches a worker has to put it back, or the job claims to
+    be analysing forever and the guard refuses every future attempt.
+    """
+    job_id = create_job(client, factory)
+    dispatcher.fail = True
+
+    start(client, factory, job_id)
+
+    view = read(client, factory, job_id)
+    assert view["job_status"] == "ANALYSIS_FAILED"
+    assert view["can_analyze"] is True
+
+
+def test_a_stalled_analysis_is_reaped_by_the_screen_that_watches_it(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """DEV-013's recovery, reachable from the analysis screen for the first time.
+
+    That issue put the reap behind ``GET /processing-jobs/{id}`` because the
+    frontend polls it — true of resume import, never true of job analysis,
+    which watches this endpoint instead. ``reaper._release_entity`` has had a
+    JOB_ANALYSIS branch since it closed and nothing could reach it.
+
+    Found in checklist item 2.5.4 by stopping the worker mid-analysis: the
+    attempt sat RUNNING for an hour, the job stayed PARSING, and because a new
+    analysis is refused while one is in flight, the job was permanently
+    unanalysable with no way back short of SQL.
+    """
+    job_id = create_job(client, factory)
+    started = start(client, factory, job_id)
+
+    # What a killed worker leaves behind: started, never finished, and long
+    # enough ago to be past the threshold.
+    stalled_at = dt.datetime.now(tz=dt.UTC) - dt.timedelta(
+        seconds=get_settings().processing_running_timeout_seconds + 60
+    )
+    session = new_session()
+    try:
+        record = session.get(ProcessingJob, uuid.UUID(started["processing_job_id"]))
+        assert record is not None
+        record.status = ProcessingJobStatus.RUNNING
+        record.started_at = stalled_at
+        session.commit()
+    finally:
+        session.close()
+
+    view = read(client, factory, job_id)
+
+    assert view["processing"]["status"] == "FAILED"
+    assert view["processing"]["error_code"] == "STALLED"
+    assert view["processing"]["is_retriable"] is True
+    # The job has to come back too, or the screen shows a spinner beside a
+    # retry button and the retry is refused by the in-flight guard.
+    assert view["job_status"] == "ANALYSIS_FAILED"
+    assert view["can_analyze"] is True
 
 
 def test_refuses_to_analyse_a_job_with_no_description(

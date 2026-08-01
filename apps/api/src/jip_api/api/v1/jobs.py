@@ -24,6 +24,7 @@ from jip_api.application.jobs import creation as creation_uc
 from jip_api.application.jobs import importing as importing_uc
 from jip_api.application.jobs import queries as queries_uc
 from jip_api.application.jobs import updates as updates_uc
+from jip_api.application.processing import reaper
 from jip_api.core.responses import CollectionResponse, DataResponse, PaginationMeta
 from jip_api.domain.career.history import EmploymentType
 from jip_api.domain.career.models import Seniority
@@ -43,6 +44,7 @@ from jip_api.domain.jobs.models import (
 from jip_api.domain.processing.models import ProcessingJobStatus, ProcessingStep
 from jip_api.infrastructure.db.session import get_session
 from jip_api.infrastructure.tasks.dispatcher import TaskDispatcher
+from jip_config import get_settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -632,6 +634,12 @@ def read_analysis(
     """
     job = queries_uc.get_job(session, user.id, job_id)
 
+    # Before anything reads `job.status`: reaping a stalled attempt rewrites it,
+    # and evaluating the two in argument order left the response carrying the
+    # status from a moment earlier — a job reported as still PARSING beside a
+    # processing record that had just been failed.
+    processing = _processing_state(session, user.id, job_id)
+
     analysis = (
         analysis_uc.get_analysis_version(session, user.id, job_id, version)
         if version is not None
@@ -650,7 +658,7 @@ def read_analysis(
             responsibilities=[
                 ResponsibilityPayload.model_validate(row) for row in responsibilities
             ],
-            processing=_processing_state(session, user.id, job_id),
+            processing=processing,
             is_stale=analysis_uc.is_stale(job, analysis),
             available_versions=analysis_uc.analysis_versions(session, user.id, job_id),
             can_analyze=_can_analyze(job),
@@ -798,5 +806,31 @@ def _can_analyze(job: Job) -> bool:
 def _processing_state(
     session: Session, user_id: uuid.UUID, job_id: uuid.UUID
 ) -> ProcessingStatePayload | None:
+    """The latest analysis attempt, with a stalled one failed on the way past.
+
+    Reaping here as well as in ``GET /processing-jobs/{id}`` because this is
+    what the analysis screen actually polls. DEV-013 put the recovery behind
+    the processing-jobs route on the reasoning that the frontend polls it —
+    true of resume import, never true of job analysis, which watches this
+    endpoint instead. ``reaper._release_entity`` has had a JOB_ANALYSIS branch
+    since that issue closed and nothing could reach it.
+
+    Found by stopping the worker mid-analysis during checklist item 2.5.4: the
+    attempt sat RUNNING for an hour, the job stayed PARSING, and because
+    ``start_analysis`` refuses to start one while another is in flight, the job
+    was permanently unanalysable with no way back short of SQL.
+    """
     record = analysis_uc.latest_processing_job(session, user_id, job_id)
-    return ProcessingStatePayload.model_validate(record) if record else None
+    if record is None:
+        return None
+
+    settings = get_settings()
+    if reaper.reap_if_stalled(
+        session,
+        record,
+        pending_timeout_seconds=settings.processing_pending_timeout_seconds,
+        running_timeout_seconds=settings.processing_running_timeout_seconds,
+    ):
+        session.commit()
+
+    return ProcessingStatePayload.model_validate(record)
