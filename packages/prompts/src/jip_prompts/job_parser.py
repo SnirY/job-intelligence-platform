@@ -53,8 +53,12 @@ communication skills" is one soft skill, not three.
 This is the field most easily got wrong, and the one that does the most damage \
 when it is.
 
-- `CORE` — the posting calls it essential, or the role plainly cannot be done \
-without it. Use sparingly.
+- `CORE` — the posting marks it as mandatory in its own words ("Mandatory", \
+"Must have", "essential", "no exceptions"), **or** the requirement names \
+something that also appears in the job title. These are the ones whose absence \
+makes an application pointless. Most postings have one to three; none at all \
+is normal for a vaguely written posting, and more than five means you have \
+marked ordinary requirements as core.
 - `REQUIRED` — stated as a requirement. "Must have", "required", "you have", \
 or listed under a heading like "Requirements".
 - `PREFERRED` — "preferred", "nice to have", "a plus", "bonus", "ideally", \
