@@ -3,6 +3,7 @@
 import {
   ANALYZED_SENIORITY_LABELS,
   IMPORTANCE_LABELS,
+  isAnalysisRunning,
   isMandatory,
   REQUIREMENT_TYPE_LABELS,
   REQUIREMENT_TYPE_ORDER,
@@ -11,7 +12,10 @@ import {
   type JobAnalysis,
   type JobAnalysisView,
   type JobRequirement,
+  type AnalysisProcessingState,
+  type JobStatus,
   type RequirementType,
+  type RunningAnalysisStatus,
 } from "@jip/shared-types";
 import { AlertTriangle, Loader2, Quote, RotateCw, Sparkles } from "lucide-react";
 import { useState } from "react";
@@ -52,21 +56,28 @@ export function JobIntelligence({ job }: { job: Job }) {
   }
 
   const view = query.data;
+  const running = isAnalysisRunning(view.job_status);
+
+  // Progress and failure both belong beside the control that caused them.
+  // While an analysis is on screen that control is "Analyse again", at the
+  // bottom of a list that can run to several screens — and reporting a click
+  // there by changing something at the top means reporting it nowhere the
+  // person who clicked is looking.
+  const attachedToTheReading = Boolean(view.analysis);
+
+  const feedback = (
+    <AnalysisFeedback
+      status={view.job_status}
+      processing={view.processing}
+      rejected={analyze.isError}
+      retryPending={analyze.isPending}
+      onRetry={() => analyze.mutate()}
+    />
+  );
 
   return (
     <div className="space-y-4">
-      {view.job_status === "PARSING" || view.job_status === "ANALYZING" ? (
-        <RunningNotice status={view.job_status} />
-      ) : null}
-
-      {view.job_status === "ANALYSIS_FAILED" && (
-        <FailedNotice
-          message={view.processing?.error_message ?? null}
-          retriable={view.processing?.is_retriable ?? true}
-          pending={analyze.isPending}
-          onRetry={() => analyze.mutate()}
-        />
-      )}
+      {!attachedToTheReading && feedback}
 
       {view.analysis ? (
         <AnalysisView
@@ -75,12 +86,11 @@ export function JobIntelligence({ job }: { job: Job }) {
           viewingVersion={version}
           onVersion={setVersion}
           onReanalyze={() => analyze.mutate()}
-          reanalyzing={analyze.isPending}
-          rejected={analyze.isError}
+          reanalyzing={analyze.isPending || running}
+          feedback={feedback}
         />
       ) : (
-        view.job_status !== "PARSING" &&
-        view.job_status !== "ANALYZING" && (
+        !running && (
           <EmptyState
             canAnalyze={view.can_analyze}
             pending={analyze.isPending}
@@ -93,6 +103,56 @@ export function JobIntelligence({ job }: { job: Job }) {
   );
 }
 
+/**
+ * What is happening to the analysis right now, wherever it needs to be said.
+ *
+ * One component for running, failed and refused rather than three rendered in
+ * three places, because the rule is about *position*: this is mounted next to
+ * whichever button the user pressed, and the caller decides where that is.
+ *
+ * Renders nothing when there is nothing to report, so a caller can mount it
+ * unconditionally.
+ */
+function AnalysisFeedback({
+  status,
+  processing,
+  rejected,
+  retryPending,
+  onRetry,
+}: {
+  status: JobStatus;
+  processing: AnalysisProcessingState | null;
+  rejected: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
+}) {
+  if (isAnalysisRunning(status)) {
+    return <RunningNotice status={status} processing={processing} />;
+  }
+
+  if (status === "ANALYSIS_FAILED") {
+    return (
+      <FailedNotice
+        message={processing?.error_message ?? null}
+        retriable={processing?.is_retriable ?? true}
+        pending={retryPending}
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  if (rejected) {
+    return (
+      <Notice tone="warning">
+        That could not be started. If an analysis is already running, wait for it to finish and try
+        again.
+      </Notice>
+    );
+  }
+
+  return null;
+}
+
 function AnalysisView({
   view,
   analysis,
@@ -100,7 +160,7 @@ function AnalysisView({
   onVersion,
   onReanalyze,
   reanalyzing,
-  rejected,
+  feedback,
 }: {
   view: JobAnalysisView;
   analysis: JobAnalysis;
@@ -108,10 +168,10 @@ function AnalysisView({
   onVersion: (version: number | undefined) => void;
   onReanalyze: () => void;
   reanalyzing: boolean;
-  /** The last "Analyse again" was refused. The empty state already showed
-      this; a job that has been analysed once had nowhere to say it, so the
-      click looked like it had done nothing. */
-  rejected: boolean;
+  /** Progress, failure, or a refusal — rendered beside the button rather than
+      at the top of the panel. With a long requirement list between them, the
+      top of the panel is off screen when "Analyse again" is pressed. */
+  feedback: React.ReactNode;
 }) {
   const isLatest = analysis.version === Math.max(...view.available_versions);
 
@@ -144,44 +204,41 @@ function AnalysisView({
 
       {analysis.warnings.length > 0 && <Warnings warnings={analysis.warnings} />}
 
-      {rejected && (
-        <Notice tone="warning">
-          That could not be started. If an analysis is already running, wait for it to finish and
-          try again.
-        </Notice>
-      )}
-
       <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 pt-6">
-          <Button type="button" variant="secondary" disabled={reanalyzing} onClick={onReanalyze}>
-            <RotateCw aria-hidden className="size-4" />
-            {reanalyzing ? "Starting…" : "Analyse again"}
-          </Button>
+        <CardContent className="space-y-4 pt-6">
+          {feedback}
 
-          {view.available_versions.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Earlier readings:</span>
-              {view.available_versions.map((number) => (
-                <button
-                  key={number}
-                  type="button"
-                  aria-current={number === analysis.version}
-                  className={
-                    number === analysis.version
-                      ? "rounded border px-2 py-0.5 text-xs font-medium"
-                      : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                  }
-                  onClick={() => onVersion(number === viewingVersion ? undefined : number)}
-                >
-                  v{number}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="secondary" disabled={reanalyzing} onClick={onReanalyze}>
+              <RotateCw aria-hidden className={reanalyzing ? "size-4 animate-spin" : "size-4"} />
+              {reanalyzing ? "Analysing…" : "Analyse again"}
+            </Button>
+
+            {view.available_versions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Earlier readings:</span>
+                {view.available_versions.map((number) => (
+                  <button
+                    key={number}
+                    type="button"
+                    aria-current={number === analysis.version}
+                    className={
+                      number === analysis.version
+                        ? "rounded border px-2 py-0.5 text-xs font-medium"
+                        : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                    }
+                    onClick={() => onVersion(number === viewingVersion ? undefined : number)}
+                  >
+                    v{number}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Provenance, in small print. Which prompt and model produced a
               reading is what makes a disagreement with it actionable. */}
-          <p className="w-full text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Read by {analysis.model} using {analysis.parse_prompt_version}
             {analysis.analysis_prompt_version && ` and ${analysis.analysis_prompt_version}`}.
           </p>
@@ -449,15 +506,62 @@ function Warnings({ warnings }: { warnings: string[] }) {
   );
 }
 
-function RunningNotice({ status }: { status: "PARSING" | "ANALYZING" }) {
+const RUNNING_STEPS = {
+  PARSING: { number: 1, label: "Reading the posting for what it asks for" },
+  ANALYZING: { number: 2, label: "Working out what kind of role this is" },
+} as const;
+
+const RUNNING_STEP_COUNT = 2;
+
+/**
+ * An analysis in flight.
+ *
+ * Says which of the two steps is running and how far through, because
+ * "working…" for up to a minute with no change is indistinguishable from
+ * nothing happening — which is exactly how this read before the status was
+ * observable at all (DEV-024).
+ */
+function RunningNotice({
+  status,
+  processing,
+}: {
+  status: RunningAnalysisStatus;
+  processing: AnalysisProcessingState | null;
+}) {
+  const step = RUNNING_STEPS[status];
+  const attempt = processing?.attempts ?? 0;
+
   return (
     <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <Loader2 aria-hidden className="size-4 animate-spin" />
-        <p className="text-sm" aria-live="polite">
-          {status === "PARSING"
-            ? "Reading the posting. This page updates on its own when it finishes."
-            : "Working out what kind of role this is."}
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center gap-3">
+          <Loader2 aria-hidden className="size-4 shrink-0 animate-spin" />
+          <p className="text-sm font-medium" aria-live="polite">
+            Step {step.number} of {RUNNING_STEP_COUNT}: {step.label}
+          </p>
+        </div>
+
+        {/* Two segments rather than a percentage. There are exactly two steps
+            and no progress within one, so a moving bar would be inventing
+            detail the backend does not have. */}
+        <div className="flex gap-1" aria-hidden>
+          {[1, 2].map((number) => (
+            <div
+              key={number}
+              className={
+                number <= step.number
+                  ? "h-1 flex-1 rounded-full bg-primary"
+                  : "h-1 flex-1 rounded-full bg-muted"
+              }
+            />
+          ))}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {attempt > 1
+            ? `Attempt ${attempt} — the first one did not work. `
+            : "This usually takes under a minute. "}
+          The page updates on its own; you can leave it or come back later.
         </p>
       </CardContent>
     </Card>
