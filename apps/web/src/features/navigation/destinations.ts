@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export const CURRENT_PHASE = 9;
+export const CURRENT_PHASE = 10;
 /** The last phase that has shipped.
  *
  * Exists because it was previously written out by hand on the landing page and
@@ -87,7 +87,7 @@ export const DESTINATIONS: readonly Destination[] = [
     label: "Insights",
     icon: LineChart,
     availableInPhase: 10,
-    landingSummary: "career insights",
+    landingSummary: "see what the jobs you saved keep asking for",
   },
   {
     href: "/settings",
