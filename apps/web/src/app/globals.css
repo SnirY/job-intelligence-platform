@@ -97,4 +97,32 @@
     color: var(--color-foreground);
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Reduced motion, which docs/08-ui-ux.md lists under Accessibility and which
+     nothing honoured.
+
+     Written once, globally, rather than as a `motion-safe:` variant on each
+     spinner. There were ten `animate-spin` uses across the app and every new
+     loading state adds another, so a per-call-site rule is a list somebody has
+     to keep adding to — and the one they forget is the one that keeps moving
+     for a user who asked it not to.
+
+     `!important` because Tailwind's animation utilities are equally specific
+     and would otherwise win depending on rule order.
+
+     Not `animation: none`: that can collapse an element whose visible state
+     comes from a keyframe. Running exactly one near-instant iteration leaves
+     the spinner on screen, still saying "working", and still. The loading
+     copy beside it carries the meaning either way — no state here is conveyed
+     by movement alone. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

@@ -236,15 +236,18 @@ def test_seeded_aliases_resolve_to_the_canonical_skill(
 def test_distinct_skills_stay_distinct(client: TestClient, factory: TokenFactory) -> None:
     """Normalization keeps + and #, or C, C++, and C# would collapse into one.
 
-    Counts the delta, because the seed migration has already populated the
-    catalogue with common skills.
+    Asserted as three distinct canonical ids rather than as three *new* rows.
+    The delta was a proxy that held only while the catalogue was sparse enough
+    not to contain them — DEV-032 seeded C++ and C#, and counting new rows then
+    measured how much of the catalogue already existed rather than whether the
+    three names stayed apart.
     """
-    before = canonical_count()
+    claimed = [
+        create(client, factory, ALICE, "skills", {"name": name})["skill_id"]
+        for name in ("C", "C++", "C#")
+    ]
 
-    for name in ("C", "C++", "C#"):
-        create(client, factory, ALICE, "skills", {"name": name})
-
-    assert canonical_count() - before == 3
+    assert len(set(claimed)) == 3, "C, C++ and C# collapsed into fewer skills"
 
 
 def test_the_same_skill_cannot_be_claimed_twice(client: TestClient, factory: TokenFactory) -> None:
