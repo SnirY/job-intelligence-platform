@@ -263,6 +263,26 @@ Recommended sections:
 - project opportunities
 - progress
 
+## Settings
+
+Career preferences, and nothing that belongs to another screen. Account
+identity and sign-out stay with the avatar menu, where Clerk owns them.
+
+Sections:
+
+- work mode and employment type
+- locations, and whether relocation is open
+- salary expectations
+- excluded role types
+
+Every field is optional and blank must read as *no constraint*, never as a
+constraint of zero — the same rule the match panel applies to an absent score.
+
+The screen states what reads each preference. A user who sets "remote only" and
+then sees an on-site job recommended has been told something untrue by
+omission, and the fix is not to hide the recommendation but to say which
+preferences it accounted for. Nothing here filters silently.
+
 ## Signature visualizations
 
 ### Career Opportunity Map

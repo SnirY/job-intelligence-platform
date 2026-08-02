@@ -112,7 +112,25 @@ POST   /api/v1/career/experiences
 
 GET    /api/v1/career/education
 POST   /api/v1/career/education
+
+GET    /api/v1/career/preferences
+PATCH  /api/v1/career/preferences
 ```
+
+Preferences sit under `career`, not under a `settings` namespace, because
+`docs/03-domain-model.md` makes `CareerPreferences` part of the career profile
+aggregate. `/settings` is the screen that edits them; it is not a second
+domain.
+
+There is one row per user and it is created with the profile, so `GET` returns
+an all-null record rather than 404 — a user who has never opened the screen has
+*no constraints*, which is a different answer from *no preferences exist*.
+`PATCH` is partial: omitting a field leaves it, and clearing one requires
+sending null explicitly.
+
+Whatever reads these must say so where the user can see it. `docs/05` lists user
+preferences among the inputs a recommendation considers, and a preference that
+is stored and then silently ignored is worse than one that was never offered.
 
 ## Resume import
 

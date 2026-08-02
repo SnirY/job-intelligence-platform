@@ -292,6 +292,33 @@ Focus:
 - UX polish
 - accessibility
 
+Slices:
+
+- settings and career preferences
+
+Settings is listed as a screen in `docs/02-user-flows.md` and
+`docs/08-ui-ux.md`, and no phase ever claimed it. That omission was invisible
+for eleven phases because the page renders a placeholder, which looks
+deliberate.
+
+It is not a new feature. `CareerPreferences` is defined in
+`docs/03-domain-model.md`, `career_preferences` is in the MVP schema there,
+`docs/01-product-requirements.md` lists career preferences inside the Career
+Profile module, Flow 1 ends onboarding with "Set Preferences", and
+`docs/05-ai-and-matching.md` names user preferences among the inputs a
+recommendation considers. All of that was written and none of it was built —
+see DEV-035.
+
+Phase 2's slice list is where it should have been, and this is the first phase
+after noticing.
+
+Exit criteria:
+
+Work mode, employment type, location, salary, relocation and excluded role
+types are stored, editable, and read by whatever claims to read them. A
+preference the product records and then ignores is worse than one it never
+offered, because the user believes it was taken into account.
+
 ## Codex task size
 
 Do not assign giant tasks such as “Build Phase 6.”
