@@ -42,7 +42,7 @@ def parse_structured_output(text: str) -> dict[str, Any]:
         raise AIError(
             AIFailureCode.INVALID_OUTPUT,
             "The model returned output that is not valid JSON.",
-            details=f"{exc} | first 200 chars: {candidate[:200]!r}",
+            details=f"{exc} | {_shape_of(candidate)}",
         ) from exc
 
     if not isinstance(parsed, dict):
@@ -53,6 +53,26 @@ def parse_structured_output(text: str) -> dict[str, Any]:
         )
 
     return parsed
+
+
+def _shape_of(candidate: str) -> str:
+    """What the response looked like, without saying what it said.
+
+    This used to be ``first 200 chars: {candidate!r}``, and ``AIError.details``
+    is logged by ``processing.jobs.mark_failed``. On a resume parse the model's
+    output *is* the user's resume — name, employers, dates — so those two
+    hundred characters put personal data into the application log, which
+    ``docs/11-engineering-standards.md`` forbids twice over: no full resume
+    text, no unnecessary personal details.
+
+    Removing it outright was the wrong fix. DEV-015 is the case: a failure
+    whose cause was "credit balance too low" and nothing recorded it. A
+    malformed-JSON failure is diagnosed from *structure* — the decode error
+    already carries the line, column and reason, and what it lacks is whether
+    the response was truncated, empty-ish, or never an object at all. That is
+    exactly what this reports, and none of it is content.
+    """
+    return f"{len(candidate)} chars, opens {candidate[:1]!r}, closes {candidate[-1:]!r}"
 
 
 # Keywords a provider's constrained decoder does not implement. Sending them is
