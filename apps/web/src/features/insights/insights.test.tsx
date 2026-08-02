@@ -30,13 +30,34 @@ function entry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Demand and gaps are separate routes, so the mock has to tell them apart. */
-function serving(demand: Record<string, unknown>, gaps: Record<string, unknown>) {
-  return vi.fn(async (url: string) => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ data: String(url).includes("/gaps") ? gaps : demand }),
-  }));
+const EMPTY_ROLES = { minimum_jobs: 3, roles: [] };
+const EMPTY_FUNNEL = {
+  applications: 0,
+  minimum_applications: 5,
+  rates_are_meaningful: false,
+  stages: [],
+};
+const EMPTY_RESUMES = { minimum_applications: 5, rates_are_meaningful: false, versions: [] };
+
+/** Five separate routes, so the mock has to tell them apart by URL. */
+function serving(
+  demand: Record<string, unknown>,
+  gaps: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+) {
+  return vi.fn(async (url: string) => {
+    const path = String(url);
+    const body = path.includes("/gaps")
+      ? gaps
+      : path.includes("/roles")
+        ? (extra.roles ?? EMPTY_ROLES)
+        : path.includes("/funnel")
+          ? (extra.funnel ?? EMPTY_FUNNEL)
+          : path.includes("/resumes")
+            ? (extra.resumes ?? EMPTY_RESUMES)
+            : demand;
+    return { ok: true, status: 200, json: async () => ({ data: body }) };
+  });
 }
 
 function report(overrides: Record<string, unknown> = {}) {
@@ -213,5 +234,157 @@ describe("nothing to read yet", () => {
 
     expect(await screen.findByText(/Could not load your insights/i)).toBeInTheDocument();
     expect(screen.getByText(/data is unaffected/i)).toBeInTheDocument();
+  });
+});
+
+// --- role analysis, the funnel, and resumes -----------------------------------
+
+describe("role analysis", () => {
+  it("shows a dash rather than an average it cannot support", async () => {
+    /* One job in a family is one job wearing a percentage sign. Zero would be
+       a verdict on fit; a dash is a statement about how much data there is. */
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        roles: {
+          minimum_jobs: 3,
+          roles: [
+            {
+              role_family: "BACKEND",
+              jobs: 1,
+              matched: 1,
+              average_alignment: null,
+              applications: 0,
+            },
+          ],
+        },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText("Backend engineering")).toBeInTheDocument();
+    expect(screen.getByText("too few to average")).toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+  });
+
+  it("shows the average once there is enough behind it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        roles: {
+          minimum_jobs: 3,
+          roles: [
+            {
+              role_family: "BACKEND",
+              jobs: 4,
+              matched: 4,
+              average_alignment: 62,
+              applications: 2,
+            },
+          ],
+        },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText("62%")).toBeInTheDocument();
+    expect(screen.getByText("average alignment")).toBeInTheDocument();
+  });
+});
+
+describe("the funnel", () => {
+  /* Chosen so the derived rates cannot collide with the demand fixture's own
+     percentage — 1 of 4 is 25%, and nothing else on the page says 25%. */
+  const stages = [
+    { key: "applied", label: "Applied", reached: 4 },
+    { key: "responded", label: "Got a response", reached: 2 },
+    { key: "interviewed", label: "Interviewed", reached: 1 },
+    { key: "offered", label: "Offer", reached: 0 },
+  ];
+
+  it("shows counts and withholds rates below the threshold", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        funnel: {
+          applications: 3,
+          minimum_applications: 5,
+          rates_are_meaningful: false,
+          stages,
+        },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText("Applied")).toBeInTheDocument();
+    expect(screen.getByText(/Rates need 5 applications/i)).toBeInTheDocument();
+    expect(screen.queryByText("25%")).not.toBeInTheDocument();
+  });
+
+  it("divides once there is enough to divide by", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        funnel: {
+          applications: 6,
+          minimum_applications: 5,
+          rates_are_meaningful: true,
+          stages,
+        },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText("25%")).toBeInTheDocument();
+    expect(screen.queryByText(/Rates need/i)).not.toBeInTheDocument();
+  });
+
+  it("says the counts come from history, not current status", async () => {
+    /* An application rejected after an interview still counts at every stage
+       it passed through. The copy has to say so, because a funnel that read
+       current statuses would look identical and be wrong. */
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        funnel: { applications: 3, minimum_applications: 5, rates_are_meaningful: false, stages },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText(/ended in a rejection still counts/i)).toBeInTheDocument();
+  });
+});
+
+describe("resume performance", () => {
+  it("does not claim the resume caused the outcome", async () => {
+    // docs/07: associations, not causal claims.
+    vi.stubGlobal(
+      "fetch",
+      serving(report(), gapReport({ gaps: [] }), {
+        resumes: {
+          minimum_applications: 5,
+          rates_are_meaningful: false,
+          versions: [
+            {
+              resume_version_id: "rv-1",
+              label: "Version 2",
+              sent: 3,
+              reached_interview: 1,
+              offers: 0,
+            },
+          ],
+        },
+      }),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText("Version 2")).toBeInTheDocument();
+    expect(screen.getByText(/Not a claim that the resume caused it/i)).toBeInTheDocument();
   });
 });

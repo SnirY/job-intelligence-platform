@@ -41,6 +41,7 @@ API_ROOT = Path(__file__).resolve().parents[2]
 INSIGHTS = "/api/v1/insights"
 JOBS = "/api/v1/jobs"
 CAREER = "/api/v1/career"
+APPLICATIONS = "/api/v1/applications"
 ALICE = "user_alice"
 BOB = "user_bob"
 
@@ -418,25 +419,106 @@ def test_the_overview_agrees_with_the_lists_behind_it(
 # --- what this phase deliberately does not serve ------------------------------
 
 
-def test_role_analysis_is_not_served(client: TestClient, factory: TokenFactory) -> None:
-    """docs/10 lists it and Phase 10 does not build it: role analysis averages
-    alignment scores, and DEV-026 measured importance — which those scores are
-    weighted by — moving on unchanged input.
+def test_a_role_family_below_the_threshold_has_no_average(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """One job in a family is one job wearing a percentage sign.
 
-    Absent rather than empty. An endpoint returning zeroes cannot be told apart
-    from one that is broken, and a route that exists is a promise.
+    Null rather than the number, and never zero — zero would be a claim about
+    fit rather than about how much data there is.
     """
-    response = client.get(f"{INSIGHTS}/roles", headers=auth(factory))
+    add_skill(client, factory, "Python")
+    job_id = analysed_job(client, factory)
+    client.post(f"{JOBS}/{job_id}/match", headers=auth(factory))
 
-    assert response.status_code == 404
+    roles = get(client, factory, "/roles")["roles"]
+
+    assert len(roles) == 1
+    assert roles[0]["jobs"] == 1
+    assert roles[0]["average_alignment"] is None
 
 
-def test_the_application_funnel_is_not_served(client: TestClient, factory: TokenFactory) -> None:
-    """Stable inputs, but nothing to divide by yet. docs/07 requires explicit
-    minimum-data thresholds and a conversion rate is the clearest case."""
-    response = client.get(f"{INSIGHTS}/applications/funnel", headers=auth(factory))
+def test_the_role_threshold_is_reported(client: TestClient, factory: TokenFactory) -> None:
+    analysed_job(client, factory)
 
-    assert response.status_code == 404
+    assert get(client, factory, "/roles")["minimum_jobs"] >= 2
+
+
+def test_the_funnel_counts_stages_without_dividing_them(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The counts are facts and are always shown. The rates are not computed
+    below the threshold, and the flag says so rather than the client guessing.
+    """
+    job_id = analysed_job(client, factory)
+    created = client.post(APPLICATIONS, headers=auth(factory), json={"job_id": job_id})
+    assert created.status_code == 201, created.text
+
+    funnel = get(client, factory, "/applications/funnel")
+
+    assert funnel["applications"] == 1
+    assert funnel["rates_are_meaningful"] is False
+    assert [stage["key"] for stage in funnel["stages"]] == [
+        "applied",
+        "responded",
+        "interviewed",
+        "offered",
+    ]
+
+
+def test_a_rejected_application_still_counts_as_having_applied(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The bug a funnel over current statuses would have.
+
+    An application rejected after an interview sits at REJECTED. Reading
+    current status alone would report that it never applied and never
+    interviewed — wrong for the majority of a real search, and wrong in the
+    flattering direction. The stages come from `application_events`, which
+    Phase 8 writes on every move and never rewrites.
+    """
+    job_id = analysed_job(client, factory)
+    created = client.post(APPLICATIONS, headers=auth(factory), json={"job_id": job_id})
+    application_id = created.json()["data"]["id"]
+
+    for status in ("INTERESTED", "PREPARING", "READY_TO_APPLY"):
+        moved = client.patch(
+            f"{APPLICATIONS}/{application_id}/status",
+            headers=auth(factory),
+            json={"status": status},
+        )
+        assert moved.status_code == 200, moved.text
+
+    applied = client.post(f"{APPLICATIONS}/{application_id}/apply", headers=auth(factory), json={})
+    assert applied.status_code == 200, applied.text
+
+    for status in ("HR_SCREEN", "TECHNICAL_INTERVIEW", "REJECTED"):
+        moved = client.patch(
+            f"{APPLICATIONS}/{application_id}/status",
+            headers=auth(factory),
+            json={"status": status},
+        )
+        assert moved.status_code == 200, moved.text
+
+    stages = {
+        stage["key"]: stage["reached"]
+        for stage in get(client, factory, "/applications/funnel")["stages"]
+    }
+
+    assert stages["applied"] == 1, "a rejection does not un-apply an application"
+    assert stages["responded"] == 1
+    assert stages["interviewed"] == 1
+    assert stages["offered"] == 0
+
+
+def test_resume_performance_lists_only_versions_actually_sent(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """A resume nobody sent has no performance, and listing it at zero would
+    read as a verdict on the document rather than on the absence of data."""
+    analysed_job(client, factory)
+
+    assert get(client, factory, "/resumes")["versions"] == []
 
 
 # --- ownership ----------------------------------------------------------------

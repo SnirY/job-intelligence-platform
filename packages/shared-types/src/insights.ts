@@ -1,4 +1,4 @@
-import type { RequirementImportance } from "./jobs";
+import type { RequirementImportance, RoleFamily } from "./jobs";
 
 /**
  * How much of a gap a skill is, from `docs/07`.
@@ -64,4 +64,52 @@ export interface InsightsOverview extends Sampled {
   gaps_found: number;
   top_skills: SkillDemandEntry[];
   top_gaps: SkillDemandEntry[];
+}
+
+/** One role family, and how the user's jobs in it have gone. */
+export interface RoleInsight {
+  role_family: RoleFamily;
+  jobs: number;
+  matched: number;
+  /** Null below the threshold, and null when nothing in the family scored.
+      Never zero — that would be a claim about fit, not about data. */
+  average_alignment: number | null;
+  applications: number;
+}
+
+export interface RoleReport {
+  minimum_jobs: number;
+  roles: RoleInsight[];
+}
+
+export interface FunnelStage {
+  key: string;
+  label: string;
+  /** Applications that got *at least* this far, read from their history —
+      not their current status, which would report every rejection as never
+      having applied. */
+  reached: number;
+}
+
+export interface FunnelReport {
+  applications: number;
+  minimum_applications: number;
+  /** Whether the client may divide these counts. Decided server-side so the
+      threshold lives in one place. */
+  rates_are_meaningful: boolean;
+  stages: FunnelStage[];
+}
+
+export interface ResumeInsight {
+  resume_version_id: string;
+  label: string;
+  sent: number;
+  reached_interview: number;
+  offers: number;
+}
+
+export interface ResumePerformanceReport {
+  minimum_applications: number;
+  rates_are_meaningful: boolean;
+  versions: ResumeInsight[];
 }

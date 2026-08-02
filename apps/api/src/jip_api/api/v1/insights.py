@@ -1,24 +1,24 @@
 """`GET /api/v1/insights/*`.
 
-Three of the five routes ``docs/10-api-contracts.md`` lists. The two that are
-missing are missing on purpose, and the reasons are different:
+All five routes ``docs/10-api-contracts.md`` lists, plus resume performance.
 
-- **`/insights/roles`** — role analysis is average alignment per role family.
-  An average of scores, scores built from importance weights, and importance is
-  the field DEV-026 measured moving on unchanged input. It waits for
-  calibration rather than shipping a figure that moves when nothing has.
-- **`/insights/applications/funnel`** — the inputs are stable, since statuses
-  are typed by a person rather than inferred. What it lacks is rows. ``docs/07``
-  requires explicit minimum-data thresholds, and a conversion rate is the
-  clearest case of a number that means nothing until there is something to
-  divide by.
+Role analysis shipped later than the rest and for a reason worth keeping: it was
+held back on DEV-026, which said requirement importance moves between readings
+and therefore poisons any average of alignment scores. Two five-reading
+measurements found otherwise — keyed by resolved skill, importance moved once in
+twenty-four labels across two postings, and what actually varies is which
+requirements get extracted and how they are worded. That varies between
+alternative readings of one posting, and in production a posting is read once.
 
-Both are absent rather than present-and-empty, because an endpoint returning
-zeroes is indistinguishable from one that is broken, and a route that exists is
-a promise the frontend will eventually call.
+So the blocker was never importance. It is sample size, which is the rule
+``docs/07`` already states twice and which every figure here now carries:
 
-Every payload here carries ``analysed_jobs``. No figure on this screen is
-quotable without its denominator.
+- a share is quoted with the number of postings it was counted over;
+- a role family's average alignment is null below three jobs;
+- no conversion rate is computed below five applications, though the stage
+  counts are still shown, because those are facts.
+
+Nothing is ever zero where it means "not measured". Zero is a claim.
 """
 
 from __future__ import annotations
@@ -39,8 +39,15 @@ from jip_api.application.insights.demand import (
     build_gaps,
 )
 from jip_api.application.insights.gaps import GapState
+from jip_api.application.insights.performance import (
+    MINIMUM_APPLICATIONS,
+    MINIMUM_JOBS_PER_ROLE,
+    build_funnel,
+    build_resume_performance,
+    build_roles,
+)
 from jip_api.core.responses import DataResponse
-from jip_api.domain.jobs.analysis import RequirementImportance
+from jip_api.domain.jobs.analysis import RequirementImportance, RoleFamily
 from jip_api.infrastructure.db.session import get_session
 
 router = APIRouter(prefix="/insights", tags=["insights"])
@@ -153,6 +160,111 @@ def read_gaps(user: CurrentUser, session: SessionDep) -> DataResponse[GapsPayloa
             minimum_jobs=MINIMUM_JOBS,
             above_threshold=report.is_above_threshold,
             gaps=_payloads(build_gaps(report)),
+        )
+    )
+
+
+class RoleInsightPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    role_family: RoleFamily
+    jobs: int
+    matched: int
+    average_alignment: int | None
+    """Null below the threshold, and null when nothing in the family scored.
+    Never zero, which would be a claim about fit rather than about data."""
+
+    applications: int
+
+
+class RolesPayload(BaseModel):
+    minimum_jobs: int
+    roles: list[RoleInsightPayload]
+
+
+class FunnelStagePayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    label: str
+    reached: int
+
+
+class FunnelPayload(BaseModel):
+    applications: int
+    minimum_applications: int
+    rates_are_meaningful: bool
+    """Whether the client may divide these counts. Sent rather than left to the
+    frontend to decide, so the threshold lives in one place."""
+
+    stages: list[FunnelStagePayload]
+
+
+class ResumeInsightPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    resume_version_id: uuid.UUID
+    label: str
+    sent: int
+    reached_interview: int
+    offers: int
+
+
+class ResumePerformancePayload(BaseModel):
+    minimum_applications: int
+    rates_are_meaningful: bool
+    versions: list[ResumeInsightPayload]
+
+
+@router.get(
+    "/roles",
+    response_model=DataResponse[RolesPayload],
+    summary="How the saved jobs group by role family",
+)
+def read_roles(user: CurrentUser, session: SessionDep) -> DataResponse[RolesPayload]:
+    report = build_roles(session, user.id)
+
+    return DataResponse(
+        data=RolesPayload(
+            minimum_jobs=MINIMUM_JOBS_PER_ROLE,
+            roles=[RoleInsightPayload.model_validate(role) for role in report.roles],
+        )
+    )
+
+
+@router.get(
+    "/applications/funnel",
+    response_model=DataResponse[FunnelPayload],
+    summary="How far applications have got",
+)
+def read_funnel(user: CurrentUser, session: SessionDep) -> DataResponse[FunnelPayload]:
+    report = build_funnel(session, user.id)
+
+    return DataResponse(
+        data=FunnelPayload(
+            applications=report.applications,
+            minimum_applications=MINIMUM_APPLICATIONS,
+            rates_are_meaningful=report.rates_are_meaningful,
+            stages=[FunnelStagePayload.model_validate(stage) for stage in report.stages],
+        )
+    )
+
+
+@router.get(
+    "/resumes",
+    response_model=DataResponse[ResumePerformancePayload],
+    summary="What happened after each resume version was sent",
+)
+def read_resume_performance(
+    user: CurrentUser, session: SessionDep
+) -> DataResponse[ResumePerformancePayload]:
+    versions = build_resume_performance(session, user.id)
+
+    return DataResponse(
+        data=ResumePerformancePayload(
+            minimum_applications=MINIMUM_APPLICATIONS,
+            rates_are_meaningful=sum(v.sent for v in versions) >= MINIMUM_APPLICATIONS,
+            versions=[ResumeInsightPayload.model_validate(version) for version in versions],
         )
     )
 
