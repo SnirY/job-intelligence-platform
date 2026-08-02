@@ -84,6 +84,7 @@ function view(overrides: Record<string, unknown> = {}) {
     blocked_count: 0,
     can_create: true,
     blocking_reason: null,
+    suggestions_generated: true,
     ...overrides,
   };
 }
@@ -346,5 +347,67 @@ describe("what tailoring never does", () => {
     for (const absent of [/apply all/i, /accept all/i, /rewrite my resume/i, /auto-tailor/i]) {
       expect(screen.queryByRole("button", { name: absent })).not.toBeInTheDocument();
     }
+  });
+});
+
+// --- Stage 2.8.6 ---------------------------------------------------------------
+//
+// Both of these were found by walking the panel with a real posting, and
+// neither was visible to the sixteen tests above.
+
+describe("a run that proposed nothing", () => {
+  it("says so, instead of looking like a button that was never pressed", async () => {
+    vi.stubGlobal("fetch", routes(view({ suggestions: [], suggestions_generated: true })));
+    renderWithQuery(<JobTailoringPanel job={job()} />);
+
+    expect(await screen.findByText(/nothing to change/i)).toBeInTheDocument();
+    // The pre-run wording must be gone, or the two states still read alike.
+    expect(screen.queryByText(/no suggestions yet/i)).not.toBeInTheDocument();
+  });
+
+  it("still asks for a run when none has happened", async () => {
+    vi.stubGlobal("fetch", routes(view({ suggestions: [], suggestions_generated: false })));
+    renderWithQuery(<JobTailoringPanel job={job()} />);
+
+    expect(await screen.findByText(/no suggestions yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to change/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("a suggestion that changes no words", () => {
+  it("does not strike out the line and print it back unchanged", async () => {
+    // A real REORDER from the walkthrough: the education line keeps its exact
+    // wording and moves up the page. Rendered as a diff it read as
+    // "delete this, then restore it".
+    const text = "B.Sc. in Software Engineering, [engineering college]";
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          suggestions: [
+            suggestion({
+              suggestion_type: "REORDER",
+              original_text: text,
+              suggested_text: text,
+            }),
+          ],
+        }),
+      ),
+    );
+    renderWithQuery(<JobTailoringPanel job={job()} />);
+
+    const shown = await screen.findAllByText(text);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.className).not.toContain("line-through");
+  });
+
+  it("names the kind of change, so a move reads as a move", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routes(view({ suggestions: [suggestion({ suggestion_type: "REORDER" })] })),
+    );
+    renderWithQuery(<JobTailoringPanel job={job()} />);
+
+    expect(await screen.findByText("Move this earlier")).toBeInTheDocument();
   });
 });

@@ -115,6 +115,23 @@ export type SuggestionStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "EDITED";
  */
 export type SuggestionRisk = "LOW" | "MEDIUM" | "HIGH";
 
+/**
+ * What each kind of change actually does, in the user's terms.
+ *
+ * Shown because a REORDER proposes no new words: it moves a line. Without the
+ * kind on screen, the review row rendered the original struck through above an
+ * identical replacement, which reads as "delete this and put it back". Found in
+ * Stage 2.8.6.
+ */
+export const SUGGESTION_TYPE_LABELS: Record<SuggestionType, string> = {
+  REWRITE: "Reworded",
+  REORDER: "Move this earlier",
+  ADD_EXISTING_ITEM: "Add from your profile",
+  REMOVE: "Remove for this job",
+  SHORTEN: "Shortened",
+  EMPHASIZE: "Reordered within the line",
+};
+
 export const RISK_LABELS: Record<SuggestionRisk, string> = {
   LOW: "Low risk",
   MEDIUM: "Worth checking",
@@ -202,6 +219,16 @@ export interface ResumeStrategyView {
   blocked_count: number;
   can_create: boolean;
   blocking_reason: string | null;
+  /**
+   * Whether the rewriter has run, whatever it found.
+   *
+   * An empty `suggestions` means two different things, and the screen showed
+   * one message for both: *not asked for yet*, and *asked for, and there was
+   * nothing worth changing*. The second is a legitimate answer — the rewriter
+   * is told to leave a good line alone — and reporting it as "No suggestions
+   * yet" made a completed run look like a button that had not been pressed.
+   */
+  suggestions_generated: boolean;
 }
 
 export interface FinalizeResult {

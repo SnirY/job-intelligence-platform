@@ -3,6 +3,7 @@
 import {
   CLAIM_STATUS_LABELS,
   RISK_LABELS,
+  SUGGESTION_TYPE_LABELS,
   type Job,
   type ResumeStrategy,
   type ResumeSuggestion,
@@ -79,6 +80,7 @@ export function JobTailoringPanel({ job }: { job: Job }) {
       strategy={view.strategy}
       suggestions={view.suggestions}
       blockedCount={view.blocked_count}
+      generated={view.suggestions_generated}
       onReplan={() => create.mutate()}
       replanning={create.isPending}
     />
@@ -90,6 +92,7 @@ function StrategyView({
   strategy,
   suggestions,
   blockedCount,
+  generated,
   onReplan,
   replanning,
 }: {
@@ -97,6 +100,8 @@ function StrategyView({
   strategy: ResumeStrategy;
   suggestions: ResumeSuggestion[];
   blockedCount: number;
+  /** Whether the rewriter has run — not whether it produced anything. */
+  generated: boolean;
   onReplan: () => void;
   replanning: boolean;
 }) {
@@ -212,7 +217,23 @@ function StrategyView({
           )}
 
           {suggestions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No suggestions yet.</p>
+            generated ? (
+              // A real answer, not an absence. The rewriter is told to leave a
+              // line alone when it is already good, so nothing to propose is a
+              // result — and reporting it the same way as "you have not asked
+              // yet" was what made Stage 2.8.6 unreadable.
+              <div className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  Nothing to change. We looked at every line against this posting and did not find
+                  wording worth altering — your resume can go as it is.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No suggestions yet. Choose a resume above and generate them.
+              </p>
+            )
           ) : (
             <ul className="space-y-3">
               {suggestions.map((suggestion) => (
@@ -256,12 +277,18 @@ function SuggestionRow({ jobId, suggestion }: { jobId: string; suggestion: Resum
   const [text, setText] = useState(suggestion.suggested_text);
 
   const settled = suggestion.status !== "PENDING";
+  const textChanged =
+    (suggestion.final_text ?? suggestion.suggested_text) !== suggestion.original_text;
 
   return (
     <li className="rounded-md border p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-2">
-          {suggestion.original_text && (
+          {/* A REORDER proposes no new words — the line moves, the text stays.
+              Striking through the original above an identical replacement reads
+              as "delete this and put it back", so the before/after is shown
+              only when there is a difference to see. */}
+          {suggestion.original_text && textChanged && (
             <p className="text-xs text-muted-foreground line-through">{suggestion.original_text}</p>
           )}
           <p className="text-sm">{suggestion.final_text ?? suggestion.suggested_text}</p>
@@ -271,6 +298,7 @@ function SuggestionRow({ jobId, suggestion }: { jobId: string; suggestion: Resum
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{SUGGESTION_TYPE_LABELS[suggestion.suggestion_type]}</Badge>
           <Badge variant={suggestion.risk === "LOW" ? "outline" : "default"}>
             {RISK_LABELS[suggestion.risk]}
           </Badge>

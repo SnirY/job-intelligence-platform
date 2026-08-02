@@ -742,3 +742,32 @@ def test_one_user_cannot_decide_another_users_suggestion(
     response = client.post(f"{SUGGESTIONS}/{suggestion['id']}/accept", headers=auth(factory, BOB))
 
     assert response.status_code == 404, response.text
+
+
+def test_a_run_that_proposed_nothing_is_distinguishable_from_no_run(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Stage 2.8.6, and the reason the walkthrough could not read its own result.
+
+    An empty list is a legitimate answer: the rewriter is told to leave a good
+    line alone, and to return nothing when nothing needs changing. The view
+    reported that identically to a strategy nobody had generated for, so a
+    completed run looked like a button that had not been pressed.
+
+    Read from `ai_runs`, which is written on both the success and failure paths,
+    so it cannot disagree with what actually happened.
+    """
+    job_id = matched_job(client, factory)
+    strategy = plan(client, factory, job_id)["strategy"]
+    _, version_id = draft_with(client, factory, "Improved the routing service.")
+
+    before = read_plan(client, factory, job_id)
+    assert before["suggestions"] == []
+    assert before["suggestions_generated"] is False
+
+    # The model answers, and answers with nothing.
+    suggest(client, factory, strategy["id"], version_id, [])
+
+    after = read_plan(client, factory, job_id)
+    assert after["suggestions"] == []
+    assert after["suggestions_generated"] is True

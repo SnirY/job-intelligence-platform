@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from jip_ai import AIError
+from jip_ai import AIError, AIOperation
 from jip_api.api.dependencies import CurrentUser
 from jip_api.application.errors import ResourceNotFoundError
 from jip_api.application.jobs import queries as job_queries
@@ -29,6 +29,7 @@ from jip_api.application.resumes import authoring, rendering
 from jip_api.application.resumes import tailoring_service as tailoring
 from jip_api.core.errors import ServiceUnavailableError
 from jip_api.core.responses import DataResponse
+from jip_api.domain.ai.models import AIRun
 from jip_api.domain.career.models import CareerProfile
 from jip_api.domain.resumes.tailoring import (
     ClaimStatus,
@@ -116,6 +117,24 @@ class StrategyView(BaseModel):
     blocked_count: int = 0
     can_create: bool = True
     blocking_reason: str | None = None
+    suggestions_generated: bool = False
+    """Whether the rewriter has run for this strategy, regardless of what it found.
+
+    An empty list means two different things and the screen could not tell them
+    apart: *you have not asked yet*, and *we asked and there was nothing worth
+    changing*. Both rendered as "No suggestions yet", so a completed run that
+    proposed nothing looked exactly like a button that had not been pressed.
+
+    Found in Stage 2.8.6 against a resume of placeholder lines with no
+    supporting facts. The rewriter is told it may only say what those facts
+    support and that an empty list is the right answer when nothing needs
+    changing, so it correctly returned none — and the screen reported that as
+    though nothing had happened.
+
+    Read from `ai_runs` rather than stored on the strategy: the run record is
+    already written on both the success and failure paths, so this cannot
+    disagree with what actually happened.
+    """
 
 
 class EditRequest(BaseModel):
@@ -166,6 +185,7 @@ def read_strategy(
             blocked_count=tailoring.blocked_count(session, strategy.id),
             can_create=can_create,
             blocking_reason=reason,
+            suggestions_generated=_has_generated(session, strategy.id),
         )
     )
 
@@ -267,6 +287,7 @@ def post_suggestions(
             strategy=StrategyPayload.model_validate(strategy),
             suggestions=_suggestions(session, strategy.id),
             blocked_count=tailoring.blocked_count(session, strategy.id),
+            suggestions_generated=True,
         )
     )
 
@@ -458,6 +479,26 @@ def _can_create_strategy(
             "nothing to tailor from."
         )
     return True, None
+
+
+def _has_generated(session: Session, strategy_id: uuid.UUID) -> bool:
+    """Whether a rewrite run exists for this strategy.
+
+    `create_suggestions` persists its traces on both paths, so the presence of a
+    run is the honest answer to "has this been asked for", independent of how
+    many suggestions came back.
+    """
+    return (
+        session.execute(
+            select(AIRun.id)
+            .where(
+                AIRun.operation == str(AIOperation.RESUME_REWRITE),
+                AIRun.entity_id == strategy_id,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
 
 
 def _suggestions(session: Session, strategy_id: uuid.UUID) -> list[SuggestionPayload]:
