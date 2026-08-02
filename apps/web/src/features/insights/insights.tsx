@@ -162,8 +162,8 @@ function Funnel({ report }: { report: FunnelReport }) {
       <CardHeader>
         <CardTitle className="text-base">Where applications get to</CardTitle>
         <CardDescription>
-          Counted from each application&rsquo;s own history, so one that ended in a rejection still counts
-          at every stage it passed through.
+          Counted from each application&rsquo;s own history, so one that ended in a rejection still
+          counts at every stage it passed through.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
