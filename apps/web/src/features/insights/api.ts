@@ -1,6 +1,13 @@
 "use client";
 
-import { API_ROUTES, type SkillDemandReport, type SkillGapReport } from "@jip/shared-types";
+import {
+  API_ROUTES,
+  type FunnelReport,
+  type ResumePerformanceReport,
+  type RoleReport,
+  type SkillDemandReport,
+  type SkillGapReport,
+} from "@jip/shared-types";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApi } from "@/lib/use-api";
@@ -30,5 +37,32 @@ export function useSkillGaps() {
   return useQuery({
     queryKey: [...insightsKey, "gaps"],
     queryFn: () => api<SkillGapReport>(API_ROUTES.insightsSkillGaps),
+  });
+}
+
+export function useRoles() {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: [...insightsKey, "roles"],
+    queryFn: () => api<RoleReport>(API_ROUTES.insightsRoles),
+  });
+}
+
+export function useFunnel() {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: [...insightsKey, "funnel"],
+    queryFn: () => api<FunnelReport>(API_ROUTES.insightsFunnel),
+  });
+}
+
+export function useResumePerformance() {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: [...insightsKey, "resumes"],
+    queryFn: () => api<ResumePerformanceReport>(API_ROUTES.insightsResumes),
   });
 }

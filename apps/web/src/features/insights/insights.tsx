@@ -4,15 +4,25 @@ import {
   GAP_STATE_HINTS,
   GAP_STATE_LABELS,
   IMPORTANCE_LABELS,
+  ROLE_FAMILY_LABELS,
+  type FunnelReport,
   type GapState,
   type RequirementImportance,
+  type ResumePerformanceReport,
+  type RoleReport,
   type SkillDemandEntry,
 } from "@jip/shared-types";
 import { Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSkillDemand, useSkillGaps } from "@/features/insights/api";
+import {
+  useFunnel,
+  useResumePerformance,
+  useRoles,
+  useSkillDemand,
+  useSkillGaps,
+} from "@/features/insights/api";
 
 /**
  * Insights.
@@ -36,6 +46,9 @@ import { useSkillDemand, useSkillGaps } from "@/features/insights/api";
 export function InsightsScreen() {
   const demand = useSkillDemand();
   const gaps = useSkillGaps();
+  const roles = useRoles();
+  const funnel = useFunnel();
+  const resumes = useResumePerformance();
 
   if (demand.isPending || gaps.isPending) {
     return <Panel>Reading your saved jobs…</Panel>;
@@ -73,7 +86,142 @@ export function InsightsScreen() {
 
       <Gaps gaps={gaps.data.gaps} analysed={report.analysed_jobs} />
       <Demand skills={report.skills} analysed={report.analysed_jobs} />
+
+      {roles.data && <Roles report={roles.data} />}
+      {funnel.data && funnel.data.applications > 0 && <Funnel report={funnel.data} />}
+      {resumes.data && resumes.data.versions.length > 0 && <Resumes report={resumes.data} />}
     </div>
+  );
+}
+
+/**
+ * Average alignment per role family.
+ *
+ * Held back a phase on DEV-026, which said importance moves between readings
+ * and therefore poisons any average of scores. Two five-reading measurements
+ * found the movement is in which requirements get *extracted*, not in how
+ * important they are called — and that varies between alternative readings of
+ * one posting, while in production a posting is read once.
+ *
+ * So this is here, under a threshold, like everything else on the page.
+ */
+function Roles({ report }: { report: RoleReport }) {
+  if (report.roles.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">By role family</CardTitle>
+        <CardDescription>
+          How the postings you saved group, and how much of each your profile covers. An average
+          needs {report.minimum_jobs} jobs in a family before it says anything.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {report.roles.map((role) => (
+          <div
+            key={role.role_family}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{ROLE_FAMILY_LABELS[role.role_family]}</p>
+              <p className="text-xs text-muted-foreground">
+                {role.jobs === 1 ? "1 job" : `${role.jobs} jobs`}
+                {role.applications > 0 && ` · ${role.applications} applied to`}
+              </p>
+            </div>
+            <div className="text-right">
+              {/* A dash, never a zero. Below the threshold there is no average,
+                  and zero would read as a verdict on fit. */}
+              <p className="text-sm font-semibold tabular-nums">
+                {role.average_alignment === null ? "—" : `${role.average_alignment}%`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {role.average_alignment === null ? "too few to average" : "average alignment"}
+              </p>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * How far applications have got.
+ *
+ * Counts always; rates only above the threshold. One application that reached
+ * an interview is a 100% interview rate, and there is no honest way to show
+ * that — so the counts stay and the division does not happen.
+ */
+function Funnel({ report }: { report: FunnelReport }) {
+  const applied = report.stages.find((stage) => stage.key === "applied")?.reached ?? 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Where applications get to</CardTitle>
+        <CardDescription>
+          Counted from each application&rsquo;s own history, so one that ended in a rejection still counts
+          at every stage it passed through.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {report.stages.map((stage) => (
+          <div key={stage.key} className="flex items-center justify-between gap-3 text-sm">
+            <span>{stage.label}</span>
+            <span className="flex items-center gap-3">
+              <span className="font-semibold tabular-nums">{stage.reached}</span>
+              {report.rates_are_meaningful && applied > 0 && (
+                <span className="w-12 text-right text-xs text-muted-foreground">
+                  {Math.round((stage.reached * 100) / applied)}%
+                </span>
+              )}
+            </span>
+          </div>
+        ))}
+
+        {!report.rates_are_meaningful && (
+          <p className="pt-2 text-xs text-muted-foreground">
+            Rates need {report.minimum_applications} applications before they mean anything. These
+            are counts.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * What happened after each resume version was sent.
+ *
+ * `docs/07` requires these to read as associations rather than causal claims,
+ * and at these sample sizes the word "because" is never available.
+ */
+function Resumes({ report }: { report: ResumePerformanceReport }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">By resume version</CardTitle>
+        <CardDescription>
+          What happened after each was sent. Not a claim that the resume caused it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {report.versions.map((version) => (
+          <div
+            key={version.resume_version_id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+          >
+            <span className="font-medium">{version.label}</span>
+            <span className="text-xs text-muted-foreground">
+              sent {version.sent} · reached interview {version.reached_interview} · offers{" "}
+              {version.offers}
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

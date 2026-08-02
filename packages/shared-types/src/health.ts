@@ -49,4 +49,7 @@ export const API_ROUTES = {
   insightsOverview: "/api/v1/insights/overview",
   insightsSkillDemand: "/api/v1/insights/skills/demand",
   insightsSkillGaps: "/api/v1/insights/skills/gaps",
+  insightsRoles: "/api/v1/insights/roles",
+  insightsFunnel: "/api/v1/insights/applications/funnel",
+  insightsResumes: "/api/v1/insights/resumes",
 } as const;
