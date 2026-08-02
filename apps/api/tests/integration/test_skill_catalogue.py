@@ -189,3 +189,23 @@ def test_normalisation_agrees_with_the_migration(migrated: None) -> None:
 
     disagreeing = {name: key for name, key in stored.items() if key not in keys}
     assert not disagreeing, f"application and migration normalise differently: {disagreeing}"
+
+
+# --- the backfill -----------------------------------------------------------
+#
+# Deliberately untested here, and worth saying why rather than leaving a gap.
+#
+# `20260802_1500_e8b3f2a91c47` fills `job_requirements.skill_id` for rows
+# written before the catalogue grew. A test against a freshly migrated database
+# would assert "no unresolved requirements" over a table with no requirements
+# in it — true, trivially, and green forever.
+#
+# Testing it honestly means migrating to the revision before it, inserting a
+# requirement with its foreign keys, upgrading, and checking the column. That
+# is a real test of a migration that runs once and never again, and the
+# property it protects is already covered above: what matters going forward is
+# that `resolve_known_skills` finds these names, which
+# `test_every_skill_a_real_posting_named_resolves` asserts on every run.
+#
+# Verified once, by hand, against the real database: 94 of 101 requirements
+# resolved, and the 7 that did not are the three phrases that are not skills.
