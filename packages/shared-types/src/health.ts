@@ -29,6 +29,7 @@ export const API_ROUTES = {
   readiness: "/api/v1/health/ready",
   currentUser: "/api/v1/users/me",
   careerProfile: "/api/v1/career/profile",
+  careerPreferences: "/api/v1/career/preferences",
   careerTargetRoles: "/api/v1/career/target-roles",
   careerSkills: "/api/v1/career/skills",
   careerExperiences: "/api/v1/career/experiences",

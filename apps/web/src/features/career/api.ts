@@ -1,5 +1,7 @@
 import {
   API_ROUTES,
+  type CareerPreferences,
+  type CareerPreferencesUpdate,
   type CareerProfile,
   type CareerProfileUpdate,
   type TargetRole,
@@ -26,6 +28,32 @@ export function fetchCareerProfile(api: Api): Promise<CareerProfile> {
  */
 export function updateCareerProfile(api: Api, update: CareerProfileUpdate): Promise<CareerProfile> {
   return api<CareerProfile>(API_ROUTES.careerProfile, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+}
+
+// --- preferences -------------------------------------------------------------
+
+export const careerPreferencesQueryKey = ["career", "preferences"] as const;
+
+export function fetchCareerPreferences(api: Api): Promise<CareerPreferences> {
+  return api<CareerPreferences>(API_ROUTES.careerPreferences);
+}
+
+/**
+ * Send only what changed, for the reason the profile does — and one more.
+ *
+ * An omitted key is left alone and an empty array clears the preference, which
+ * means *no constraint*. Posting the whole object back would let a form that
+ * loaded before another tab saved silently reinstate an old restriction.
+ */
+export function updateCareerPreferences(
+  api: Api,
+  update: CareerPreferencesUpdate,
+): Promise<CareerPreferences> {
+  return api<CareerPreferences>(API_ROUTES.careerPreferences, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(update),

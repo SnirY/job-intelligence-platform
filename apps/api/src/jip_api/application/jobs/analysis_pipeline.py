@@ -119,6 +119,7 @@ def run_analysis(
     )
 
     stored = _persist(session, target=target, parse=parse, analysis=analysis)
+    _fill_blank_location(target, parse)
 
     target.status = JobProcessingStatus.ANALYZED
     jobs_uc.mark_completed(session, job)
@@ -273,6 +274,24 @@ def _ai_run(trace: AIRunTrace, *, user_id: uuid.UUID, job_id: uuid.UUID) -> AIRu
         estimated_cost_usd=trace.estimated_cost_usd,
         attempt=trace.attempt,
     )
+
+
+def _fill_blank_location(target: Job, parse: JobParseOutcome) -> None:
+    """Copy the read location onto the job when the job has none.
+
+    The parse has extracted a location all along and nothing ever used it. It
+    sat in `job_analyses.payload` while `jobs.location` stayed null on every
+    real posting, so the jobs list, its location filter, and any comparison
+    against a stated preference all saw an empty column — a field that looked
+    unfilled rather than discarded.
+
+    Only fills a blank. A location the user typed is theirs and outranks a
+    reading of the posting, and re-analysing must not overwrite a correction
+    they made after the first pass.
+    """
+    if target.location or not parse.result.location:
+        return
+    target.location = parse.result.location[:200]
 
 
 def _persist(

@@ -1,26 +1,28 @@
-import { PhasePlaceholder } from "@/components/phase-placeholder";
+import { PreferencesForm } from "@/features/career/preferences-form";
 
 /**
- * Career preferences, once they exist.
+ * Career preferences.
  *
- * This page said "arriving in Phase 11" before Phase 11 said anything about
- * settings — `docs/09` listed seven hardening focuses and no screen. The claim
- * was true by coincidence and is now true by schedule: DEV-035 found that
- * `CareerPreferences` is specified in four documents and built in none, and
- * scheduled it here.
+ * A `PhasePlaceholder` until now, and for eleven phases the placeholder was the
+ * only part anyone noticed was missing. `CareerPreferences` is specified in four
+ * documents — `docs/01`, `docs/02`, `docs/03` and `docs/05` — and was scheduled
+ * in none of them, which is DEV-035.
  *
- * The description below is deliberately concrete about what will be here. The
- * previous one described the page by what it was not ("sign-out is elsewhere"),
- * which is how a placeholder for a feature nobody had scheduled survived
- * eleven phases looking deliberate.
+ * Account identity and sign-out stay in the avatar menu, where Clerk owns them.
+ * Nothing here duplicates a control that already exists elsewhere.
  */
 export default function SettingsPage() {
   return (
-    <PhasePlaceholder
-      title="Settings"
-      phase={11}
-      phaseName="Production Hardening"
-      description="Work mode, employment type, locations, salary expectations and role types to exclude — the preferences a recommendation should account for. Account details and sign-out are in the avatar menu."
-    />
+    <div className="mx-auto max-w-3xl space-y-6">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-muted-foreground">
+          What you will and will not take. Every job you save is read against these, beside its
+          match — and where a posting does not say, we say so rather than assuming it fits.
+        </p>
+      </header>
+
+      <PreferencesForm />
+    </div>
   );
 }

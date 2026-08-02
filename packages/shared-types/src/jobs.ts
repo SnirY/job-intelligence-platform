@@ -1,6 +1,6 @@
 /** Contracts for the job workspace API. */
 
-import type { EmploymentType, Seniority } from "./career";
+import type { EmploymentType, PreferenceFit, Seniority } from "./career";
 
 /** How a job got into the workspace. From `docs/10-api-contracts.md`. */
 export type JobImportMethod = "PASTED_DESCRIPTION" | "URL" | "MANUAL";
@@ -562,4 +562,15 @@ export interface JobMatchView {
   available_versions: number[];
   can_match: boolean;
   blocking_reason: string | null;
+  /**
+   * What the user said they want, against what this posting says.
+   *
+   * Beside the match, never inside it. Alignment is about evidence — whether
+   * the profile answers what the posting asked for — and a job in the wrong
+   * city does not fit your skills any less. Every dimension is always present,
+   * including the ones nobody set and the ones the posting is silent about,
+   * because a short list of satisfied preferences reads as a clean bill of
+   * health when it is really a list of things nobody checked.
+   */
+  preference_fit: PreferenceFit[];
 }

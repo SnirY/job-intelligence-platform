@@ -1,3 +1,5 @@
+import type { RoleFamily, WorkMode } from "./jobs";
+
 /** Contracts for the career profile API. */
 
 /** A labelled external link on the profile. */
@@ -264,3 +266,70 @@ export interface EducationCreate {
   grade?: string | null;
   description?: string | null;
 }
+
+// --- preferences --------------------------------------------------------------
+
+/**
+ * What the user will and will not take.
+ *
+ * Every list is empty by default and empty means **no constraint**, never a
+ * constraint of zero. A user who has not opened Settings has not declined
+ * anything, and every consumer has to read absence that way.
+ */
+export interface CareerPreferences {
+  id: string;
+  work_modes: WorkMode[];
+  employment_types: EmploymentType[];
+  locations: string[];
+  /** Three-valued: yes, no, and not answered. `null` must not narrow anything. */
+  open_to_relocation: boolean | null;
+  salary_min: number | null;
+  salary_currency: string | null;
+  excluded_role_families: RoleFamily[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Body of `PATCH /api/v1/career/preferences`. Omitted fields are left alone. */
+export interface CareerPreferencesUpdate {
+  work_modes?: WorkMode[];
+  employment_types?: EmploymentType[];
+  locations?: string[];
+  open_to_relocation?: boolean | null;
+  salary_min?: number | null;
+  salary_currency?: string | null;
+  excluded_role_families?: RoleFamily[];
+}
+
+/**
+ * How one stated preference stands against one posting.
+ *
+ * Three of the six are ways of saying "no answer", and they are the point.
+ * Reporting a posting that states nothing as matching a remote-only preference
+ * is the quiet lie DEV-035 is about.
+ */
+export type FitVerdict =
+  "MATCHES" | "CONFLICTS" | "UNCONFIRMED" | "NOT_STATED" | "NO_PREFERENCE" | "NOT_COMPARED";
+
+export const FIT_VERDICT_LABELS: Record<FitVerdict, string> = {
+  MATCHES: "Matches",
+  CONFLICTS: "Against your preference",
+  UNCONFIRMED: "Could not confirm",
+  NOT_STATED: "The posting does not say",
+  NO_PREFERENCE: "You have not said",
+  NOT_COMPARED: "Not compared",
+};
+
+export interface PreferenceFit {
+  dimension: string;
+  verdict: FitVerdict;
+  detail: string;
+}
+
+export const PREFERENCE_DIMENSION_LABELS: Record<string, string> = {
+  work_mode: "Work mode",
+  employment_type: "Employment type",
+  location: "Location",
+  role_family: "Role type",
+  salary: "Salary",
+};

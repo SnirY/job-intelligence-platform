@@ -45,8 +45,12 @@ describe("what the product claims about itself", () => {
       "Resumes",
       "Applications",
       "Insights",
+      // Phase 11. Specified in four documents and scheduled in none until
+      // DEV-035 — it sat in `upcoming` for eleven phases and nothing here could
+      // tell that apart from a destination whose turn had not come.
+      "Settings",
     ]);
-    expect(upcoming.map((d) => d.label)).toEqual(["Settings"]);
+    expect(upcoming).toEqual([]);
   });
 
   it("never describes a shipped destination as unbuilt", () => {

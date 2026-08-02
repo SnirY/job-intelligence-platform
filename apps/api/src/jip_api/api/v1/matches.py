@@ -22,11 +22,16 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from jip_api.api.dependencies import CurrentUser
+from jip_api.application.career import preference_fit
+from jip_api.application.career.preference_fit import FitVerdict
+from jip_api.application.career.preferences import get_or_create_preferences
 from jip_api.application.jobs import analysis_uc
 from jip_api.application.jobs import queries as job_queries
 from jip_api.application.matching import queries as match_queries
 from jip_api.application.matching.pipeline import run_match
 from jip_api.core.responses import CollectionResponse, DataResponse, PaginationMeta
+from jip_api.domain.jobs.analysis import JobAnalysis
+from jip_api.domain.jobs.models import Job
 from jip_api.domain.matching.models import (
     EvidenceType,
     JobMatchItem,
@@ -114,6 +119,14 @@ class MatchPayload(BaseModel):
     created_at: dt.datetime
 
 
+class PreferenceFitPayload(BaseModel):
+    """How one stated preference stands against this posting."""
+
+    dimension: str
+    verdict: FitVerdict
+    detail: str
+
+
 class MatchView(BaseModel):
     """Everything the Job Detail match panel needs, in one call."""
 
@@ -129,6 +142,22 @@ class MatchView(BaseModel):
 
     blocking_reason: str | None
     """Why it would not be, when it would not."""
+
+    preference_fit: list[PreferenceFitPayload]
+    """What the user said they want, against what this posting says.
+
+    Computed on read and deliberately outside the match. Alignment is about
+    evidence — whether the profile answers what the posting asked for — and a
+    job in the wrong city does not fit your skills any less. Folding preference
+    into the score would move a number when nothing about the fit moved, and
+    `job_matches.recommendation` is written once at match time, so a preference
+    changed tomorrow would leave every stored recommendation quietly stale.
+
+    Present even when there is no match and even when the user has set nothing:
+    every dimension is always returned, because a short list of satisfied
+    preferences reads as a clean bill of health when it is really a list of
+    things nobody checked. DEV-035.
+    """
 
 
 # --- routes -------------------------------------------------------------------
@@ -178,6 +207,7 @@ def read_match(
             available_versions=match_queries.match_versions(session, user.id, job_id),
             can_match=can_match,
             blocking_reason=blocking_reason,
+            preference_fit=_preference_fit(session, user.id, job, analysis),
         )
     )
 
@@ -224,8 +254,26 @@ def post_match(
             available_versions=match_queries.match_versions(session, user.id, job_id),
             can_match=True,
             blocking_reason=None,
+            preference_fit=_preference_fit(session, user.id, job, analysis),
         )
     )
+
+
+def _preference_fit(
+    session: Session, user_id: uuid.UUID, job: Job, analysis: JobAnalysis | None
+) -> list[PreferenceFitPayload]:
+    """Read the user's preferences against this posting.
+
+    `get_or_create_preferences` rather than a plain lookup, so a first visit
+    behaves the same as every later one: an empty row means no constraints, and
+    every dimension reports that plainly instead of the endpoint branching on
+    whether a row happens to exist.
+    """
+    preferences = get_or_create_preferences(session, user_id)
+    return [
+        PreferenceFitPayload(dimension=fit.dimension, verdict=fit.verdict, detail=fit.detail)
+        for fit in preference_fit.assess(job=job, analysis=analysis, preferences=preferences)
+    ]
 
 
 @router.get(

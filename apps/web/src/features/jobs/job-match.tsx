@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  FIT_VERDICT_LABELS,
   isPositiveMatch,
   MATCH_CATEGORY_LABELS,
   MATCH_STATUS_LABELS,
   MATCH_STATUS_TONE,
+  PREFERENCE_DIMENSION_LABELS,
   RECOMMENDATION_LABELS,
   type Job,
   type JobMatch,
@@ -12,6 +14,7 @@ import {
   type MatchCategory,
   type MatchItem,
   type MatchStatus,
+  type PreferenceFit,
 } from "@jip/shared-types";
 import {
   AlertOctagon,
@@ -59,13 +62,18 @@ export function JobMatchPanel({ job }: { job: Job }) {
 
   if (!view.match) {
     return (
-      <EmptyState
-        canMatch={view.can_match}
-        blockingReason={view.blocking_reason}
-        pending={compute.isPending}
-        failed={compute.isError}
-        onMatch={() => compute.mutate()}
-      />
+      <div className="space-y-6">
+        <EmptyState
+          canMatch={view.can_match}
+          blockingReason={view.blocking_reason}
+          pending={compute.isPending}
+          failed={compute.isError}
+          onMatch={() => compute.mutate()}
+        />
+        {/* Preferences are about the posting, not about the match, so an
+            unmatched job still has an honest answer for them. */}
+        <PreferenceFitCard fit={view.preference_fit} />
+      </div>
     );
   }
 
@@ -138,6 +146,8 @@ function MatchView({
       )}
 
       <Overview match={match} />
+
+      <PreferenceFitCard fit={view.preference_fit} />
 
       {blockers.length > 0 && <Blockers items={blockers} />}
 
@@ -296,6 +306,59 @@ function Overview({ match }: { match: JobMatch }) {
         )}
 
         {match.summary && <p className="text-sm leading-relaxed">{match.summary}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * What the user asked for, against what this posting says.
+ *
+ * Its own card, below the recommendation and outside it. The score is about
+ * evidence and this is about taste, and putting them in one block would invite
+ * reading a preference conflict as a worse fit — which it is not. A job you
+ * will not take can still be one you are qualified for.
+ *
+ * Everything is listed, including what nobody set and what the posting does not
+ * say. DEV-035's failure was a preference recorded and silently ignored, and a
+ * list that quietly omitted the unchecked dimensions would be the same shape.
+ */
+function PreferenceFitCard({ fit }: { fit: PreferenceFit[] }) {
+  // The field is required by the contract and asserted server-side, so an
+  // absent one means a client newer than the API it is talking to. Rendering
+  // nothing is the right failure: taking down the whole match panel over a
+  // secondary block would hide the score, the blockers and the evidence too.
+  const rows = fit ?? [];
+  if (rows.length === 0) return null;
+
+  const answered = rows.filter(
+    (row) => row.verdict !== "NO_PREFERENCE" && row.verdict !== "NOT_COMPARED",
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Against your preferences</CardTitle>
+        <CardDescription>
+          {answered.length === 0
+            ? "You have not set any preferences yet. Settings is where they go."
+            : "Separate from the score. A job you will not take can still be one you are qualified for."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-3">
+          {rows.map((row) => (
+            <li key={row.dimension} className="flex flex-wrap items-start gap-2 text-sm">
+              <span className="min-w-32 font-medium">
+                {PREFERENCE_DIMENSION_LABELS[row.dimension] ?? row.dimension}
+              </span>
+              <Badge variant={row.verdict === "CONFLICTS" ? "destructive" : "outline"}>
+                {FIT_VERDICT_LABELS[row.verdict]}
+              </Badge>
+              <span className="min-w-48 flex-1 text-muted-foreground">{row.detail}</span>
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );

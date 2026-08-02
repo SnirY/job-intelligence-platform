@@ -107,6 +107,7 @@ function view(overrides: Record<string, unknown> = {}) {
     available_versions: [1],
     can_match: true,
     blocking_reason: null,
+    preference_fit: [],
     ...overrides,
   };
 }
@@ -161,6 +162,7 @@ describe("match states", () => {
           available_versions: [],
           can_match: false,
           blocking_reason: "This job has not been analysed yet.",
+          preference_fit: [],
         }),
       ),
     );

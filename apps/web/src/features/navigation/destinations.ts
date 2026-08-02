@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export const CURRENT_PHASE = 10;
+export const CURRENT_PHASE = 11;
 /** The last phase that has shipped.
  *
  * Exists because it was previously written out by hand on the landing page and

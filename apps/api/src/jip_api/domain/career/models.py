@@ -151,3 +151,87 @@ class TargetRole(TimestampMixin, UserOwnedMixin, Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<TargetRole id={self.id} title={self.title!r}>"
+
+
+class CareerPreferences(TimestampMixin, Base):
+    """What the user will and will not take. Exactly one per user.
+
+    ``docs/03-domain-model.md`` names the six groups below and puts
+    ``career_preferences`` in the MVP schema. DEV-035 is the record of it being
+    specified in four documents and built in none.
+
+    Every field is empty by default, and empty means **no constraint** rather
+    than a constraint of zero. That distinction is the whole shape of this
+    table: a user who has never opened Settings must not be treated as someone
+    who will accept nothing.
+
+    Preferences are taste, not evidence. Nothing here reaches the alignment
+    score — a job does not fit your skills better because it is in the right
+    city. They qualify a *recommendation*, which is where
+    ``docs/05-ai-and-matching.md`` lists them.
+    """
+
+    __tablename__ = "career_preferences"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+
+    # Unique rather than indexed, for the reason CareerProfile gives: one row
+    # per user as a database guarantee, not an application convention.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    work_modes: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    """Acceptable work modes, from ``jobs.WorkMode``. Empty means any."""
+
+    employment_types: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    """Acceptable employment types, from ``EmploymentType``. Empty means any."""
+
+    locations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    """Places the user will work, as they would write them.
+
+    Free text on purpose. A posting states its location as free text too
+    ("Caesarea, Israel (Hybrid - at least 3 times a week from office)"), and a
+    controlled vocabulary on one side of a comparison whose other side is prose
+    buys precision that is not there.
+    """
+
+    open_to_relocation: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    """Three-valued deliberately: yes, no, and not said.
+
+    ``False`` narrows what is acceptable; ``None`` must not, because a user who
+    has not answered has not declined.
+    """
+
+    salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    """Recorded for the user's own reference and deliberately never compared.
+
+    Postings state pay as free text when they state it at all — ``jobs.salary_text``
+    is a string — and a numeric comparison against prose would be a guess
+    presented as arithmetic. The screen says so rather than leaving the silence
+    to be read as agreement.
+    """
+
+    excluded_role_families: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    """Role families the user does not want, from ``jobs.RoleFamily``.
+
+    The one preference with a closed vocabulary on both sides:
+    ``job_analyses.role_family`` is populated and reliable, so a mismatch here
+    is a real mismatch rather than an unmatched string.
+    """
+
+    __table_args__ = (
+        CheckConstraint("salary_min IS NULL OR salary_min >= 0", name="ck_salary_min_non_negative"),
+    )
