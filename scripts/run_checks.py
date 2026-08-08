@@ -10,7 +10,9 @@ a failure so one run surfaces every problem rather than only the first.
 
 ``--integration`` runs a five-second preflight first. Without it a stopped
 Docker Desktop makes the suite hang silently instead of failing, which has cost
-real time three separate times.
+real time three separate times — and a service that is up but will not have you
+turns every test that touches it red at once, which cost nine minutes once.
+The preflight now answers both: it connects, and then it authenticates.
 """
 
 from __future__ import annotations
@@ -73,12 +75,56 @@ exists to remove.
 """
 
 
-def _reachable(url: str) -> str | None:
-    """Open a TCP connection to whatever ``url`` points at. Returns the failure.
+def _handshake(url: str, scheme: str) -> str | None:
+    """Complete the handshake the tests will need, not just the TCP connection.
 
-    Deliberately a socket connect rather than a real client handshake. It needs
-    no driver, cannot be confused by credentials, and answers the only question
-    being asked: is anything listening?
+    Imported inside the function so ``--frontend`` needs no backend driver.
+    """
+    try:
+        if scheme.startswith("postgresql"):
+            import psycopg
+
+            # The URL carries SQLAlchemy's dialect suffix; libpq wants the bare
+            # scheme. Everything after it — user, password, port, database — is
+            # identical, which is the point of correcting only the prefix.
+            dsn = url.replace("postgresql+psycopg://", "postgresql://", 1)
+            with psycopg.connect(dsn, connect_timeout=int(PREFLIGHT_TIMEOUT_SECONDS)) as connection:
+                connection.execute("SELECT 1")
+        elif scheme.startswith("redis"):
+            import redis
+
+            redis.Redis.from_url(url, socket_timeout=PREFLIGHT_TIMEOUT_SECONDS).ping()
+        else:
+            # An unknown scheme is not a failure to report here. The socket
+            # answered, and guessing at a handshake would invent a problem.
+            return None
+    except Exception as exc:
+        # Deliberately broad. Every driver raises its own hierarchy, and the
+        # whole purpose here is to turn any of them into one readable line
+        # instead of a traceback from a script whose job is to report.
+        return f"listening, but refused the connection — {exc}"
+
+    return None
+
+
+def _reachable(url: str) -> str | None:
+    """Connect to whatever ``url`` points at and authenticate. Returns the failure.
+
+    This was a bare socket connect until 2026-08-08, on the reasoning that it
+    needed no driver, could not be confused by credentials, and answered the
+    only question being asked: is anything listening?
+
+    That was the wrong question. The preflight passed against a PostgreSQL that
+    was listening and would not authenticate — the documented
+    ``JIP_TEST_DATABASE_URL`` had no password in it — and the run it green-lit
+    died 449 tests later on ``fe_sendauth: no password supplied``. Nine minutes,
+    and a wall of red that reads as a catastrophic regression, to learn what one
+    ``SELECT 1`` answers immediately.
+
+    The socket connect stays as the first step. "Nothing is listening" and
+    "listening and refusing you" are different problems with different fixes,
+    and collapsing them into one message would trade this failure for a vaguer
+    one.
     """
     parsed = urllib.parse.urlparse(url)
     host, port = parsed.hostname, parsed.port
@@ -87,9 +133,12 @@ def _reachable(url: str) -> str | None:
 
     try:
         with socket.create_connection((host, port), timeout=PREFLIGHT_TIMEOUT_SECONDS):
-            return None
+            pass
     except OSError as exc:
         return f"{host}:{port} — {exc.strerror or exc}"
+
+    failure = _handshake(url, parsed.scheme)
+    return None if failure is None else f"{host}:{port} — {failure}"
 
 
 def preflight() -> bool:
@@ -133,9 +182,14 @@ def preflight() -> bool:
     for problem in problems:
         print(f"  {problem}", flush=True)
     print(
-        "\nThe integration tests would hang on this rather than fail, so the run "
-        "stops here.\nIf the stack should be up:\n"
-        "  docker compose up -d postgres redis minio minio-init",
+        "\nThe run stops here. A service that is down makes the suite hang rather "
+        "than fail;\na service that refuses the credentials makes every test that "
+        "touches it red at once,\nwhich reads as a broken product. Neither is worth "
+        "waiting through.\n\n"
+        "If the stack should be up:\n"
+        "  docker compose up -d postgres redis minio minio-init\n"
+        "If it is up, check the URL against docs/development/local-environment.md "
+        "— the\npassword and the port both come from .env, and 5432 is not the port.",
         flush=True,
     )
     return False

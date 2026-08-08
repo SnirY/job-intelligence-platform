@@ -82,10 +82,14 @@ They need live services, addressed through their own variables so a test run can
 never point at the same database a developer is using by hand:
 
 ```bash
-export JIP_TEST_DATABASE_URL=postgresql+psycopg://jip:jip_local_dev_only@localhost:5432/jip
+export JIP_TEST_DATABASE_URL=postgresql+psycopg://jip:jip_local_dev_only@localhost:55432/jip
 export JIP_TEST_REDIS_URL=redis://localhost:6379/0
 pytest -m integration
 ```
+
+The port is `POSTGRES_PORT` from `.env`, not 5432. This said 5432 until
+2026-08-08, from before the Compose service moved off the port the machine's own
+PostgreSQL 17 already holds.
 
 Without them the tests skip. CI sets `JIP_REQUIRE_INTEGRATION=1`, which turns a
 skip into a failure — a missing service must not present as a green build.

@@ -94,7 +94,9 @@ def fit(client: TestClient, factory: TokenFactory, job_id: str, dimension: str) 
     """One dimension of the preference reading on a job's match view."""
     response = client.get(f"{JOBS}/{job_id}/match", headers=auth(factory, ALICE))
     assert response.status_code == 200, response.text
-    rows = {row["dimension"]: row for row in response.json()["data"]["preference_fit"]}
+    rows: dict[str, dict[str, str]] = {
+        row["dimension"]: row for row in response.json()["data"]["preference_fit"]
+    }
     return rows[dimension]
 
 
