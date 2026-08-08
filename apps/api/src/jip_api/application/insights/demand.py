@@ -57,6 +57,18 @@ implying it generalises.
 """
 
 TOP_SKILLS = 12
+"""How many rows "What comes up most" shows. A presentation cap, nothing more.
+
+It applies to the demand list alone. It used to be applied inside
+``build_demand``, which meant ``build_gaps`` — deriving from the same report —
+inherited a cut made by a rule it does not share: gaps are ordered by severity,
+and the cut was by frequency and then, within a frequency tier, alphabetically
+by name. Three real gaps were invisible on the development account because
+their names began with S, T and V (DEV-040).
+
+So the report now carries everything and the cap is applied where the list is
+rendered, beside the total, so a truncated list says how much it is hiding.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,8 +205,23 @@ def build_demand(session: Session, user_id: uuid.UUID) -> DemandReport:
 
     # Most-asked-for first; ties alphabetically, so the order is stable between
     # two loads of the same data.
+    #
+    # Every skill, not the top twelve. The cap belongs to the demand list and is
+    # applied by `most_asked` at the edge — applying it here also truncated the
+    # gaps, which are ordered by a different rule and are a completeness claim
+    # rather than a chart (DEV-040).
     demands.sort(key=lambda demand: (-demand.jobs, demand.name))
-    return DemandReport(analysed_jobs=total, skills=demands[:TOP_SKILLS])
+    return DemandReport(analysed_jobs=total, skills=demands)
+
+
+def most_asked(report: DemandReport, limit: int = TOP_SKILLS) -> list[SkillDemand]:
+    """The head of the demand list, for the chart that only wants a head.
+
+    Separate from the report so that the one list which is deliberately
+    incomplete is the only one that is, and so the caller has to hold the total
+    beside it to say so.
+    """
+    return report.skills[:limit]
 
 
 def build_gaps(report: DemandReport) -> list[SkillDemand]:
@@ -207,6 +234,11 @@ def build_gaps(report: DemandReport) -> list[SkillDemand]:
 
     Derived from the demand report rather than re-queried, so the two lists on
     the screen cannot disagree about what was asked for.
+
+    That sharing is why the report must not arrive pre-truncated. This list is a
+    completeness claim — "asked for, and not evidenced" — and a cap applied
+    upstream by frequency silently drops gaps that this ordering would have put
+    near the top. DEV-040.
     """
     return sorted(
         (skill for skill in report.skills if is_gap(skill.state)),

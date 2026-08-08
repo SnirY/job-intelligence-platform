@@ -61,11 +61,17 @@ function serving(
 }
 
 function report(overrides: Record<string, unknown> = {}) {
+  const skills = [entry()];
   return {
     analysed_jobs: 6,
     minimum_jobs: 5,
     above_threshold: true,
-    skills: [entry()],
+    skills,
+    // Complete by default. A test that wants a truncated list says so, because
+    // the whole question DEV-040 raised is whether the screen admits to hiding
+    // rows — and a fixture that quietly hid some would make that untestable.
+    total_skills: skills.length,
+    shown_skills: 12,
     ...overrides,
   };
 }
@@ -207,6 +213,36 @@ describe("skills the catalogue does not know", () => {
 
     expect(await screen.findByText("C++")).toBeInTheDocument();
     expect(screen.getByText(/as written in the posting/i)).toBeInTheDocument();
+  });
+});
+
+// --- the demand list is capped, and says so (DEV-040) -------------------------
+
+describe("a list that is short on purpose", () => {
+  it("says how many it is not showing", async () => {
+    /* DEV-040: the demand list is capped and the gap list is not. A cap the
+       screen does not mention is indistinguishable from an answer, which is
+       how three real gaps stayed invisible behind a list of twelve. */
+    vi.stubGlobal(
+      "fetch",
+      serving(report({ total_skills: 16, shown_skills: 12 }), gapReport({ gaps: [] })),
+    );
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText(/of 16/i)).toBeInTheDocument();
+    expect(screen.getByText(/every gap is listed above regardless/i)).toBeInTheDocument();
+  });
+
+  it("stays quiet when the list is complete", async () => {
+    /* The notice must not appear on an account small enough to show
+       everything, or it becomes noise that people learn to skip. */
+    vi.stubGlobal("fetch", serving(report(), gapReport({ gaps: [] })));
+
+    renderWithQuery(<InsightsScreen />);
+
+    expect(await screen.findByText(/What comes up most/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Showing the/i)).not.toBeInTheDocument();
   });
 });
 

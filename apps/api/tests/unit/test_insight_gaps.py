@@ -16,7 +16,13 @@ from __future__ import annotations
 
 import uuid
 
-from jip_api.application.insights.demand import DemandReport, SkillDemand, build_gaps
+from jip_api.application.insights.demand import (
+    TOP_SKILLS,
+    DemandReport,
+    SkillDemand,
+    build_gaps,
+    most_asked,
+)
 from jip_api.application.insights.gaps import GAP_SEVERITY, GapState, gap_state, is_gap
 from jip_api.application.matching.evidence import SkillEvidence
 
@@ -166,3 +172,48 @@ def test_the_order_is_stable_between_two_identical_reports() -> None:
     second = [gap.name for gap in build_gaps(DemandReport(analysed_jobs=2, skills=skills))]
 
     assert first == second == ["Docker", "Kafka", "Redis"]
+
+
+# --- the cap belongs to the demand list, not to the gaps (DEV-040) ------------
+
+
+def test_every_gap_survives_however_long_the_demand_list_is() -> None:
+    """The defect DEV-040 recorded, as an assertion.
+
+    `TOP_SKILLS` used to be applied inside `build_demand`, and `build_gaps`
+    derives from the same report — so the gap list inherited a cut made by
+    frequency and then, within a frequency tier, alphabetically. On the
+    development account three real gaps were invisible because their names
+    began with S, T and V.
+
+    Twenty skills all asked for once, so the frequency tie-break is the only
+    thing ordering them, and the two that matter are last alphabetically.
+    """
+    skills = [demand(f"Skill {index:02d}", 1, GapState.STRONG_GAP) for index in range(18)]
+    skills += [
+        demand("TCP/IP", 1, GapState.STRONG_GAP),
+        demand("Version Control", 1, GapState.WEAK_EVIDENCE),
+    ]
+
+    gaps = build_gaps(DemandReport(analysed_jobs=3, skills=skills))
+    names = {gap.name for gap in gaps}
+
+    assert len(gaps) == 20
+    assert "TCP/IP" in names
+    assert "Version Control" in names
+
+
+def test_the_demand_list_is_capped_and_the_gap_list_is_not() -> None:
+    """The two lists answer different questions, so they get different rules.
+
+    "What comes up most" is a chart and may show a head. "Asked for, and not
+    evidenced" is a completeness claim and may not.
+    """
+    skills = [
+        demand(f"Skill {index:02d}", 1, GapState.STRONG_GAP) for index in range(TOP_SKILLS + 5)
+    ]
+    report = DemandReport(analysed_jobs=3, skills=skills)
+
+    assert len(most_asked(report)) == TOP_SKILLS
+    assert len(build_gaps(report)) == TOP_SKILLS + 5
+    assert len(report.skills) == TOP_SKILLS + 5, "the report itself must carry everything"

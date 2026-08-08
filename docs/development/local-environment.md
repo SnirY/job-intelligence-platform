@@ -97,16 +97,29 @@ skip into a failure — a missing service must not present as a green build.
 Each migration test creates and drops its own database, so `JIP_TEST_DATABASE_URL`
 needs permission to `CREATE DATABASE`.
 
-Stop the worker first if the full stack is up:
+Stop every worker first — the container and the host process both.
 
 ```bash
 docker compose stop worker
 ```
 
 `test_task_dispatch.py` enqueues onto `default` and drains it with an
-in-process burst worker. A running `worker` container consumes from the same
-queue on the same Redis and takes the job first, which surfaces as a job stuck
-in `queued` and reads like a dispatcher bug.
+in-process burst worker. Anything else consuming from the same queue on the same
+Redis takes the job first, which surfaces as a job stuck in `queued` and reads
+like a dispatcher bug.
+
+The line above only covers the container. **Option B runs the worker as a host
+process**, and `docker compose stop worker` does nothing to it — which cost a
+run on 2026-08-08. Worse than a failure: the suite hangs, because the burst
+worker waits for a job another process has already taken.
+
+```bash
+powershell "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*jip-worker*' } | Select-Object ProcessId, CommandLine"
+```
+
+**`next build` has the same shape of conflict.** On Windows, `npm run dev` holds
+`apps/web/.next/trace` and a concurrent build fails with `EPERM` on that file.
+Stop the dev server before running the frontend checks, or let CI build.
 
 ## Windows notes
 

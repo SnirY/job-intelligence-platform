@@ -85,7 +85,7 @@ export function InsightsScreen() {
       )}
 
       <Gaps gaps={gaps.data.gaps} analysed={report.analysed_jobs} />
-      <Demand skills={report.skills} analysed={report.analysed_jobs} />
+      <Demand skills={report.skills} analysed={report.analysed_jobs} total={report.total_skills} />
 
       {roles.data && <Roles report={roles.data} />}
       {funnel.data && funnel.data.applications > 0 && <Funnel report={funnel.data} />}
@@ -286,7 +286,18 @@ function Gaps({ gaps, analysed }: { gaps: SkillDemandEntry[]; analysed: number }
   );
 }
 
-function Demand({ skills, analysed }: { skills: SkillDemandEntry[]; analysed: number }) {
+function Demand({
+  skills,
+  analysed,
+  total,
+}: {
+  skills: SkillDemandEntry[];
+  analysed: number;
+  /** How many were demanded in all. This list is capped; the gaps list is not. */
+  total: number;
+}) {
+  const hidden = total - skills.length;
+
   return (
     <Card>
       <CardHeader>
@@ -301,6 +312,16 @@ function Demand({ skills, analysed }: { skills: SkillDemandEntry[]; analysed: nu
         {skills.map((skill) => (
           <SkillRow key={skill.key} skill={skill} analysed={analysed} />
         ))}
+        {hidden > 0 && (
+          /* A capped list that does not say it is capped is indistinguishable
+             from a complete one. This list is the only one on the screen that
+             is short on purpose — the gaps above it are complete. DEV-040. */
+          <p className="pt-2 text-sm text-muted-foreground">
+            Showing the {skills.length} most asked for, of {total}. The{" "}
+            {hidden === 1 ? "other one is" : `other ${hidden} are`} asked for least often; every gap
+            is listed above regardless.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

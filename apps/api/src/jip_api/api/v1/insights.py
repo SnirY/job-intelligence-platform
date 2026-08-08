@@ -33,10 +33,12 @@ from sqlalchemy.orm import Session
 from jip_api.api.dependencies import CurrentUser
 from jip_api.application.insights.demand import (
     MINIMUM_JOBS,
+    TOP_SKILLS,
     DemandReport,
     SkillDemand,
     build_demand,
     build_gaps,
+    most_asked,
 )
 from jip_api.application.insights.gaps import GapState
 from jip_api.application.insights.performance import (
@@ -84,6 +86,18 @@ class DemandPayload(BaseModel):
 
     above_threshold: bool
     skills: list[SkillDemandPayload]
+
+    total_skills: int
+    """How many skills were demanded in total, against however many `skills`
+    holds.
+
+    Sent because this is the one list on the screen that is deliberately
+    incomplete. Without the total, a cap is indistinguishable from an answer —
+    which is exactly how DEV-040 hid three real gaps behind a list of twelve.
+    """
+
+    shown_skills: int
+    """The cap itself, so the client does not restate a number the server owns."""
 
 
 class GapsPayload(BaseModel):
@@ -135,13 +149,16 @@ def read_overview(user: CurrentUser, session: SessionDep) -> DataResponse[Overvi
 )
 def read_demand(user: CurrentUser, session: SessionDep) -> DataResponse[DemandPayload]:
     report = build_demand(session, user.id)
+    shown = most_asked(report)
 
     return DataResponse(
         data=DemandPayload(
             analysed_jobs=report.analysed_jobs,
             minimum_jobs=MINIMUM_JOBS,
             above_threshold=report.is_above_threshold,
-            skills=_payloads(report.skills),
+            skills=_payloads(shown),
+            total_skills=len(report.skills),
+            shown_skills=TOP_SKILLS,
         )
     )
 

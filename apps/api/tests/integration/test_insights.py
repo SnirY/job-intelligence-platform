@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from jip_ai import build_router
 from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher
+from jip_api.application.insights.demand import TOP_SKILLS
 from jip_api.application.jobs.analysis_pipeline import run_analysis
 from jip_api.domain.processing.models import ProcessingJob
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
@@ -394,6 +395,70 @@ def test_the_worst_gap_is_listed_first(client: TestClient, factory: TokenFactory
 
     assert gaps[0]["name"] == "Rust"
     assert gaps[0]["state"] == "STRONG_GAP"
+
+
+def test_a_gap_is_not_lost_to_the_demand_list_cap(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """DEV-040, end to end.
+
+    The cap used to be applied inside `build_demand`, and `build_gaps` derives
+    from that report — so a skill past the cap disappeared from a list headed
+    "asked for, and not evidenced". With every skill asked for by the same one
+    job, the tie-break is alphabetical, which is why the two that used to
+    vanish are named Y and Z here.
+    """
+    names = [f"Skill {index:02d}" for index in range(TOP_SKILLS + 1)] + ["Ytterbium", "Zirconium"]
+
+    # Every `source_text` has to appear in the posting. The pipeline drops any
+    # requirement it cannot find there, which is the fabrication guard doing its
+    # job — and which silently emptied the first version of this test.
+    description = "Polyglot role.\n\nRequirements:\n" + "".join(
+        f"- Experience with {name}\n" for name in names
+    )
+    created = client.post(
+        JOBS,
+        headers=auth(factory),
+        json={
+            "import_method": "PASTED_DESCRIPTION",
+            "title": "Polyglot",
+            "description": description,
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    analyse(
+        client,
+        factory,
+        created.json()["data"]["id"],
+        parse={
+            **PARSE_RESPONSE,
+            "requirements": [
+                {
+                    "normalized_text": name,
+                    "requirement_type": "TECHNICAL_SKILL",
+                    "importance": "REQUIRED",
+                    "explicitness": "EXPLICIT",
+                    "source_text": f"Experience with {name}",
+                    "confidence": 90,
+                    "skill_name": name,
+                }
+                for name in names
+            ],
+        },
+    )
+
+    demand = get(client, factory, "/skills/demand")
+    gaps = get(client, factory, "/skills/gaps")["gaps"]
+
+    # The chart shows a head, and says how big the whole is.
+    assert len(demand["skills"]) == TOP_SKILLS
+    assert demand["total_skills"] == len(names)
+    assert demand["shown_skills"] == TOP_SKILLS
+
+    # The completeness claim is complete, including the tail of the alphabet.
+    assert len(gaps) == len(names)
+    assert {"Ytterbium", "Zirconium"} <= {gap["name"] for gap in gaps}
 
 
 # --- overview -----------------------------------------------------------------

@@ -53,6 +53,16 @@ interface Sampled {
 
 export interface SkillDemandReport extends Sampled {
   skills: SkillDemandEntry[];
+  /** How many skills were demanded in total, against however many `skills` holds.
+   *
+   * This is the one list on the Insights screen that is deliberately capped, so
+   * it is the one that has to say so. Without the total a cap is
+   * indistinguishable from an answer — which is how DEV-040 hid three real gaps
+   * behind a list of twelve. */
+  total_skills: number;
+  /** The cap the server applied. Read rather than restated here, so the number
+      and the sentence explaining it cannot drift apart. */
+  shown_skills: number;
 }
 
 export interface SkillGapReport extends Sampled {
