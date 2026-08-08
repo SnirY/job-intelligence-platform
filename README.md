@@ -2,21 +2,24 @@
 
 A personal AI-powered Job Search and Career Intelligence Platform. This repository contains the product, architecture, AI, UX, API, engineering, and development-continuity specifications, together with the implementation.
 
-**Current state: Phases 0–6 are complete. Phase 7 (Resume Intelligence) has not been started.**
+## Current state
 
-| Phase | State | What it delivered |
-|---|---|---|
-| 0 — Project Foundation | Done | Monorepo, FastAPI, Next.js, PostgreSQL, Redis, RQ, Compose, CI |
-| 1 — Authentication & Shell | Done | Clerk, the `users` table, offline JWKS verification, the app shell |
-| 2 — Career Profile | Done | Profile, target roles, skills, experience, projects, education — no AI |
-| 3 — Resume Import | Done | Upload → extract → parse → review → approve, plus `jip-ai` and `jip-prompts` |
-| 4 — Job Workspace | Done | Add a job by paste, link, or hand; the original source preserved; list and detail |
-| 5 — Job Intelligence | Done | Versioned analyses: requirements, responsibilities, role family, seniority |
-| 6 — Matching Engine | Done | Deterministic, versioned, evidence-first matching with per-requirement verdicts |
-| 7 — Resume Intelligence | Not started | — |
+**Phases 0–10 are complete. Phase 11 — Production Hardening — is in progress.**
 
-`docs/development/implementation-status.md` has the per-capability detail, and
-`docs/development/known-issues.md` records what is not yet verified.
+The whole loop exists end to end: build a career profile or import one from a
+resume, save a job, have the posting read into requirements, match it against
+your profile with traceable evidence, tailor a resume, apply, track the outcome,
+and see what your saved jobs keep asking for.
+
+There is deliberately no phase table here. This section said "Phases 0–6" for
+four phases after Phase 10 shipped, because a hand-written summary of something
+recorded elsewhere goes stale and nothing notices. One sentence is the most this
+file can keep true.
+
+The per-phase, per-capability detail lives in
+`docs/development/implementation-status.md`, which is the source of truth.
+`docs/development/known-issues.md` records what is not yet verified, and
+`docs/development/current-phase.md` says what is being worked on now.
 
 ## Quick start
 
