@@ -30,6 +30,7 @@ from jip_ai import (
     StructuredRequest,
     compute_input_hash,
     run_with_retry,
+    schema_failure_summary,
     timed,
     truncate_for_prompt,
 )
@@ -208,7 +209,10 @@ class ResumeParsingService:
                     # Well-formed JSON that is not the agreed shape. Classified
                     # as INVALID_OUTPUT rather than VALIDATION_FAILURE: nothing
                     # got as far as a business rule.
-                    trace.mark_failure(AIFailureCode.INVALID_OUTPUT, "Output failed schema check")
+                    trace.mark_failure(
+                        AIFailureCode.INVALID_OUTPUT,
+                        f"Output failed schema check: {schema_failure_summary(exc)}",
+                    )
                     raise AIError(
                         AIFailureCode.INVALID_OUTPUT,
                         "The parser returned data in an unexpected shape.",

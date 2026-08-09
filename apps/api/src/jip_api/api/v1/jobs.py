@@ -25,6 +25,7 @@ from jip_api.application.jobs import importing as importing_uc
 from jip_api.application.jobs import queries as queries_uc
 from jip_api.application.jobs import updates as updates_uc
 from jip_api.application.processing import reaper
+from jip_api.core.errors import UnprocessableEntityError
 from jip_api.core.responses import CollectionResponse, DataResponse, PaginationMeta
 from jip_api.domain.career.history import EmploymentType
 from jip_api.domain.career.models import Seniority
@@ -43,6 +44,7 @@ from jip_api.domain.jobs.models import (
 )
 from jip_api.domain.processing.models import ProcessingJobStatus, ProcessingStep
 from jip_api.infrastructure.db.session import get_session
+from jip_api.infrastructure.fetching.safety import UnsafeUrlError, validate_url
 from jip_api.infrastructure.tasks.dispatcher import TaskDispatcher
 from jip_config import get_settings
 
@@ -392,7 +394,12 @@ def post_job(
     A URL import returns immediately with the job in ``FETCHING`` and queues the
     fetch: a remote request can take seconds and must not hold the response
     open.
+
+    A URL we will *never* fetch is refused here instead, before anything is
+    written — see ``_refuse_permanently_blocked``.
     """
+    _refuse_permanently_blocked(body)
+
     try:
         job = creation_uc.create_job(
             session,
@@ -492,7 +499,22 @@ def read_companies(user: CurrentUser, session: SessionDep) -> DataResponse[list[
 
 @router.get("/{job_id}", response_model=DataResponse[JobPayload], summary="Get a job")
 def read_job(user: CurrentUser, session: SessionDep, job_id: uuid.UUID) -> DataResponse[JobPayload]:
+    """One job, with a stranded import failed on the way past.
+
+    DEV-042. A URL import has no processing job, so the sweep behind
+    ``GET /processing-jobs/{id}`` cannot see it — this is the only route that
+    can. The screen polls here while a fetch is running, which is exactly when
+    somebody is waiting to find out.
+    """
     job = queries_uc.get_job(session, user.id, job_id)
+
+    if reaper.reap_stalled_fetch(
+        session,
+        job,
+        timeout_seconds=get_settings().processing_running_timeout_seconds,
+    ):
+        session.commit()
+
     return DataResponse(data=JobPayload.model_validate(job))
 
 
@@ -740,6 +762,45 @@ def read_requirements(
 
 
 # --- helpers ------------------------------------------------------------------
+
+
+def _refuse_permanently_blocked(body: JobCreateRequest) -> None:
+    """Refuse an address we will never fetch, before a job exists for it.
+
+    DEV-041. The SSRF rules are deliberately not configurable, so a blocked
+    address is blocked for good — and yet the flow used to save a job, queue a
+    fetch, fail it, and leave the user on a screen offering *"paste the
+    description"* and *"Try the link again"*. Neither can help: there is no
+    description, because the user typed an address, and the retry cannot ever
+    succeed. Three of those rows are what found this.
+
+    That is DEV-021's rule — never offer a retry for a permanent failure —
+    applied to the one path it had been missed on.
+
+    Only ``BLOCKED_URL`` is refused here. A name that did not resolve is a fact
+    about this moment, not about the address, and belongs in the queued fetch
+    where a retry is honest. Distinguishing them is what `UnsafeUrlError.code`
+    is for.
+
+    The cost is one DNS lookup on the request path. That is milliseconds, and
+    the reason fetching is queued at all is the page fetch rather than the name
+    resolution.
+    """
+    if body.import_method is not JobImportMethod.URL or body.source_url is None:
+        return
+
+    try:
+        validate_url(str(body.source_url))
+    except UnsafeUrlError as exc:
+        if not exc.is_permanent:
+            # Transient. Let it through to the queue, which knows how to record
+            # a failure the user can genuinely retry.
+            return
+        raise UnprocessableEntityError(
+            str(exc),
+            code="BLOCKED_URL",
+            details={"source_url": str(body.source_url)},
+        ) from exc
 
 
 def _dispatch_fetch(session: Session, dispatcher: TaskDispatcher, job: Job) -> None:

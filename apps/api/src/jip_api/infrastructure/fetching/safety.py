@@ -47,7 +47,30 @@ class UnsafeUrlError(Exception):
     The message is written for the user, because it is shown to them. It says
     what was refused and never why in a way that helps someone map the internal
     network.
+
+    ``code`` separates the two kinds of refusal, which look identical here and
+    behave very differently upstream:
+
+    ``BLOCKED_URL``
+        The address, scheme or port is refused, and always will be. These rules
+        are deliberately not configurable, so nothing about waiting or retrying
+        changes the answer. A caller can decide this before creating anything.
+
+    ``UNRESOLVED``
+        The name did not resolve. That is a fact about this moment — a DNS blip,
+        an offline laptop — and a caller must not treat it as permanent. DEV-041
+        is what happens when the two are conflated: a job created for an address
+        we will never fetch, offering a retry that cannot succeed.
     """
+
+    def __init__(self, message: str, *, code: str = "BLOCKED_URL") -> None:
+        super().__init__(message)
+        self.code = code
+
+    @property
+    def is_permanent(self) -> bool:
+        """Whether waiting could ever change this answer."""
+        return self.code == "BLOCKED_URL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,11 +155,11 @@ def _resolve_to_public_address(host: str, port: int, *, resolver: object | None)
     try:
         answers = resolve(host, port, 0, socket.SOCK_STREAM)
     except OSError as exc:
-        raise UnsafeUrlError("That address could not be found.") from exc
+        raise UnsafeUrlError("That address could not be found.", code="UNRESOLVED") from exc
 
     addresses = [str(info[4][0]) for info in answers]
     if not addresses:
-        raise UnsafeUrlError("That address could not be found.")
+        raise UnsafeUrlError("That address could not be found.", code="UNRESOLVED")
 
     for candidate in addresses:
         parsed = _as_ip(candidate)

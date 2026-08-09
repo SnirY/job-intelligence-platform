@@ -403,6 +403,42 @@ describe("add job", () => {
 
     expect(await screen.findByText(/Could not save that job/)).toBeInTheDocument();
   });
+
+  it("shows the reason a blocked link was refused, and keeps the user on the form", async () => {
+    /* DEV-041. These used to be saved, queued, failed, and then presented on a
+       job page offering "paste the description" and "Try the link again" —
+       neither of which can help, because the block is on the address and the
+       SSRF rules are deliberately not configurable.
+
+       The refusal now arrives as a 422 the form already knows how to show, so
+       the user reads the reason with their URL still in the box. */
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "BLOCKED_URL",
+              message: "That link points somewhere we will not fetch from.",
+              details: { source_url: "http://169.254.169.254/" },
+              request_id: null,
+            },
+          }),
+          { status: 422, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    renderWithQuery(<AddJobForm />);
+    await userEvent.click(screen.getByRole("button", { name: /import from a link/i }));
+    await userEvent.type(screen.getByLabelText(/job url/i), "http://169.254.169.254/");
+    await userEvent.click(screen.getByRole("button", { name: /save job/i }));
+
+    expect(await screen.findByText(/points somewhere we will not fetch from/i)).toBeInTheDocument();
+    // The generic copy would tell them to check their connection, which is the
+    // one thing that cannot be the problem here.
+    expect(screen.queryByText(/Check your connection/i)).not.toBeInTheDocument();
+  });
 });
 
 // --- detail -------------------------------------------------------------------

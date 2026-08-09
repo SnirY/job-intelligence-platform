@@ -19,7 +19,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from jip_api.application.processing.reaper import STALLED, reap_if_stalled
+from jip_api.application.processing.reaper import (
+    STALLED,
+    reap_if_stalled,
+    reap_stalled_fetch,
+)
+from jip_api.domain.jobs.models import Job, JobImportMethod, JobProcessingStatus
 from jip_api.domain.processing.models import (
     ProcessingJob,
     ProcessingJobKind,
@@ -236,3 +241,71 @@ def test_a_naive_timestamp_is_treated_as_utc() -> None:
     row.created_at = (NOW - dt.timedelta(seconds=PENDING_LIMIT + 1)).replace(tzinfo=None)
 
     assert reap(row) is True
+
+
+# --- URL imports, which have no processing job at all (DEV-042) ---------------
+
+
+def fetching_job(*, age_seconds: int, status: JobProcessingStatus | None = None) -> Job:
+    """A job row mid-URL-import. No `ProcessingJob` exists for these — that is
+    the whole of DEV-042."""
+    return Job(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        title="Untitled job",
+        import_method=JobImportMethod.URL,
+        source_url="https://jobs.example.com/1",
+        status=status or JobProcessingStatus.FETCHING,
+        created_at=NOW - dt.timedelta(seconds=age_seconds),
+        updated_at=NOW - dt.timedelta(seconds=age_seconds),
+    )
+
+
+def reap_fetch(row: Job) -> bool:
+    """Mirrors `reap` above, including the cast: `FakeSession` is deliberately
+    the two methods the reaper uses rather than a real Session."""
+    return reap_stalled_fetch(
+        FakeSession(),  # type: ignore[arg-type]
+        row,
+        timeout_seconds=RUNNING_LIMIT,
+        now=NOW,
+    )
+
+
+def test_a_fetch_stuck_past_the_limit_is_failed() -> None:
+    """The six-day row that found this issue, at the threshold instead."""
+    job_row = fetching_job(age_seconds=RUNNING_LIMIT + 1)
+
+    reaped = reap_fetch(job_row)
+
+    assert reaped is True
+    assert job_row.status is JobProcessingStatus.FAILED
+    assert job_row.fetch_error is not None
+    # The link survives, so the two things the user can actually do — retry, or
+    # paste — are both still open. GOAL.md: a failure must not destroy work.
+    assert job_row.source_url == "https://jobs.example.com/1"
+
+
+def test_a_fetch_still_within_the_limit_is_left_alone() -> None:
+    """A slow fetch is not a stalled one, and failing it would be worse than
+    waiting: the worker may be seconds from finishing."""
+    job_row = fetching_job(age_seconds=RUNNING_LIMIT - 1)
+
+    assert reap_fetch(job_row) is False
+    assert job_row.status is JobProcessingStatus.FETCHING
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        JobProcessingStatus.FAILED,
+        JobProcessingStatus.ANALYZED,
+        JobProcessingStatus.RAW,
+    ],
+)
+def test_only_a_fetch_in_flight_is_reaped(status: JobProcessingStatus) -> None:
+    """Anything that already reached an outcome is left exactly as it is."""
+    job_row = fetching_job(age_seconds=RUNNING_LIMIT * 100, status=status)
+
+    assert reap_fetch(job_row) is False
+    assert job_row.status is status

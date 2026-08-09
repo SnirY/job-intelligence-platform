@@ -114,6 +114,62 @@ def reap_if_stalled(
     return True
 
 
+_STALLED_FETCH_MESSAGE = (
+    "Importing this link never finished — the worker was probably down when it "
+    "was queued. Your job and its link are saved. Try the link again, or paste "
+    "the description."
+)
+
+
+def reap_stalled_fetch(
+    session: Session,
+    job: Job,
+    *,
+    timeout_seconds: int,
+    now: dt.datetime | None = None,
+) -> bool:
+    """Fail a URL import that has been ``FETCHING`` too long. Returns whether it did.
+
+    DEV-042, and the reason it needs its own function rather than a branch in
+    :func:`reap_if_stalled`: **a URL import has no processing job at all.**
+    ``ProcessingJobKind`` names only ``RESUME_IMPORT`` and ``JOB_ANALYSIS``, and
+    the import task records its outcome on the job row instead — deliberately,
+    because an import's result is what the user is looking at.
+
+    That is defensible for outcomes and leaves recovery with no owner. The
+    reaper above sweeps ``processing_jobs``, so for the whole life of DEV-013's
+    fix, URL import has been the one pipeline it could not reach. A fetch whose
+    worker dies between the job being committed and the task completing leaves
+    ``FETCHING`` set, and nothing else exists to notice. One job in the
+    development account sat that way for six days.
+
+    So this reads the job's own status, which is the only record there is.
+
+    Same trade as the sweep above, and worth restating because it is easy to
+    mistake this for a garbage collector: it runs on read. A stranded job nobody
+    opens is never reaped, and costs nothing by staying stale.
+    """
+    if job.status is not JobProcessingStatus.FETCHING:
+        return False
+
+    moment = now or dt.datetime.now(tz=dt.UTC)
+    # updated_at rather than created_at: a fetch that got partway and wrote
+    # something has shown life more recently than it was created.
+    since = _aware(job.updated_at or job.created_at)
+    if (moment - since).total_seconds() < timeout_seconds:
+        return False
+
+    job.status = JobProcessingStatus.FAILED
+    job.fetch_error = _STALLED_FETCH_MESSAGE
+    session.flush()
+
+    logger.warning(
+        "Reaped a stalled URL import",
+        extra={"job_id": str(job.id), "stalled_since": since.isoformat()},
+    )
+    return True
+
+
 def _release_entity(session: Session, job: ProcessingJob) -> None:
     """Put the thing the job was working on back into an actionable state.
 

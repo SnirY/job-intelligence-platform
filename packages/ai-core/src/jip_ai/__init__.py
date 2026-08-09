@@ -22,6 +22,7 @@ from jip_ai.routing import (
 from jip_ai.structured import (
     parse_structured_output,
     sanitize_json_schema,
+    schema_failure_summary,
     truncate_for_prompt,
 )
 from jip_ai.tracing import AIRunTrace, compute_input_hash, timed
@@ -47,6 +48,7 @@ __all__ = [
     "parse_structured_output",
     "run_with_retry",
     "sanitize_json_schema",
+    "schema_failure_summary",
     "timed",
     "truncate_for_prompt",
 ]

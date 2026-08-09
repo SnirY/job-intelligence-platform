@@ -380,6 +380,28 @@ def _demonstrations(held: SkillEvidence, snapshot: ProfileSnapshot) -> list[Evid
 # --- experience ---------------------------------------------------------------
 
 
+def _years_met_sentence(held_years: int, required_years: int) -> str:
+    """Say that the years are covered, without inventing a demand.
+
+    A posting whose minimum parses to zero — "0-3 years experience in
+    object-oriented development", which is an invitation to juniors — used to
+    render as *"You have 3 years against the 0 asked for."* Broken as a
+    sentence, and empty as a claim: nobody asked for zero years.
+
+    Only the wording changes. The verdict stays STRONG_MATCH and the confidence
+    stays 85, deliberately: those are `MATCHING_ENGINE_VERSION`'s territory, and
+    re-scoring on the way past a copy fix is the silent re-ranking that version
+    exists to prevent.
+
+    Whether a requirement demanding nothing should score 85 at all is a fair
+    question and a different one. It belongs to DEV-011, with the rest of the
+    values nobody has calibrated.
+    """
+    if required_years <= 0:
+        return f"This asks for no minimum experience, and you have {held_years} years."
+    return f"You have {held_years} years against the {required_years} asked for."
+
+
 def _match_experience(
     requirement: MatchableRequirement, snapshot: ProfileSnapshot
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
@@ -429,7 +451,7 @@ def _match_experience(
         return (
             MatchStatus.STRONG_MATCH,
             85,
-            f"You have {held_years} years against the {required_years} asked for.",
+            _years_met_sentence(held_years, required_years),
             evidence,
         )
 

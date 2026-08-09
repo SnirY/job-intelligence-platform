@@ -8,9 +8,15 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from jip_ai.failures import AIError, AIFailureCode
-from jip_ai.structured import parse_structured_output, sanitize_json_schema, truncate_for_prompt
+from jip_ai.structured import (
+    parse_structured_output,
+    sanitize_json_schema,
+    schema_failure_summary,
+    truncate_for_prompt,
+)
 
 
 def test_parses_a_json_object() -> None:
@@ -113,3 +119,70 @@ def test_truncation_is_reported() -> None:
 
     assert text == "abc"
     assert truncated is True
+
+
+# --- naming the field that failed, without quoting it (DEV-045) ----------------
+
+
+class _Change(BaseModel):
+    item_id: str
+    proposed_text: str
+    rationale: str
+
+
+class _Rewrite(BaseModel):
+    changes: list[_Change]
+
+
+def _rejects(payload: dict[str, Any]) -> ValidationError:
+    with pytest.raises(ValidationError) as caught:
+        _Rewrite.model_validate(payload)
+    return caught.value
+
+
+def test_the_summary_names_the_field_and_the_kind_of_error() -> None:
+    """The whole point of DEV-045: `ai_runs` recorded "Output failed schema
+    check" and nothing else, so a failure that happened half the time could not
+    be reproduced from the log."""
+    error = _rejects({"changes": [{"item_id": "a"}]})
+
+    summary = schema_failure_summary(error)
+
+    assert "changes.0.proposed_text" in summary
+    assert "missing" in summary
+
+
+def test_the_summary_never_quotes_what_the_model_wrote() -> None:
+    """`errors()` carries the offending value in `input`, and on a resume
+    rewrite that value is the user's own words. DEV-033 is the same rule from
+    the other side."""
+    error = _rejects(
+        {
+            "changes": [
+                {"item_id": "a", "proposed_text": "Led the NICU trial at Sheba", "rationale": 5}
+            ]
+        }
+    )
+
+    summary = schema_failure_summary(error)
+
+    assert "NICU" not in summary
+    assert "Sheba" not in summary
+    assert "changes.0.rationale" in summary
+
+
+def test_a_long_list_of_problems_says_how_many_it_left_out() -> None:
+    """A truncated summary that does not admit it is truncated reads as a
+    complete one."""
+    error = _rejects({"changes": [{} for _ in range(9)]})
+
+    summary = schema_failure_summary(error, limit=3)
+
+    assert summary.count(";") == 3
+    assert "and 24 more" in summary
+
+
+def test_something_that_is_not_a_validation_error_says_so() -> None:
+    """Called from an `except` clause, so it must never raise on the way to
+    reporting a failure."""
+    assert schema_failure_summary(RuntimeError("boom")) == "RuntimeError with no field detail"

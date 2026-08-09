@@ -246,6 +246,11 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
 
   const frozen = !version.is_editable;
 
+  // Recomputed on every keystroke, which is the point: the save is refused
+  // while a heading has nothing under it, and the refusal has to clear the
+  // moment the user fixes it. DEV-044.
+  const dangling = danglingHeadings(draft);
+
   return (
     <div className="space-y-4">
       {frozen && (
@@ -294,7 +299,7 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
-              disabled={frozen || save.isPending}
+              disabled={frozen || save.isPending || dangling.length > 0}
               onClick={() => save.mutate(fromDraft(draft))}
             >
               {save.isPending ? "Saving…" : "Save"}
@@ -307,12 +312,41 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
             />
 
             <p aria-live="polite" className="text-sm">
-              {save.isSuccess && !save.isPending && (
+              {save.isSuccess && !save.isPending && dangling.length === 0 && (
                 <span className="text-muted-foreground">Saved.</span>
               )}
               {save.isError && <span className="text-destructive">Could not save.</span>}
             </p>
           </div>
+
+          {dangling.length > 0 && (
+            /* DEV-044. Refused before the request rather than reported after
+               it: the save would succeed, and the line would be gone under a
+               "Saved." that had nothing to do with it. */
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+            >
+              <p className="font-medium">
+                {dangling.length === 1
+                  ? "One heading has no lines under it."
+                  : `${dangling.length} headings have no lines under them.`}
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                {dangling.map((entry) => (
+                  <li key={`${entry.kind}-${entry.heading}`}>
+                    <span className="font-medium">{SECTION_KIND_LABELS[entry.kind]}</span>
+                    {" — "}
+                    {entry.heading || "(empty heading)"}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-muted-foreground">
+                A heading belongs to the bullets beneath it, so one on its own has nowhere to be
+                stored. Add a line under it, or remove the <code>#</code> to make it a bullet.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -414,6 +448,51 @@ function toDraft(version: ResumeVersionDetail): Record<string, string> {
       .join("\n");
   }
   return draft;
+}
+
+/** A heading the data model has nowhere to put. See `danglingHeadings`. */
+export interface DanglingHeading {
+  kind: ResumeSectionKind;
+  heading: string;
+}
+
+/**
+ * Headings with no bullet beneath them, which a save would silently discard.
+ *
+ * DEV-044. `fromDraft` carries a heading in a local until a bullet arrives to
+ * attach it to, because `ResumeItem` has no standalone-heading form. A `#` line
+ * with nothing ordinary after it therefore reached the end of the loop and was
+ * dropped — and the screen said "Saved." A section of only headings vanished
+ * whole.
+ *
+ * That explains the behaviour and does not excuse it. This is not a failure
+ * path losing work; it is the success path doing it, under an explicit
+ * confirmation that nothing was lost. So the save is refused and the line is
+ * named, which is honest and costs no schema change.
+ */
+export function danglingHeadings(draft: Record<string, string>): DanglingHeading[] {
+  const dangling: DanglingHeading[] = [];
+
+  for (const kind of SECTION_ORDER) {
+    let pending: string | null = null;
+
+    for (const raw of (draft[kind] ?? "").split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith("#")) {
+        // Two headings in a row lose the first one for the same reason, so each
+        // is reported rather than only the last.
+        if (pending !== null) dangling.push({ kind, heading: pending });
+        pending = line.replace(/^#+\s*/, "");
+        continue;
+      }
+      pending = null;
+    }
+
+    if (pending !== null) dangling.push({ kind, heading: pending });
+  }
+
+  return dangling;
 }
 
 function fromDraft(draft: Record<string, string>) {

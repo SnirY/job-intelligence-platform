@@ -55,6 +55,45 @@ def parse_structured_output(text: str) -> dict[str, Any]:
     return parsed
 
 
+def schema_failure_summary(error: Any, *, limit: int = 5) -> str:
+    """Which fields a payload got wrong, without saying what it put in them.
+
+    DEV-045. `RESUME_REWRITE` was failing its own schema check about half the
+    time, and every one of those runs recorded the same fixed string — "Output
+    failed schema check". The Pydantic error naming the field went into
+    ``AIError.details``, which is not persisted on the trace, so from
+    ``ai_runs`` alone the failure was unreproducible: you could see that the
+    shape was wrong and never which part of it.
+
+    This is the same trade `_shape_of` makes one function below, and for the
+    same reason. ``error.errors()`` carries ``loc`` and ``type`` — a field path
+    and a category, both structural — alongside ``input``, which on a resume
+    rewrite is the user's own words. Only the first two are used. A count of
+    what was elided keeps a truncated summary from reading as a complete one.
+
+    Typed against ``Any`` rather than ``ValidationError`` so this package keeps
+    no pydantic import; the callers all have one already.
+    """
+    try:
+        problems = list(error.errors())
+    except Exception:  # not a ValidationError: say so rather than raising here
+        return f"{type(error).__name__} with no field detail"
+
+    if not problems:
+        return "schema check failed with no field detail"
+
+    described = [
+        f"{'.'.join(str(part) for part in problem.get('loc', ())) or '<root>'}"
+        f" ({problem.get('type', 'unknown')})"
+        for problem in problems[:limit]
+    ]
+    remaining = len(problems) - len(described)
+    if remaining > 0:
+        described.append(f"and {remaining} more")
+
+    return "; ".join(described)
+
+
 def _shape_of(candidate: str) -> str:
     """What the response looked like, without saying what it said.
 

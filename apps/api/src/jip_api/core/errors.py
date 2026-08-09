@@ -46,11 +46,18 @@ class APIError(Exception):
         self,
         message: str | None = None,
         *,
+        code: str | None = None,
         details: Any | None = None,
     ) -> None:
         super().__init__(message or self.message)
         if message is not None:
             self.message = message
+        if code is not None:
+            # Overridable for the same reason `message` is: one status can carry
+            # several distinguishable refusals, and a client that has to match
+            # on prose to tell them apart will break the first time the prose
+            # is improved.
+            self.code = code
         self.details = details
 
 
@@ -76,6 +83,20 @@ class ConflictError(APIError):
     status_code = status.HTTP_409_CONFLICT
     code = "CONFLICT"
     message = "The request conflicts with existing data."
+
+
+class UnprocessableEntityError(APIError):
+    """Well-formed, and not something we will act on.
+
+    Distinct from the 422 FastAPI raises for a schema violation: the body parsed
+    and every field is the right shape. What is refused is what the values
+    *mean* — an address inside the private network is a valid URL and still one
+    we will never fetch (DEV-041).
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "UNPROCESSABLE"
+    message = "That request cannot be acted on."
 
 
 def error_response(

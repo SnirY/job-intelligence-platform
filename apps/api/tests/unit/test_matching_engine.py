@@ -531,6 +531,48 @@ def test_far_too_few_years_is_a_gap() -> None:
     assert result.status is MatchStatus.GAP
 
 
+def test_a_minimum_of_zero_does_not_claim_anything_was_asked_for() -> None:
+    """Found on screen: *"You have 3 years against the 0 asked for."*
+
+    "0-3 years experience in object-oriented development" parses to a minimum
+    of zero, which is an invitation to juniors rather than a demand for
+    nothing. The old sentence was broken grammar over an empty claim.
+    """
+    result = verdict_for(
+        [requirement("0-3 years experience", "EXPERIENCE", years_min=0)],
+        profile(skill("Python"), years=3),
+    )
+
+    assert "asked for" not in result.explanation
+    assert "no minimum experience" in result.explanation
+    assert "3 years" in result.explanation
+
+
+def test_a_minimum_of_zero_still_scores_as_it_did() -> None:
+    """The copy changed and the verdict did not, on purpose.
+
+    Re-scoring on the way past a wording fix is exactly the silent re-ranking
+    `MATCHING_ENGINE_VERSION` exists to make visible. Whether a requirement
+    demanding nothing deserves STRONG_MATCH is DEV-011's question.
+    """
+    result = verdict_for(
+        [requirement("0-3 years experience", "EXPERIENCE", years_min=0)],
+        profile(skill("Python"), years=3),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_a_stated_minimum_still_names_it() -> None:
+    """The zero case must not swallow the ordinary one."""
+    result = verdict_for(
+        [requirement("5+ years backend", "EXPERIENCE", years_min=5)],
+        profile(skill("Python"), years=6),
+    )
+
+    assert "6 years against the 5 asked for" in result.explanation
+
+
 # --- recommendation ---------------------------------------------------------------
 
 

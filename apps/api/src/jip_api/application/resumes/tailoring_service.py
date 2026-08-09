@@ -42,6 +42,7 @@ from jip_ai import (
     StructuredRequest,
     compute_input_hash,
     run_with_retry,
+    schema_failure_summary,
     timed,
 )
 from jip_api.application.errors import ApplicationError
@@ -238,7 +239,10 @@ def _ask_for_strategy(
             try:
                 return ResumeStrategyResult.model_validate(response.payload)
             except ValidationError as exc:
-                trace.mark_failure(AIFailureCode.INVALID_OUTPUT, "Output failed schema check")
+                trace.mark_failure(
+                    AIFailureCode.INVALID_OUTPUT,
+                    f"Output failed schema check: {schema_failure_summary(exc)}",
+                )
                 raise AIError(
                     AIFailureCode.INVALID_OUTPUT,
                     "The planner returned data in an unexpected shape.",
@@ -325,7 +329,10 @@ def create_suggestions(
             try:
                 return ResumeRewriteResult.model_validate(response.payload)
             except ValidationError as exc:
-                trace.mark_failure(AIFailureCode.INVALID_OUTPUT, "Output failed schema check")
+                trace.mark_failure(
+                    AIFailureCode.INVALID_OUTPUT,
+                    f"Output failed schema check: {schema_failure_summary(exc)}",
+                )
                 raise AIError(
                     AIFailureCode.INVALID_OUTPUT,
                     "The rewriter returned data in an unexpected shape.",

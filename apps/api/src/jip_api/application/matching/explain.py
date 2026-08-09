@@ -31,6 +31,7 @@ from jip_ai import (
     compute_input_hash,
     run_with_retry,
     sanitize_json_schema,
+    schema_failure_summary,
     timed,
 )
 from jip_api.application.matching.matcher import Verdict
@@ -150,7 +151,10 @@ class MatchExplainerService:
                 try:
                     parsed = MatchExplanation.model_validate(response.payload)
                 except ValidationError as exc:
-                    trace.mark_failure(AIFailureCode.INVALID_OUTPUT, "Output failed schema check")
+                    trace.mark_failure(
+                        AIFailureCode.INVALID_OUTPUT,
+                        f"Output failed schema check: {schema_failure_summary(exc)}",
+                    )
                     raise AIError(
                         AIFailureCode.INVALID_OUTPUT,
                         "The explainer returned data in an unexpected shape.",

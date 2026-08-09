@@ -210,6 +210,63 @@ def test_a_queue_outage_keeps_the_job(
     assert "try again" in (fetched["fetch_error"] or "").lower()
 
 
+# --- a link we will never fetch (DEV-041) -------------------------------------
+
+
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        "http://localhost:8000/",
+        "http://127.0.0.1/",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://192.168.1.1/",
+        "http://10.0.0.1/",
+        "http://[::1]/",
+        "http://user:pass@10.0.0.1/",
+        "http://example.com:6379/",
+    ],
+)
+def test_a_permanently_blocked_url_creates_nothing(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher, blocked: str
+) -> None:
+    """DEV-041. These used to be saved, queued, failed, and then presented with
+    a "Try the link again" button that could never succeed.
+
+    The rules are deliberately not configurable, so the answer is knowable
+    before anything is written — and a job the user cannot use is not a kinder
+    outcome than a refusal.
+    """
+    body = create(client, factory, {"import_method": "URL", "source_url": blocked}, expect=422)
+
+    assert body["error"]["code"] == "BLOCKED_URL"
+    assert body["error"]["details"]["source_url"] == blocked
+
+    # Nothing saved and nothing queued: the two halves of the defect.
+    listed = client.get(BASE, headers=auth(factory)).json()["data"]
+    assert listed == []
+    assert dispatcher.calls == []
+
+
+def test_a_url_that_merely_will_not_resolve_is_still_saved(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher
+) -> None:
+    """The other half of DEV-041, and the reason `UnsafeUrlError` carries a code.
+
+    A name that does not resolve is a fact about this moment — a DNS blip, an
+    offline laptop — not about the address. Refusing it at submit time would
+    turn a transient failure into a permanent one, and lose the user's link.
+    `.invalid` is reserved by RFC 2606 and cannot resolve anywhere.
+    """
+    job = create(
+        client,
+        factory,
+        {"import_method": "URL", "source_url": "https://nothing.invalid/role/1"},
+    )
+
+    assert job["status"] == "FETCHING"
+    assert dispatcher.calls == [("jip_worker.tasks.jobs.run_job_url_import", (job["id"],))]
+
+
 # --- source preservation ------------------------------------------------------
 
 

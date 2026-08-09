@@ -148,6 +148,87 @@ describe("editing a version", () => {
   });
 });
 
+// --- a heading with nothing under it (DEV-044) ---------------------------------
+
+describe("a heading the model cannot store", () => {
+  it("refuses the save instead of dropping the line", async () => {
+    /* DEV-044. `fromDraft` carries a heading until a bullet arrives to attach
+       it to, so a trailing `#` line reached the end of the loop and vanished —
+       under a "Saved." The field's own hint invites exactly this. */
+    const fetchMock = routes();
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithQuery(<ResumeWorkspace />);
+    const projects = await screen.findByLabelText("Projects");
+
+    await userEvent.clear(projects);
+    await userEvent.type(projects, "# Reduced API latency by 40%");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no lines under it/i);
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    // The point of the whole fix: nothing was sent, so nothing was lost.
+    const put = fetchMock.mock.calls.some(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    );
+    expect(put).toBe(false);
+  });
+
+  it("names the section and the heading, so the line can be found", async () => {
+    vi.stubGlobal("fetch", routes());
+
+    renderWithQuery(<ResumeWorkspace />);
+    const projects = await screen.findByLabelText("Projects");
+
+    await userEvent.clear(projects);
+    await userEvent.type(projects, "# Football Match Prediction");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Projects");
+    expect(alert).toHaveTextContent("Football Match Prediction");
+  });
+
+  it("clears as soon as a line is added under the heading", async () => {
+    /* A refusal that outlives its cause teaches people to ignore refusals. */
+    vi.stubGlobal("fetch", routes());
+
+    renderWithQuery(<ResumeWorkspace />);
+    const projects = await screen.findByLabelText("Projects");
+
+    await userEvent.clear(projects);
+    await userEvent.type(projects, "# Football Match Prediction");
+    await screen.findByRole("alert");
+
+    await userEvent.type(projects, "{enter}Built an end-to-end ML pipeline.");
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("leaves an ordinary heading with bullets alone", async () => {
+    /* The normal case has to keep working: this is the shape `toDraft` writes
+       back for every experience in the fixture. */
+    const fetchMock = routes();
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithQuery(<ResumeWorkspace />);
+    const projects = await screen.findByLabelText("Projects");
+
+    await userEvent.clear(projects);
+    await userEvent.type(projects, "# A role{enter}A bullet beneath it.");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.some(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(put).toBe(true);
+    });
+  });
+});
+
 // --- immutability ---------------------------------------------------------------
 
 describe("a version that has been sent", () => {
