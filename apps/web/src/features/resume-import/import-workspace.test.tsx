@@ -486,3 +486,75 @@ describe("review", () => {
     expect(screen.getByText(/1 item was added to your profile/)).toBeInTheDocument();
   });
 });
+
+// --- reaching an earlier upload (DEV-046) --------------------------------------
+
+describe("more than one upload", () => {
+  const twoImports = [
+    { document: document({ id: "doc-2", original_filename: "newer.pdf" }), job: job() },
+    {
+      document: document({
+        id: "doc-1",
+        original_filename: "older.pdf",
+        created_at: "2026-07-01T00:00:00Z",
+      }),
+      job: job(),
+    },
+  ];
+
+  it("lets the user open an earlier import instead of burying it", async () => {
+    /* DEV-046. The page took `imports.data[0]` and `setSelected` reached only
+       the upload card, so a second upload made the first one's unfinished
+       review unreachable — thirty-seven undecided proposals in the development
+       account, invisible with no sign they existed. */
+    const review = { document: document(), job: job(), extraction: extraction([extractionItem()]) };
+    const fetchMock = routes(review, twoImports);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWorkspace(<ImportWorkspace />);
+
+    const picker = await screen.findByLabelText(/which upload/i);
+    expect(picker).toHaveValue("doc-2");
+
+    await userEvent.selectOptions(picker, "doc-1");
+
+    await waitFor(() => {
+      const asked = fetchMock.mock.calls.some(([url]) =>
+        String(url).includes("/imports/doc-1/extraction"),
+      );
+      expect(asked).toBe(true);
+    });
+  });
+
+  it("names each upload so two of the same file can be told apart", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        { document: document(), job: job(), extraction: extraction([extractionItem()]) },
+        twoImports,
+      ),
+    );
+
+    renderWorkspace(<ImportWorkspace />);
+
+    expect(await screen.findByRole("option", { name: /newer\.pdf/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /older\.pdf/ })).toBeInTheDocument();
+  });
+
+  it("stays out of the way when there is only one upload", async () => {
+    /* A picker with one entry is furniture. */
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        document: document(),
+        job: job(),
+        extraction: extraction([extractionItem()]),
+      }),
+    );
+
+    renderWorkspace(<ImportWorkspace />);
+
+    await screen.findByText(/Python/);
+    expect(screen.queryByLabelText(/which upload/i)).not.toBeInTheDocument();
+  });
+});

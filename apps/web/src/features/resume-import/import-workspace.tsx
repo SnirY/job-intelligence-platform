@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useExtractionReview, useImports, useRetryJob } from "@/features/resume-import/api";
 import { ProcessingStatus } from "@/features/resume-import/processing-status";
 import { ReviewPanel } from "@/features/resume-import/review-panel";
@@ -29,6 +31,36 @@ export function ImportWorkspace() {
     <div className="space-y-6">
       <UploadCard onUploaded={setSelected} />
 
+      {imports.data && imports.data.length > 1 && (
+        /* DEV-046. The page has always chosen `imports.data[0]` — the newest
+           upload — and `setSelected` reached only the upload card, so there was
+           no way to open any other one. Uploading a second resume silently
+           buried the first one's unfinished review: nothing deleted, just
+           unreachable, which is worse because it looks like nothing happened.
+
+           The list was already being fetched with every filename and date on
+           it. All that was missing was somewhere to show them. */
+        <div className="space-y-2">
+          <Label htmlFor="import-picker">Which upload</Label>
+          <Select
+            id="import-picker"
+            className="w-full max-w-md"
+            value={documentId ?? ""}
+            onChange={(event) => setSelected(event.target.value)}
+          >
+            {imports.data.map((entry) => (
+              <option key={entry.document.id} value={entry.document.id}>
+                {entry.document.original_filename} · {formatUploaded(entry.document.created_at)}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Reviews stay where you left them. Nothing here is saved to your profile until you
+            confirm it, and uploading another resume does not discard this one.
+          </p>
+        </div>
+      )}
+
       {imports.isError && (
         <Card>
           <CardContent className="pt-6">
@@ -44,6 +76,13 @@ export function ImportWorkspace() {
       {documentId && <ImportDetail documentId={documentId} />}
     </div>
   );
+}
+
+function formatUploaded(value: unknown): string {
+  /* The picker has to distinguish two uploads of the same file, which differ
+     only by when they happened. */
+  const at = new Date(String(value));
+  return Number.isNaN(at.getTime()) ? "date unknown" : at.toLocaleString();
 }
 
 function ImportDetail({ documentId }: { documentId: string }) {
