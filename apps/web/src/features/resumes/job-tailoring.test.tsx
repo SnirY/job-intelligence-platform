@@ -183,6 +183,27 @@ describe("the plan", () => {
 
     expect(await screen.findByText(/written plan could not be generated/)).toBeInTheDocument();
   });
+
+  it("renders two identical warnings rather than collapsing them to one", async () => {
+    // Found 2026-08-11. The list keyed each item by its own text, so React saw
+    // a duplicate key — it warns in development and drops a row in production.
+    // The duplicate itself is fixed server-side, but a list whose identity
+    // depends on its content being unique is one dedupe bug away from silently
+    // losing a line, and losing a warning is the worst thing this list can do.
+    const repeated = "Suggestions could not be generated. Your resume is unchanged.";
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          strategy: strategy({ summary: null, warnings: [repeated, repeated] }),
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobTailoringPanel job={job()} />);
+
+    expect(await screen.findAllByText(repeated)).toHaveLength(2);
+  });
 });
 
 // --- reviewing suggestions ----------------------------------------------------------

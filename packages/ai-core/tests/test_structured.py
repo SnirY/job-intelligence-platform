@@ -50,6 +50,75 @@ def test_rejects_a_top_level_array() -> None:
         parse_structured_output("[1, 2, 3]")
 
 
+def test_repairs_an_escape_the_model_double_escaped() -> None:
+    r"""Seen in production: `±0.5cm` arrived as the six characters `\u00b1`.
+
+    The model wrote the backslash escaped, so `json.loads` produced the spelling
+    instead of the character.
+    """
+    payload = parse_structured_output(r'{"text": "achieving \\u00b10.5cm accuracy"}')
+
+    assert payload == {"text": "achieving ±0.5cm accuracy"}
+
+
+def test_repairs_escapes_at_every_depth() -> None:
+    """Nested, because the rewrite that hit this returns a list of objects."""
+    payload = parse_structured_output(
+        r'{"suggestions": [{"text": "\\u00b10.5cm"}], "note": "\\u2014"}'
+    )
+
+    assert payload == {"suggestions": [{"text": "±0.5cm"}], "note": "—"}
+
+
+def test_a_properly_escaped_character_is_untouched() -> None:
+    """The ordinary path. `json.loads` already decoded it, and there is no
+    surviving escape for the repair to find."""
+    assert parse_structured_output(r'{"text": "\u00b10.5cm"}') == {"text": "±0.5cm"}
+
+
+BACKSLASH = chr(92)
+"""Built rather than written, so no layer between here and the file can eat it.
+
+Every attempt to write these cases as literals lost a backslash somewhere.
+"""
+
+
+def _response(text: str) -> str:
+    """A JSON document whose one string value is exactly ``text``."""
+    return '{"t": "' + text.replace(BACKSLASH, BACKSLASH * 2) + '"}'
+
+
+def test_a_double_escaped_surrogate_pair_becomes_one_character() -> None:
+    """An emoji arrives as two escapes that mean one character.
+
+    Decoding them separately yields two lone surrogates, and PostgreSQL refuses
+    those — which would turn a cosmetic defect into a failed write.
+    """
+    emoji = BACKSLASH + "ud83d" + BACKSLASH + "ude00"
+    payload = parse_structured_output(_response(emoji + " hi"))
+
+    assert payload == {"t": "😀 hi"}
+    payload["t"].encode("utf-8")
+
+
+def test_a_surrogate_with_no_partner_is_left_as_it_arrived() -> None:
+    """Half of a character is not a character. The spelling is ugly and
+    storable; the decoded half is neither."""
+    lone = BACKSLASH + "ud83d"
+    payload = parse_structured_output(_response(lone + " alone"))
+
+    assert payload == {"t": lone + " alone"}
+    payload["t"].encode("utf-8")
+
+
+def test_a_lone_backslash_is_left_alone() -> None:
+    r"""Only `\uXXXX` is repaired. A Windows path in a resume keeps its
+    backslashes, and `\n` keeps its honest meaning in text about code."""
+    payload = parse_structured_output(r'{"text": "C:\\Users\\dev and a \\n literal"}')
+
+    assert payload == {"text": r"C:\Users\dev and a \n literal"}
+
+
 def test_rejects_a_scalar() -> None:
     with pytest.raises(AIError, match="not an object"):
         parse_structured_output("42")

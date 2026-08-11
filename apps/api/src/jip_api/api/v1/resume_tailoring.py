@@ -279,7 +279,7 @@ def post_suggestions(
     )
     strategy.version_id = version.id
     if outcome.warnings:
-        strategy.warnings = [*strategy.warnings, *outcome.warnings]
+        strategy.warnings = tailoring.merge_warnings(strategy.warnings, outcome.warnings)
     session.commit()
 
     return DataResponse(

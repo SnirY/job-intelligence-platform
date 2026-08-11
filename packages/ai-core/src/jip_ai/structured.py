@@ -19,6 +19,33 @@ from jip_ai.failures import AIError, AIFailureCode
 # content was correct, and then paying for a retry of the same thing.
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
 
+_STRAY_ESCAPE = re.compile(
+    r"\\u(?P<high>[dD][89abAB][0-9a-fA-F]{2})\\u(?P<low>[dD][c-fC-F][0-9a-fA-F]{2})"
+    r"|\\u(?P<single>[0-9a-fA-F]{4})"
+)
+"""A ``\\uXXXX`` that survived ``json.loads``.
+
+It can only be here because the model wrote the backslash escaped — `"\\\\u00b1"`
+rather than `"\\u00b1"` — so the decoder produced the six literal characters
+instead of the character they spell.
+
+Observed on a resume rewrite: `±0.5cm` came back as `\\u00b10.5cm`, and the
+damage was not only the mojibake on screen. `truth._check_numbers` reads figures
+out of the text, and its lookbehind rejects a digit preceded by a letter, so
+``\\u00b10.5cm`` yielded **``5``** where ``±0.5cm`` yields ``0.5``. ``0.5`` was in
+the original line and would have passed; ``5`` was not, and the fabrication
+guard told the user *"we never add a figure you did not write"* about a figure
+they wrote themselves.
+
+That is the worst failure available to this module: the component whose whole
+job is being trustworthy about authorship, accusing the author.
+
+Surrogate pairs are matched as a pair, before the single-escape branch, so a
+double-escaped emoji becomes one character rather than two halves of one.
+Decoding the halves separately would produce lone surrogates, and PostgreSQL
+refuses those outright — turning a cosmetic defect into a failed write.
+"""
+
 
 def parse_structured_output(text: str) -> dict[str, Any]:
     """Parse ``text`` into a JSON object.
@@ -52,7 +79,45 @@ def parse_structured_output(text: str) -> dict[str, Any]:
             details=f"top-level type was {type(parsed).__name__}",
         )
 
-    return parsed
+    repaired: dict[str, Any] = _decode_stray_escapes(parsed)
+    return repaired
+
+
+def _decode_stray_escapes(value: Any) -> Any:
+    """Turn a surviving ``\\uXXXX`` back into the character it spells.
+
+    Applied to every string in the payload, at the one place every model
+    response passes through, so no operation has to remember to do it.
+
+    Only ``\\uXXXX`` is repaired. ``\\n`` and ``\\t`` are deliberately left
+    alone: a literal backslash-n has honest uses in text about code, and
+    guessing wrong there would corrupt content rather than restore it. A literal
+    ``\\u00b1`` in a resume or a job posting has none.
+    """
+    if isinstance(value, str):
+        return _STRAY_ESCAPE.sub(_one_escape, value)
+    if isinstance(value, dict):
+        # Keys are schema field names and are left alone. A repaired key would
+        # no longer match the model it is about to be validated against.
+        return {key: _decode_stray_escapes(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decode_stray_escapes(item) for item in value]
+    return value
+
+
+def _one_escape(match: re.Match[str]) -> str:
+    """The character a single match spells, pair first."""
+    high = match.group("high")
+    if high is not None:
+        low = match.group("low")
+        return chr(0x10000 + ((int(high, 16) - 0xD800) << 10) + (int(low, 16) - 0xDC00))
+
+    code = int(match.group("single"), 16)
+    if 0xD800 <= code <= 0xDFFF:
+        # A surrogate with no partner. Decoding it produces a character that
+        # cannot be stored or encoded, so the mojibake is the safer of the two.
+        return match.group(0)
+    return chr(code)
 
 
 def schema_failure_summary(error: Any, *, limit: int = 5) -> str:

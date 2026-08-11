@@ -107,6 +107,43 @@ def test_rewording_within_the_evidence_is_safe() -> None:
     assert report.may_apply_automatically is True
 
 
+def test_a_grammatical_variant_is_not_a_new_term() -> None:
+    """Walked 2026-08-11, on a real rewrite.
+
+    The original said *"Engineered features from historical match data"*; the
+    rewrite said *"feature engineering from historical match data"*. The guard
+    reported **engineering, feature** as terms the profile does not use — the
+    same claim, reshaped, flagged as two new ones.
+
+    Noise here is not harmless. A check that fires on plurals is one people
+    learn to skim, and it shares a list with the warnings that matter.
+    """
+    report = validate_rewrite(
+        original="Engineered features from historical match data.",
+        suggested="Feature engineering from historical match data.",
+        source_facts=["Engineered features from historical match data"],
+    )
+
+    assert report.status is ClaimStatus.SAFE
+
+
+def test_a_title_held_is_still_distinct_from_a_thing_done() -> None:
+    """The limit of the stemming above, and the reason it is not more eager.
+
+    "Managed" and "manager" are different claims — one is work, the other is a
+    position — so they must not collapse into each other the way "managed" and
+    "manages" do.
+    """
+    report = validate_rewrite(
+        original="Managed the deployment pipeline.",
+        suggested="Manager of the deployment pipeline.",
+        source_facts=["Managed the deployment pipeline"],
+    )
+
+    assert report.status is ClaimStatus.REQUIRES_CONFIRMATION
+    assert "manager" in report.claims[0].text
+
+
 def test_a_sentence_final_full_stop_is_not_a_new_term() -> None:
     """The tokeniser admits "." so "node.js" survives whole, which also drags
     in the period ending a sentence. Left alone, the last word of every
@@ -224,3 +261,44 @@ def test_validation_is_deterministic() -> None:
 
     assert [(c.text, c.status) for c in first.claims] == [(c.text, c.status) for c in second.claims]
     assert first.risk is second.risk
+
+
+def test_a_figure_the_user_wrote_is_not_called_fabricated() -> None:
+    """Walked 2026-08-11, and the guard accused the author.
+
+    A rewrite came back with the six literal characters that spell the plus-
+    minus sign, followed by ``0.5cm``. ``_NUMBER`` rejects a digit preceded by a
+    letter, so the only figure it could find was **5** — the tail of a number,
+    not the number. ``0.5`` was in the original line and would have passed; 5
+    was not, so the strictest rule in the module fired on a figure the user had
+    written themselves.
+
+    Repaired at the parse boundary in ``jip_ai.structured``, which is why the
+    text here is clean. This asserts the consequence: with the real character
+    present, the figure is recognised and nothing is blocked.
+    """
+    report = validate_rewrite(
+        original="Measured newborn length to ±0.5cm accuracy.",
+        suggested="Achieved ±0.5cm accuracy measuring newborn length.",
+        source_facts=FACTS,
+    )
+
+    assert not [claim for claim in report.claims if claim.status is ClaimStatus.BLOCKED]
+
+
+def test_the_tail_of_a_number_is_what_a_broken_escape_looks_like() -> None:
+    """The failure itself, pinned so nobody has to rediscover what it looked like.
+
+    If a stray escape ever survives to here again, this is what the user is
+    told: a claim about 5, which appears in neither the original nor the
+    evidence. The repair belongs upstream — this only records the shape of the
+    damage, so the next person seeing "5" recognises it in one reading.
+    """
+    report = validate_rewrite(
+        original="Measured newborn length to ±0.5cm accuracy.",
+        suggested=r"Achieved \u00b10.5cm accuracy measuring newborn length.",
+        source_facts=FACTS,
+    )
+
+    blocked = [claim.text for claim in report.claims if claim.status is ClaimStatus.BLOCKED]
+    assert blocked == ["5"]

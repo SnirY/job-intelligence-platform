@@ -224,14 +224,16 @@ def _check_content(report: TruthReport, *, original: str, suggested: str, haysta
     matters is a *content* word that appears in neither the original nor the
     evidence — that is where a new technology or a new responsibility enters.
     """
-    original_words = set(_words(original))
-    evidence_words = set(_words(haystack))
+    # Compared on stems, reported as written. "Engineered features" in the
+    # original and "feature engineering" in the rewrite is the same claim in a
+    # different grammatical form, and 2026-08-11's walkthrough had the guard
+    # report both halves of it as terms the profile does not use. A check that
+    # flags plurals teaches people to skim past it, which costs the real
+    # warnings sitting in the same list.
+    supported = {_stem(word) for word in _words(original)}
+    supported |= {_stem(word) for word in _words(haystack)}
 
-    introduced = [
-        word
-        for word in _words(suggested)
-        if word not in original_words and word not in evidence_words
-    ]
+    introduced = [word for word in _words(suggested) if _stem(word) not in supported]
     if not introduced:
         return
 
@@ -296,3 +298,25 @@ def _words(text: str) -> list[str]:
         if len(word) > 2 and word not in _STOPWORDS:
             words.append(word)
     return words
+
+
+def _stem(word: str) -> str:
+    """A crude comparison key, for deciding whether two words are the same claim.
+
+    Used only by :func:`_check_content`, and only for matching — never for
+    display, and never by the risk classifier, whose markers are exact words.
+
+    Not linguistics. The stem does not have to be a real word; it has to be the
+    *same* for "engineered", "engineering" and "engineer", and *different* for
+    "managed" and "manager", which are a thing done and a title held.
+
+    Stripping the trailing ``e`` after the suffix is what makes "manages" and
+    "managed" agree — ``manage`` and ``manag`` would otherwise not. The four-
+    character floor keeps the rule off short words, where removing two letters
+    stops being a suffix and starts being most of the word.
+    """
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            word = word[: -len(suffix)]
+            break
+    return word.rstrip("e") if len(word) > 4 else word

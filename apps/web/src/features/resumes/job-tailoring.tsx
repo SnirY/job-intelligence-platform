@@ -152,8 +152,15 @@ function StrategyView({
 
           {strategy.warnings.length > 0 && (
             <ul className="space-y-1 text-sm text-muted-foreground">
-              {strategy.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
+              {/* Keyed by position, not by text. These are server-supplied
+                  sentences with no id, and two of them can be identical — a
+                  retried `Suggest changes` used to store the same failure
+                  twice. The duplicate is fixed at the source, but a list whose
+                  identity depends on its content being unique is one dedupe
+                  bug away from dropping a row, and React drops rather than
+                  warns in production. */}
+              {strategy.warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
               ))}
             </ul>
           )}
@@ -386,8 +393,11 @@ function List({
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
       {description && <p className="text-xs text-muted-foreground">{description}</p>}
       <ul className="space-y-1 text-sm">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
+        {/* Keyed by position for the same reason as the warnings above: these
+            are server-supplied strings with no id, and nothing guarantees a
+            gap or a missing-evidence line is unique. */}
+        {items.map((item, index) => (
+          <li key={index}>{item}</li>
         ))}
       </ul>
     </div>

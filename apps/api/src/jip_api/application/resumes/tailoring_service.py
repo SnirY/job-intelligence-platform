@@ -259,6 +259,28 @@ class SuggestionOutcome:
     warnings: list[str] = field(default_factory=list)
 
 
+def merge_warnings(existing: list[str], incoming: list[str]) -> list[str]:
+    """Add ``incoming`` to ``existing``, keeping order and dropping repeats.
+
+    Appended rather than replaced, because a warning raised while planning still
+    applies once suggestions have run. Deduplicated because `Suggest changes`
+    is a button people press again: each failed attempt used to store another
+    copy of *"Suggestions could not be generated"*, so two attempts told the
+    user twice — which reads as two separate failures rather than one thing
+    tried twice.
+
+    First occurrence wins the position. The list is a record of what went wrong,
+    and re-ordering it on a retry would make the oldest problem look newest.
+    """
+    seen = set(existing)
+    merged = list(existing)
+    for warning in incoming:
+        if warning not in seen:
+            seen.add(warning)
+            merged.append(warning)
+    return merged
+
+
 def create_suggestions(
     session: Session,
     provider: LLMProvider,
