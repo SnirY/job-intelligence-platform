@@ -340,6 +340,74 @@ def test_a_backdated_application_keeps_its_own_date(
     assert response.json()["data"]["applied_at"].startswith(last_month[:10])
 
 
+def test_a_history_entered_after_the_fact_reads_in_real_order(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """DEV-034. The timeline orders by when things *happened*, and every event
+    type honoured that except the first one.
+
+    `CreateRequest` took no `occurred_at`, so CREATED was always stamped with
+    the moment the row was made — and someone entering three weeks of history in
+    one sitting got a timeline whose first event sorted last:
+
+        2026-06-23  Interested
+        2026-06-29  Applied
+        2026-07-19  Rejected
+        2026-08-02  Created      <-- last
+
+    `FEEDBACK_RECORDED` had the same gap, in the same place.
+    """
+    now = dt.datetime.now(tz=dt.UTC)
+    started = now - dt.timedelta(days=40)
+    applied = now - dt.timedelta(days=30)
+    heard_back = now - dt.timedelta(days=10)
+
+    job_id = make_job(client, factory)
+    created = client.post(
+        APPS,
+        headers=auth(factory),
+        json={"job_id": job_id, "occurred_at": started.isoformat()},
+    )
+    assert created.status_code == 201, created.text
+    application = created.json()["data"]
+
+    client.post(
+        f"{APPS}/{application['id']}/apply",
+        headers=auth(factory),
+        json={"applied_at": applied.isoformat()},
+    )
+    client.post(
+        f"{APPS}/{application['id']}/feedback",
+        headers=auth(factory),
+        json={"feedback": "Not enough C++.", "occurred_at": heard_back.isoformat()},
+    )
+
+    events = timeline(client, factory, application["id"])
+    occurred = [event["occurred_at"] for event in events]
+
+    assert occurred == sorted(occurred), "the timeline is not in the order things happened"
+    assert events[0]["event_type"] == "CREATED", "tracking began first and must read first"
+    assert events[-1]["event_type"] == "FEEDBACK_RECORDED"
+
+
+def test_feedback_recorded_today_still_defaults_to_today(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The backdate is optional. Omitting it must not change what already worked."""
+    job_id = make_job(client, factory)
+    application = track(client, factory, job_id)
+
+    client.post(
+        f"{APPS}/{application['id']}/feedback",
+        headers=auth(factory),
+        json={"feedback": "No reason given."},
+    )
+
+    events = timeline(client, factory, application["id"])
+    feedback = next(e for e in events if e["event_type"] == "FEEDBACK_RECORDED")
+    assert feedback["occurred_at"].startswith(dt.datetime.now(tz=dt.UTC).date().isoformat())
+
+
 def test_applying_records_both_the_move_and_the_submission(
     client: TestClient, factory: TokenFactory
 ) -> None:

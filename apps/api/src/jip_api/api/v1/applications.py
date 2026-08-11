@@ -91,6 +91,12 @@ class CreateRequest(BaseModel):
     job_id: uuid.UUID
     status: ApplicationStatus = ApplicationStatus.SAVED
     notes: str | None = Field(default=None, max_length=5000)
+    occurred_at: dt.datetime | None = None
+    """When tracking actually began, for history entered after the fact.
+
+    DEV-034: every other request already carried one, and the timeline orders by
+    when things happened — so backdating everything except the first event put
+    "Created" at the bottom."""
 
 
 class StatusRequest(BaseModel):
@@ -113,6 +119,8 @@ class NoteRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     feedback: str = Field(max_length=5000)
+    occurred_at: dt.datetime | None = None
+    """When the employer said it, not when it was typed in. DEV-034."""
 
 
 class UpdateRequest(BaseModel):
@@ -144,7 +152,12 @@ def create(
     the funnel's first conversion rate would always be 100%.
     """
     application = service.create_application(
-        session, user.id, job_id=body.job_id, status=body.status, notes=body.notes
+        session,
+        user.id,
+        job_id=body.job_id,
+        status=body.status,
+        notes=body.notes,
+        occurred_at=body.occurred_at,
     )
     session.commit()
     return DataResponse(data=_payload(session, application))
@@ -288,7 +301,7 @@ def record_feedback(
     reason as fact. Nothing writes here but this route.
     """
     application = service.get_application(session, user.id, application_id)
-    service.record_feedback(session, application, body.feedback)
+    service.record_feedback(session, application, body.feedback, occurred_at=body.occurred_at)
     session.commit()
     return DataResponse(data=_payload(session, application))
 

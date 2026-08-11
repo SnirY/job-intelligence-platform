@@ -12,9 +12,9 @@ import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -25,6 +25,18 @@ class Environment(StrEnum):
     TEST = "test"
     STAGING = "staging"
     PRODUCTION = "production"
+
+
+def _optional(annotation: Any) -> bool:
+    """Whether a field's type admits ``None``.
+
+    ``str | None`` is a `types.UnionType` at runtime, and `X | None` written in
+    a `from __future__ import annotations` module resolves to the same thing by
+    the time pydantic has built the field. Checking the resolved annotation
+    rather than the source text means a field spelled `Optional[str]` behaves
+    identically.
+    """
+    return type(None) in get_args(annotation)
 
 
 def _split_csv(value: Any) -> Any:
@@ -263,6 +275,37 @@ class Settings(BaseSettings):
     _split_origins = field_validator("cors_allowed_origins", mode="before")(_split_csv)
     _split_queues = field_validator("worker_queues", mode="before")(_split_csv)
     _split_parties = field_validator("auth_authorized_parties", mode="before")(_split_csv)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: Any, info: ValidationInfo) -> Any:
+        """Treat an empty environment variable as absent, for optional strings.
+
+        DEV-039. An optional setting has three states — absent, empty, and set —
+        and this code handled two. Pydantic resolves ``JIP_AI_..._EFFORT=`` to
+        ``""`` rather than ``None``, and the provider asks
+        ``if request.effort is not None``, so an empty value was forwarded to the
+        API as a literal effort level.
+
+        Every ``.env.example`` comment already promises the opposite: *"leave
+        empty to use the provider's own default"*. Worse, the file ships
+        ``JIP_AI_MATCH_EXPLAIN_EFFORT=`` empty, taking its own advice — so
+        ``cp .env.example .env``, the first line of the README quick start,
+        produced a deployment sending ``effort: ""`` on every match explanation.
+
+        Fixed here rather than at each call site, because "empty means unset" is
+        a property of how this project reads its environment, and the version
+        written at one call site is the version the next one forgets.
+
+        **Only for fields that can actually be unset.** A required string with an
+        empty value is a misconfiguration, and turning it into ``None`` would
+        swap a clear "field required" for a confusing type error.
+        """
+        if value != "":
+            return value
+
+        annotation = cls.model_fields[info.field_name].annotation if info.field_name else None
+        return None if _optional(annotation) else value
 
     @property
     def is_production(self) -> bool:

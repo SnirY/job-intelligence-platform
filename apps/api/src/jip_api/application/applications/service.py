@@ -55,6 +55,7 @@ def create_application(
     job_id: uuid.UUID,
     status: ApplicationStatus = ApplicationStatus.SAVED,
     notes: str | None = None,
+    occurred_at: dt.datetime | None = None,
 ) -> Application:
     """Start tracking a job.
 
@@ -62,6 +63,11 @@ def create_application(
     is not a relationship with an opportunity, and creating an application for
     every saved job would make the two words synonyms — and the funnel's first
     conversion rate permanently 100%.
+
+    ``occurred_at`` backdates the CREATED event. DEV-034: every other event type
+    already accepted one, and `events_for` orders by when things *happened*, so
+    a user entering three weeks of history in one sitting used to get a timeline
+    ending with "Created" — the first thing that happened, sorted last.
     """
     job = session.execute(owned(Job, user_id).where(Job.id == job_id)).scalar_one_or_none()
     if job is None:
@@ -87,6 +93,7 @@ def create_application(
         application,
         event_type=ApplicationEventType.CREATED,
         to_status=status,
+        occurred_at=occurred_at,
         summary=f"Started tracking {job.title}",
     )
     session.flush()
@@ -227,19 +234,29 @@ def add_note(
     return event
 
 
-def record_feedback(session: Session, application: Application, feedback: str) -> Application:
+def record_feedback(
+    session: Session,
+    application: Application,
+    feedback: str,
+    *,
+    occurred_at: dt.datetime | None = None,
+) -> Application:
     """Store what the employer actually said.
 
     Kept in its own column, and only ever written from the user's own words.
     ``docs/07`` is explicit that known feedback stays separate from system
     inference and that a guessed reason must never be presented as fact —
     nothing in this phase infers anything here.
+
+    ``occurred_at`` for the same reason as `create_application`: a reply
+    recorded weeks after it arrived belongs where it arrived (DEV-034).
     """
     application.rejection_feedback = feedback.strip() or None
     _record(
         session,
         application,
         event_type=ApplicationEventType.FEEDBACK_RECORDED,
+        occurred_at=occurred_at,
         summary="Recorded feedback from the employer",
         detail=application.rejection_feedback,
     )
