@@ -16,6 +16,7 @@ Same expectations both ways.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import pytest
@@ -34,6 +35,51 @@ ProviderFactory = Callable[[JobEvalCase], FakeLLMProvider]
 
 def _normalized(outcome: JobParseOutcome) -> set[str]:
     return {r.normalized_text.casefold() for r in outcome.validated.requirements}
+
+
+def _covers(outcome: JobParseOutcome, expected: str) -> bool:
+    """Whether the parse found ``expected``, however it chose to word it.
+
+    DEV-047. The live check used to be `expected.casefold() in {normalized_text}`
+    — an exact string match against the *recorded* response's phrasing. The
+    offline run replays that recording, so it always passed; the live model
+    phrases things its own way, so it always failed. Three fixtures reported
+    that a real model "did not extract Python" from a posting that says Python.
+
+    DEV-026 measured this exact effect and named the fix: keyed by text, 31-46%
+    of requirements survive a re-reading; keyed by resolved skill, 75%. The eval
+    was keyed by text.
+
+    So an expectation is met when either the resolved skill matches it outright,
+    or every significant word of it appears in the requirement's own text —
+    which accepts "5+ years of backend engineering experience" for
+    "5+ years backend engineering" and still rejects a requirement that is
+    simply about something else.
+    """
+    wanted = expected.casefold()
+    tokens = {word for word in re.findall(r"[a-z0-9+#.]+", wanted) if word not in _NOISE}
+
+    for requirement in outcome.validated.requirements:
+        skill = (requirement.skill_name or "").casefold()
+        # `skill in wanted` is what accepts the model answering "JS" where the
+        # fixture expects "JavaScript". Guarded at two characters so a
+        # single-letter skill — "R", "C" — cannot match every word containing
+        # it.
+        if skill and (skill == wanted or wanted in skill or (len(skill) > 1 and skill in wanted)):
+            return True
+
+        text = requirement.normalized_text.casefold()
+        if wanted in text:
+            return True
+        if tokens and tokens <= set(re.findall(r"[a-z0-9+#.]+", text)):
+            return True
+
+    return False
+
+
+_NOISE = frozenset({"a", "an", "and", "of", "or", "the", "in", "with", "to", "for", "experience"})
+"""Words that carry no identity. "5+ years backend engineering" and "5+ years of
+backend engineering experience" are the same requirement."""
 
 
 def _by_importance(outcome: JobParseOutcome, importance: RequirementImportance) -> set[str]:
@@ -292,9 +338,11 @@ def test_live_model_meets_the_same_expectations(
     model = get_settings().ai_job_parse_model or get_settings().ai_resume_parse_model
     parse = parse_job(live_provider, job_case, model=model)
 
-    found = _normalized(parse)
-    missing = [r for r in job_case.expect("expect_requirements", []) if r.casefold() not in found]
-    assert not missing, f"{job_case.name}: live model did not extract {missing}"
+    missing = [r for r in job_case.expect("expect_requirements", []) if not _covers(parse, r)]
+    assert not missing, (
+        f"{job_case.name}: live model did not extract {missing}. "
+        f"Found: {sorted(_normalized(parse))}"
+    )
 
     mandatory = _mandatory(parse)
     promoted = [r for r in job_case.expect("expect_preferred", []) if r.casefold() in mandatory]

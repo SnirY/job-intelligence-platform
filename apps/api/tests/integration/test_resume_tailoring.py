@@ -515,6 +515,85 @@ def test_a_suggestion_for_an_unknown_item_is_ignored(
     assert read_plan(client, factory, job_id)["suggestions"] == []
 
 
+def test_a_removal_with_no_replacement_text_is_kept(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """DEV-045, and the reason resume rewrite failed about half the time.
+
+    `resume_rewrite_v1` offers `REMOVE` — "not relevant to this posting and the
+    space is better spent" — and a removal has no replacement line, so the model
+    returns an empty `suggested_text`. `min_length=1` then rejected the entire
+    response, losing every other suggestion with it.
+
+    The constraint was invisible to the model: `sanitize_json_schema` strips
+    `minLength` before the schema is sent, so it was enforced only on the way
+    back, against an answer we had asked for.
+    """
+    job_id = matched_job(client, factory)
+    strategy = plan(client, factory, job_id)["strategy"]
+    _, version_id = draft_with(client, factory, "Ran the office football league.")
+    [item_id] = item_ids(client, factory, version_id)
+
+    suggest(
+        client,
+        factory,
+        strategy["id"],
+        version_id,
+        [
+            {
+                "item_id": item_id,
+                "suggested_text": "",
+                "rationale": "Not relevant here.",
+                "kind": "REMOVE",
+            },
+        ],
+    )
+
+    suggestions = read_plan(client, factory, job_id)["suggestions"]
+
+    assert len(suggestions) == 1
+    assert suggestions[0]["suggestion_type"] == "REMOVE"
+    # The column is NOT NULL with a non-blank CHECK, so the row carries the line
+    # it is proposing to cut. "Remove this" is only useful if it names what.
+    assert suggestions[0]["suggested_text"] == "Ran the office football league."
+
+
+def test_one_unusable_candidate_does_not_lose_the_others(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The shape of the bug, not just its trigger.
+
+    A single candidate the schema refused used to fail the whole batch. Blank
+    text with a kind other than REMOVE is still not an answer — but it costs
+    itself, not the twenty-four beside it.
+    """
+    job_id = matched_job(client, factory)
+    strategy = plan(client, factory, job_id)["strategy"]
+    _, version_id = draft_with(client, factory, "Built the routing service.")
+    [item_id] = item_ids(client, factory, version_id)
+
+    suggest(
+        client,
+        factory,
+        strategy["id"],
+        version_id,
+        [
+            {"item_id": item_id, "suggested_text": "", "rationale": "", "kind": "REWRITE"},
+            {
+                "item_id": item_id,
+                "suggested_text": "Built the routing platform.",
+                "rationale": "Closer to the posting.",
+                "kind": "REWRITE",
+            },
+        ],
+    )
+
+    suggestions = read_plan(client, factory, job_id)["suggestions"]
+
+    assert len(suggestions) == 1
+    assert suggestions[0]["suggested_text"] == "Built the routing platform."
+
+
 def test_a_blocked_suggestion_can_still_be_accepted(
     client: TestClient, factory: TokenFactory
 ) -> None:

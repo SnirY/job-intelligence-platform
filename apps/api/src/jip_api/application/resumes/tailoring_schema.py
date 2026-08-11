@@ -55,7 +55,21 @@ class RewriteCandidate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     item_id: str = Field(max_length=64)
-    suggested_text: str = Field(min_length=1, max_length=1000)
+    suggested_text: str = Field(max_length=1000)
+    """The replacement line. Empty is legitimate, and only for a removal.
+
+    DEV-045. This carried `min_length=1`, and `sanitize_json_schema` strips
+    `minLength` before the schema reaches the provider — so the constraint was
+    invisible to the model and enforced only on the way back. The prompt offers
+    `REMOVE` ("not relevant to this posting and the space is better spent"), a
+    removal has no replacement text, the model returned `""`, and our own
+    validation threw away all twenty-five suggestions because one of them was a
+    cut. That is the ~50% failure rate.
+
+    The pairing rule — empty only for REMOVE — is enforced in the service, where
+    the item is in hand and a single bad candidate can be dropped instead of
+    failing the batch.
+    """
     rationale: str = Field(default="", max_length=500)
     kind: Literal["REWRITE", "SHORTEN", "EMPHASIZE", "REORDER", "REMOVE"] = "REWRITE"
 

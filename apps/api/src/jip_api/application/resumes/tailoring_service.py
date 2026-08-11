@@ -367,9 +367,21 @@ def create_suggestions(
             continue
         item, facts = entry
 
-        report = validate_rewrite(
-            original=item.text, suggested=candidate.suggested_text, source_facts=facts
-        )
+        suggested = candidate.suggested_text.strip()
+        if not suggested:
+            if SuggestionType(candidate.kind) is not SuggestionType.REMOVE:
+                # Blank text with any other kind is not an answer to anything.
+                # Dropped rather than raised: one nonsensical candidate must not
+                # cost the twenty-four beside it, which is exactly what the
+                # schema check used to do (DEV-045).
+                dropped += 1
+                continue
+            # A removal has no replacement, and `suggested_text` is NOT NULL with
+            # a non-blank CHECK behind it. Storing the original keeps the record
+            # readable — the row says "remove this line", and names the line.
+            suggested = item.text
+
+        report = validate_rewrite(original=item.text, suggested=suggested, source_facts=facts)
 
         suggestion = ResumeSuggestion(
             user_id=user_id,
@@ -379,7 +391,7 @@ def create_suggestions(
             status=SuggestionStatus.PENDING,
             risk=report.risk,
             original_text=item.text,
-            suggested_text=candidate.suggested_text,
+            suggested_text=suggested,
             rationale=candidate.rationale or None,
             display_order=order,
         )
