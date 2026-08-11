@@ -234,6 +234,96 @@ def resume_parse_json_schema() -> dict[str, Any]:
     Generated from the model rather than hand-written, so the schema the
     provider is given and the schema the response is checked against cannot
     drift apart.
+
+    **This one does not compile.** 6933 characters and 432 nodes against a limit
+    `job_parse` clears at 2941 — DEV-017, and the reason the parse now runs one
+    call per section. Kept because `tests/evals/test_schema_compiles.py` asserts
+    it still fails: left as a skip, the day the provider raised its limit would
+    pass unnoticed and nobody would ever collapse the four calls back.
     """
     schema: dict[str, Any] = sanitize_json_schema(ResumeParseResult.model_json_schema())
     return schema
+
+
+# --- one section at a time (DEV-017) ------------------------------------------
+#
+# Four models over the same candidates, each asking for one section. What made
+# the combined schema uncompilable is nesting — four arrays of objects, two of
+# them containing their own arrays of objects — so splitting on that axis is
+# what actually shrinks it. Removing enums and descriptions did not.
+#
+#     skills        1164 chars     experiences   2182
+#     education     1476           projects      2213
+#
+# All four under `job_parse`'s 2941, which compiles.
+
+
+class SkillsResult(BaseModel):
+    """What `resume_skills_v1` returns."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    skills: list[SkillCandidate] = Field(default_factory=list, max_length=200)
+
+
+class ExperiencesResult(BaseModel):
+    """What `resume_experiences_v1` returns, achievements included."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    experiences: list[ExperienceCandidate] = Field(default_factory=list, max_length=50)
+
+
+class ProjectsResult(BaseModel):
+    """What `resume_projects_v1` returns, technologies included."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    projects: list[ProjectCandidate] = Field(default_factory=list, max_length=50)
+
+
+class EducationResult(BaseModel):
+    """What `resume_education_v1` returns."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    education: list[EducationCandidate] = Field(default_factory=list, max_length=30)
+
+
+SECTION_MODELS: dict[str, type[BaseModel]] = {
+    "resume_skills_v1": SkillsResult,
+    "resume_experiences_v1": ExperiencesResult,
+    "resume_projects_v1": ProjectsResult,
+    "resume_education_v1": EducationResult,
+}
+"""Prompt name to the shape its answer must take.
+
+Keyed by prompt name rather than by an enum of sections, so a prompt registered
+without a schema is a `KeyError` at the call site instead of a section that
+silently returns nothing.
+"""
+
+
+def section_json_schema(prompt_name: str) -> dict[str, Any]:
+    """JSON Schema for one section's prompt. Compiles, unlike the combined one."""
+    schema: dict[str, Any] = sanitize_json_schema(SECTION_MODELS[prompt_name].model_json_schema())
+    return schema
+
+
+def combine_sections(parts: dict[str, BaseModel]) -> ResumeParseResult:
+    """Fold the four answers back into the one result the pipeline already knows.
+
+    Everything downstream — validation, the fabrication guard, the review
+    screen, the confirm step — was written against `ResumeParseResult` and is
+    unchanged by the split. Recombining here is what keeps it that way.
+
+    A section that failed is absent rather than empty, and the caller decides
+    what that means. Folding a failure in as `[]` would tell the user their
+    resume has no projects when what happened is that we could not read them.
+    """
+    return ResumeParseResult(
+        skills=getattr(parts.get("resume_skills_v1"), "skills", []),
+        experiences=getattr(parts.get("resume_experiences_v1"), "experiences", []),
+        projects=getattr(parts.get("resume_projects_v1"), "projects", []),
+        education=getattr(parts.get("resume_education_v1"), "education", []),
+    )

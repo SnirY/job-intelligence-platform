@@ -50,7 +50,9 @@ def _text(candidate: CandidateDraft) -> str:
 
 
 def _fabrication_outcome() -> ResumeParseOutcome:
-    return parse(FakeLLMProvider([FABRICATION_CASE.recorded_output]), FABRICATION_CASE)
+    # Four responses, one per section: DEV-017 split the parse and
+    # `FakeLLMProvider` replays in request order.
+    return parse(FakeLLMProvider(FABRICATION_CASE.recorded_sections), FABRICATION_CASE)
 
 
 def test_no_candidate_carries_a_number_absent_from_the_document(

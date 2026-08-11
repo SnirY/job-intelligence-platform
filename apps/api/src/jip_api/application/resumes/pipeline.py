@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from jip_ai import AIError, AIFailureCode, AIRunTrace, LLMProvider, ModelRouter
 from jip_api.application.processing import jobs as jobs_uc
+from jip_api.application.resumes import looks_like_a_resume
 from jip_api.application.resumes.parsing import ResumeParseOutcome, ResumeParsingService
 from jip_api.application.resumes.validation import CandidateDraft
 from jip_api.domain.ai.models import AIRun, AIRunStatus
@@ -75,6 +76,36 @@ def run_import(
         )
 
     text = _ensure_text(session, storage, job=job, document=document)
+
+    # DEV-020. Between having the text and paying for a call on it: a document
+    # that is not a resume produces a review screen full of real quotations from
+    # the wrong document, which is more convincing and less useful than an
+    # error. Refused rather than warned about, because a screen the user is told
+    # to ignore is a worse answer than a refusal.
+    #
+    # CONTENT_UNAVAILABLE because the input itself is the problem — the code is
+    # already classified permanent, so no retry is offered for something no
+    # number of retries can change (DEV-015, DEV-021).
+    verdict = looks_like_a_resume.check(text)
+    if not verdict.is_resume:
+        logger.info(
+            "Refused a document that does not look like a resume",
+            extra={
+                "document_id": str(document.id),
+                "characters": len(text),
+                "signals_found": len(verdict.found),
+            },
+        )
+        # Recorded on the document, not only on the job, and committed before
+        # the raise — the same shape `_ensure_text` uses for an extraction
+        # failure. A document left EXTRACTED beside a failed job is the
+        # mismatch `reaper._release_entity` exists to repair, and creating one
+        # deliberately would be worse than the bug this closes.
+        document.extraction_error = verdict.reason
+        document.status = DocumentStatus.FAILED
+        session.commit()
+        raise AIError(AIFailureCode.CONTENT_UNAVAILABLE, verdict.reason)
+
     outcome = _parse(
         session,
         provider,

@@ -141,6 +141,21 @@ def client(
         reset_verifier_cache()
 
 
+def parse_sections() -> list[dict[str, Any]]:
+    """`PARSE_RESPONSE` split the way the parser now asks for it.
+
+    DEV-017 made a resume parse four calls, one per section, so a fake provider
+    needs four responses where it needed one. `FakeLLMProvider` replays in
+    request order, which is `RESUME_SECTION_PROMPTS`.
+    """
+    return [
+        {"skills": PARSE_RESPONSE.get("skills", [])},
+        {"experiences": PARSE_RESPONSE.get("experiences", [])},
+        {"projects": PARSE_RESPONSE.get("projects", [])},
+        {"education": PARSE_RESPONSE.get("education", [])},
+    ]
+
+
 def auth(factory: TokenFactory, subject: str = ALICE) -> dict[str, str]:
     return {"Authorization": f"Bearer {factory.token(subject=subject)}"}
 
@@ -163,7 +178,7 @@ def review(client: TestClient, factory: TokenFactory, storage: InMemoryStorage) 
         pipeline_uc.run_import(
             session,
             storage,
-            FakeLLMProvider([PARSE_RESPONSE]),
+            FakeLLMProvider(parse_sections()),
             build_router(
                 resume_parse_model="test-model",
                 resume_parse_max_output_tokens=8000,

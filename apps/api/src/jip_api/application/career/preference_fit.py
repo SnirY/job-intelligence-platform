@@ -13,7 +13,7 @@ time — a preference changed tomorrow would leave every stored recommendation
 quietly stale, with no path to re-derive it. So this is computed on read,
 returned beside the recommendation, and labelled as a different kind of thing.
 
-**Silence is never agreement.** Every dimension reports one of five verdicts,
+**Silence is never agreement.** Every dimension reports one of six verdicts,
 and three of them are ways of saying "no answer". A posting that does not state
 its work mode must not be reported as matching a remote-only preference, and a
 preference nobody set must not be reported as satisfied. The failure this

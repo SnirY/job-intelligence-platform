@@ -3,7 +3,7 @@ import { PreferencesForm } from "@/features/career/preferences-form";
 /**
  * Career preferences.
  *
- * A `PhasePlaceholder` until now, and for eleven phases the placeholder was the
+ * A phase placeholder until now, and for eleven phases the placeholder was the
  * only part anyone noticed was missing. `CareerPreferences` is specified in four
  * documents — `docs/01`, `docs/02`, `docs/03` and `docs/05` — and was scheduled
  * in none of them, which is DEV-035.

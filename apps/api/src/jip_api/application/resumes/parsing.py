@@ -14,11 +14,11 @@ and keeps the AI layer from ever writing to one directly.
 
 from __future__ import annotations
 
-import json
+import hashlib
 import logging
 from dataclasses import dataclass, field
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from jip_ai import (
     AIError,
@@ -34,38 +34,29 @@ from jip_ai import (
     timed,
     truncate_for_prompt,
 )
-from jip_api.application.resumes.schema import ResumeParseResult, resume_parse_json_schema
+from jip_api.application.resumes.schema import (
+    SECTION_MODELS,
+    ResumeParseResult,
+    combine_sections,
+    section_json_schema,
+)
 from jip_api.application.resumes.validation import ValidatedExtraction, validate_parse_result
-from jip_prompts import RESUME_PARSER_LATEST, get_prompt
+from jip_prompts import RESUME_SECTION_PROMPTS, SECTION_LABELS, get_prompt
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# DEV-017. Flip to True to restore provider-side schema enforcement.
-#
-# This is the only one of the platform's four schemas Anthropic refuses to
-# compile into a grammar: 6933 chars, 125 nodes, four arrays of objects, two of
-# which nest their own arrays of objects. `job_parse` (2941), `job_analysis`
-# (1962), and `match_explain` (396) all compile and are untouched by this flag.
-#
-# The cost is structural rather than textual — measured against claude-sonnet-5,
-# dropping every enum (6579), every description (4895), and both together (4541)
-# all still failed, while a flattened equivalent covering the same four sections
-# compiled at 1739. Shortening the schema text cannot fix it; only removing
-# nesting can.
-#
-# With the constraint off, a malformed answer becomes *possible* rather than
-# impossible. Everything that decides whether data is trustworthy is unchanged:
-# the schema is sent in the prompt, `ResumeParseResult` validates the reply, the
-# fabrication guard still requires `source_text` on every claim, and
-# `run_with_retry` still gets its attempts. What moved is only *when* a bad
-# answer is caught.
-#
-# The better long-term fix is one call per section — it keeps the constraint and
-# every field, at four calls instead of one. That is a pipeline change; this is
-# one boolean, and it unblocks seeing what the model actually produces first.
-# ---------------------------------------------------------------------------
-_CONSTRAIN_OUTPUT = False
+RESUME_SECTION_SET = "resume_sections_v1"
+"""What a `DocumentExtraction` records for a parse made of four calls.
+
+Not a registered prompt: no single template produced the row. Each `ai_runs`
+row carries the section prompt that produced *it*, so nothing about the
+provenance is lost — this names which pipeline read the document, which is the
+question the extraction row is asked.
+
+Bumped when the set changes: adding a fifth section, or re-versioning any of the
+four, makes this `resume_sections_v2`. `docs/05` requires a recorded version to
+keep meaning what it meant, and a set is a version like any other.
+"""
 
 _FORMAT_LABELS = {
     "application/pdf": "PDF",
@@ -108,13 +99,11 @@ class ResumeParsingService:
         *,
         max_input_chars: int,
         max_attempts: int = 3,
-        prompt_name: str = RESUME_PARSER_LATEST,
     ) -> None:
         self._provider = provider
         self._router = router
         self._max_input_chars = max_input_chars
         self._max_attempts = max_attempts
-        self._prompt_name = prompt_name
 
     def parse(
         self,
@@ -136,7 +125,6 @@ class ResumeParsingService:
                 "There is no text to parse in this document.",
             )
 
-        prompt = get_prompt(self._prompt_name)
         route = self._router.route(AIOperation.RESUME_PARSE)
 
         prepared, truncated = truncate_for_prompt(text, max_chars=self._max_input_chars)
@@ -147,93 +135,115 @@ class ResumeParsingService:
                 f"first {self._max_input_chars:,} characters were read."
             )
 
-        rendered = prompt.render(
-            resume_text=prepared,
-            document_format=_FORMAT_LABELS.get(content_type, "document"),
-        )
-
-        schema = resume_parse_json_schema()
-
-        # The prompt tells the model to return "one JSON object matching the
-        # provided schema", and the schema used to be provided out of band by
-        # `output_config.format`. With that constraint off (DEV-017), the
-        # sentence would point at nothing and the model would infer the shape
-        # from prose — which it gets wrong in exactly the places prose is
-        # weakest: it returned `technologies: ["Python"]` where the schema wants
-        # `[{"name": "Python", ...}]`.
-        #
-        # So the schema moves into the prompt. It is appended to the system text
-        # *before* the input hash is computed, so the hash still describes what
-        # was actually sent and two runs remain comparable.
-        system = prompt.system
-        if not _CONSTRAIN_OUTPUT:
-            system = f"{system}\n\n## Schema\n\n```json\n{json.dumps(schema, indent=2)}\n```"
-
-        input_hash = compute_input_hash(prompt.name, route.model, system, rendered)
-
-        request = StructuredRequest(
-            system=system,
-            user=rendered,
-            json_schema=schema,
-            max_output_tokens=route.max_output_tokens,
-            effort=route.effort,
-            constrain_output=_CONSTRAIN_OUTPUT,
-        )
-
+        document_format = _FORMAT_LABELS.get(content_type, "document")
         collected: list[AIRunTrace] = traces if traces is not None else []
 
-        def attempt(number: int) -> ResumeParseOutcome:
-            trace = AIRunTrace(
-                operation=str(AIOperation.RESUME_PARSE),
-                provider=self._provider.name,
-                model=route.model,
-                prompt_version=prompt.name,
-                input_hash=input_hash,
-                attempt=number,
+        # One call per section (DEV-017). Each schema compiles, so constrained
+        # decoding is on for all four — the workaround that pasted the schema
+        # into the prompt is gone with the combined call it existed for.
+        #
+        # Retried per section rather than across the set. A flaky projects call
+        # used to re-run skills, experiences and education with it, at three
+        # wasted requests per attempt, and re-rolled answers that were already
+        # correct.
+        parts: dict[str, BaseModel] = {}
+        payloads: dict[str, object] = {}
+        hashes: list[str] = []
+        last_model: str | None = None
+
+        for prompt_name in RESUME_SECTION_PROMPTS:
+            section = get_prompt(prompt_name)
+            rendered = section.render(
+                resume_text=prepared,
+                document_format=document_format,
+                section_label=SECTION_LABELS[prompt_name],
             )
-            collected.append(trace)
+            schema = section_json_schema(prompt_name)
+            input_hash = compute_input_hash(prompt_name, route.model, section.system, rendered)
+            hashes.append(input_hash)
 
-            with timed(trace):
-                try:
-                    response = self._provider.generate_structured(request, model=route.model)
-                except AIError as error:
-                    trace.mark_failure(error.code, str(error))
-                    raise
-
-                cost = route.pricing.estimate(response.usage) if route.pricing else None
-                trace.mark_success(response.usage, cost=cost)
-
-                try:
-                    result = ResumeParseResult.model_validate(response.payload)
-                except ValidationError as exc:
-                    # Well-formed JSON that is not the agreed shape. Classified
-                    # as INVALID_OUTPUT rather than VALIDATION_FAILURE: nothing
-                    # got as far as a business rule.
-                    trace.mark_failure(
-                        AIFailureCode.INVALID_OUTPUT,
-                        f"Output failed schema check: {schema_failure_summary(exc)}",
-                    )
-                    raise AIError(
-                        AIFailureCode.INVALID_OUTPUT,
-                        "The parser returned data in an unexpected shape.",
-                        details=str(exc)[:1000],
-                    ) from exc
-
-            validated = validate_parse_result(result, document_text=text)
-
-            return ResumeParseOutcome(
-                result=result,
-                validated=validated,
-                raw_payload=dict(response.payload),
-                prompt_version=prompt.name,
-                input_hash=input_hash,
-                model=response.model or route.model,
-                provider=self._provider.name,
-                traces=collected,
-                warnings=[*warnings, *validated.warnings],
+            request = StructuredRequest(
+                system=section.system,
+                user=rendered,
+                json_schema=schema,
+                max_output_tokens=route.max_output_tokens,
+                effort=route.effort,
+                constrain_output=True,
             )
+            model_for_section = SECTION_MODELS[prompt_name]
 
-        outcome = run_with_retry(attempt, max_attempts=self._max_attempts)
+            def attempt_section(
+                number: int,
+                *,
+                _name: str = prompt_name,
+                _hash: str = input_hash,
+                _request: StructuredRequest = request,
+                _model: type[BaseModel] = model_for_section,
+            ) -> tuple[BaseModel, dict[str, object], str]:
+                trace = AIRunTrace(
+                    operation=str(AIOperation.RESUME_PARSE),
+                    provider=self._provider.name,
+                    model=route.model,
+                    prompt_version=_name,
+                    input_hash=_hash,
+                    attempt=number,
+                )
+                collected.append(trace)
+
+                with timed(trace):
+                    try:
+                        response = self._provider.generate_structured(_request, model=route.model)
+                    except AIError as error:
+                        trace.mark_failure(error.code, str(error))
+                        raise
+
+                    cost = route.pricing.estimate(response.usage) if route.pricing else None
+                    trace.mark_success(response.usage, cost=cost)
+
+                    try:
+                        parsed = _model.model_validate(response.payload)
+                    except ValidationError as exc:
+                        # Well-formed JSON that is not the agreed shape.
+                        # INVALID_OUTPUT rather than VALIDATION_FAILURE: nothing
+                        # got as far as a business rule.
+                        trace.mark_failure(
+                            AIFailureCode.INVALID_OUTPUT,
+                            f"Output failed schema check: {schema_failure_summary(exc)}",
+                        )
+                        raise AIError(
+                            AIFailureCode.INVALID_OUTPUT,
+                            "The parser returned data in an unexpected shape.",
+                            details=str(exc)[:1000],
+                        ) from exc
+
+                return parsed, dict(response.payload), response.model or route.model
+
+            parsed, payload, used_model = run_with_retry(
+                attempt_section, max_attempts=self._max_attempts
+            )
+            parts[prompt_name] = parsed
+            payloads[prompt_name] = payload
+            last_model = used_model
+
+        result = combine_sections(parts)
+        validated = validate_parse_result(result, document_text=text)
+
+        outcome = ResumeParseOutcome(
+            result=result,
+            validated=validated,
+            raw_payload=payloads,
+            # The set, not any one of its members. Every `ai_runs` row carries
+            # the section prompt that produced it, so the detail is not lost —
+            # what this names is which pipeline read the document.
+            prompt_version=RESUME_SECTION_SET,
+            # One hash over the four, so two imports of the same document are
+            # still comparable and no single section's hash stands in for all.
+            input_hash=hashlib.sha256("".join(hashes).encode()).hexdigest(),
+            model=last_model or route.model,
+            provider=self._provider.name,
+            traces=collected,
+            warnings=[*warnings, *validated.warnings],
+        )
         logger.info(
             "Parsed resume",
             extra={

@@ -16,24 +16,45 @@ from jip_ai.prompts import PromptRegistry, PromptTemplate
 from jip_prompts.job_analysis import JOB_ANALYSIS_V1
 from jip_prompts.job_parser import JOB_PARSER_V1
 from jip_prompts.match_explainer import MATCH_EXPLAINER_V1
-from jip_prompts.resume_parser import RESUME_PARSER_V1
+from jip_prompts.resume_parser import (
+    RESUME_EDUCATION_V1,
+    RESUME_EXPERIENCES_V1,
+    RESUME_PARSER_V1,
+    RESUME_PROJECTS_V1,
+    RESUME_SKILLS_V1,
+    SECTION_LABELS,
+)
 from jip_prompts.resume_rewrite import RESUME_REWRITE_V1
 from jip_prompts.resume_strategy import RESUME_STRATEGY_V1
 
 REGISTRY = PromptRegistry()
 REGISTRY.register(RESUME_PARSER_V1)
+REGISTRY.register(RESUME_SKILLS_V1)
+REGISTRY.register(RESUME_EXPERIENCES_V1)
+REGISTRY.register(RESUME_PROJECTS_V1)
+REGISTRY.register(RESUME_EDUCATION_V1)
 REGISTRY.register(JOB_PARSER_V1)
 REGISTRY.register(JOB_ANALYSIS_V1)
 REGISTRY.register(MATCH_EXPLAINER_V1)
 REGISTRY.register(RESUME_STRATEGY_V1)
 REGISTRY.register(RESUME_REWRITE_V1)
 
-RESUME_PARSER_LATEST = RESUME_PARSER_V1.name
-"""The version new extractions use.
+RESUME_SECTION_PROMPTS = (
+    RESUME_SKILLS_V1.name,
+    RESUME_EXPERIENCES_V1.name,
+    RESUME_PROJECTS_V1.name,
+    RESUME_EDUCATION_V1.name,
+)
+"""The four prompts one import runs, in order. DEV-017.
 
-Named so the pipeline does not hard-code ``"resume_parser_v1"`` in a dozen
-places, and so introducing v2 is a one-line change that leaves stored v1
-extractions readable.
+Replaces `RESUME_PARSER_LATEST`, which named the single prompt whose schema the
+provider would not compile. The order is the order the sections are asked for,
+and it is the order the recorded traces appear in.
+"""
+
+RESUME_PARSER_LATEST = RESUME_PARSER_V1.name
+"""Superseded. Kept because it is stored on every extraction made before the
+split, and a recorded prompt version has to keep meaning what it meant.
 """
 
 JOB_PARSER_LATEST = JOB_PARSER_V1.name
@@ -58,12 +79,18 @@ __all__ = [
     "MATCH_EXPLAINER_LATEST",
     "MATCH_EXPLAINER_V1",
     "REGISTRY",
+    "RESUME_EDUCATION_V1",
+    "RESUME_EXPERIENCES_V1",
     "RESUME_PARSER_LATEST",
     "RESUME_PARSER_V1",
+    "RESUME_PROJECTS_V1",
     "RESUME_REWRITE_LATEST",
     "RESUME_REWRITE_V1",
+    "RESUME_SECTION_PROMPTS",
+    "RESUME_SKILLS_V1",
     "RESUME_STRATEGY_LATEST",
     "RESUME_STRATEGY_V1",
+    "SECTION_LABELS",
     "get_prompt",
 ]
 

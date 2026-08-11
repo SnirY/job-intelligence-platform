@@ -46,6 +46,28 @@ class EvalCase:
         output: dict[str, Any] = self.data["recorded_output"]
         return output
 
+    @property
+    def recorded_sections(self) -> list[dict[str, Any]]:
+        """The recorded answer split the way the parser now asks for it.
+
+        DEV-017 made resume parsing four calls, one per section, so the fake
+        provider needs four responses where it needed one. Derived from the
+        single recorded output rather than re-recorded: the fixtures describe
+        what a model said about a resume, and that is unchanged by which call
+        each half of it arrived in. Re-recording would have meant regenerating
+        six fixtures to test a plumbing change.
+
+        The order matches `RESUME_SECTION_PROMPTS`, because `FakeLLMProvider`
+        replays in sequence and nothing else pairs a response with its request.
+        """
+        output = self.recorded_output
+        return [
+            {"skills": output.get("skills", [])},
+            {"experiences": output.get("experiences", [])},
+            {"projects": output.get("projects", [])},
+            {"education": output.get("education", [])},
+        ]
+
     def expect(self, key: str, default: Any = None) -> Any:
         return self.data.get(key, default)
 
@@ -79,10 +101,13 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 @pytest.fixture(scope="session")
 def offline_provider_factory() -> Any:
-    """Build a fake provider primed with one fixture's recorded response."""
+    """Build a fake provider primed with one fixture's recorded response.
+
+    Four responses since DEV-017, one per section. See `recorded_sections`.
+    """
 
     def build(case: EvalCase) -> FakeLLMProvider:
-        return FakeLLMProvider([case.recorded_output])
+        return FakeLLMProvider(case.recorded_sections)
 
     return build
 

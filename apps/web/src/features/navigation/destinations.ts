@@ -94,7 +94,7 @@ export const DESTINATIONS: readonly Destination[] = [
     label: "Settings",
     icon: Settings,
     availableInPhase: 11,
-    landingSummary: "settings",
+    landingSummary: "say what you want from a role and have every job read against it",
   },
 ] as const;
 

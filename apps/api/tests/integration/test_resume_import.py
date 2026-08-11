@@ -176,6 +176,22 @@ def upload(
     return payload
 
 
+def parse_sections(response: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """`PARSE_RESPONSE` split the way the parser now asks for it.
+
+    DEV-017 made a resume parse four calls, one per section, so a fake provider
+    needs four responses where it needed one. `FakeLLMProvider` replays in
+    request order, which is `RESUME_SECTION_PROMPTS`.
+    """
+    source = PARSE_RESPONSE if response is None else response
+    return [
+        {"skills": source.get("skills", [])},
+        {"experiences": source.get("experiences", [])},
+        {"projects": source.get("projects", [])},
+        {"education": source.get("education", [])},
+    ]
+
+
 def run_pipeline(
     storage: InMemoryStorage,
     job_id: str,
@@ -186,7 +202,7 @@ def run_pipeline(
     A separate session, because the worker gets one — which is also what makes
     the commit-per-step behaviour observable.
     """
-    provider = FakeLLMProvider(responses if responses is not None else [PARSE_RESPONSE])
+    provider = FakeLLMProvider(responses if responses is not None else parse_sections())
     router = build_router(
         resume_parse_model="test-model",
         resume_parse_max_output_tokens=8000,
@@ -329,7 +345,9 @@ def test_the_pipeline_extracts_parses_and_stores(
     assert review["document"]["status"] == "PARSED"
     assert review["job"]["status"] == ProcessingJobStatus.COMPLETED
     assert review["extraction"]["version"] == 1
-    assert review["extraction"]["prompt_version"] == "resume_parser_v1"
+    # The set of four, since DEV-017. Each `ai_runs` row still names the
+    # section prompt that produced it — asserted in `test_ai_runs_are_recorded`.
+    assert review["extraction"]["prompt_version"] == "resume_sections_v1"
 
 
 def test_every_candidate_type_is_reviewable(
@@ -373,26 +391,42 @@ def test_children_know_their_parent(
 def test_ai_runs_are_recorded(
     client: TestClient, factory: TokenFactory, storage: InMemoryStorage, clean_database_url: str
 ) -> None:
-    """docs/09-mvp-roadmap.md gates AI features on a run trace."""
+    """docs/09-mvp-roadmap.md gates AI features on a run trace.
+
+    One row per section since DEV-017, each naming its own prompt. That is what
+    lets the extraction record the set without losing which template produced
+    which half of the answer.
+    """
     data = upload(client, factory)
     run_pipeline(storage, data["processing_job_id"])
 
     engine = sqlalchemy.create_engine(clean_database_url)
     try:
         with engine.connect() as connection:
-            row = connection.execute(
+            rows = connection.execute(
                 sqlalchemy.text(
                     "SELECT operation, provider, model, prompt_version, status, input_hash "
-                    "FROM ai_runs"
+                    "FROM ai_runs ORDER BY created_at, prompt_version"
                 )
-            ).one()
+            ).all()
     finally:
         engine.dispose()
 
-    assert row.operation == "RESUME_PARSE"
-    assert row.provider == "fake"
-    assert row.prompt_version == "resume_parser_v1"
-    assert row.status == "SUCCEEDED"
+    assert {row.prompt_version for row in rows} == {
+        "resume_skills_v1",
+        "resume_experiences_v1",
+        "resume_projects_v1",
+        "resume_education_v1",
+    }
+    assert all(row.operation == "RESUME_PARSE" for row in rows)
+    assert all(row.provider == "fake" for row in rows)
+    assert all(row.status == "SUCCEEDED" for row in rows)
+
+    # Each section is hashed over its own prompt and rendering, so two sections
+    # of one document are not mistaken for a repeat of the same call.
+    assert len({row.input_hash for row in rows}) == len(rows)
+
+    row = rows[0]
     assert len(row.input_hash) == 64
 
 
@@ -629,7 +663,7 @@ def test_the_worker_task_completes_an_import(
 ) -> None:
     data = upload(client, factory)
 
-    result = worker_task(monkeypatch, storage, [PARSE_RESPONSE])(data["processing_job_id"])
+    result = worker_task(monkeypatch, storage, parse_sections())(data["processing_job_id"])
 
     assert result["status"] == "COMPLETED"
     assert result["candidates"] == 5
@@ -697,7 +731,7 @@ def test_a_duplicate_delivery_does_not_reprocess(
     review screen for one upload.
     """
     data = upload(client, factory)
-    task = worker_task(monkeypatch, storage, [PARSE_RESPONSE])
+    task = worker_task(monkeypatch, storage, parse_sections())
 
     assert task(data["processing_job_id"])["status"] == "COMPLETED"
     # No second response is queued: the fake would raise if it were called.
