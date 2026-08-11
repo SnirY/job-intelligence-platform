@@ -14,6 +14,11 @@ from redis import Redis
 from rq import Queue, SimpleWorker, Worker
 from rq.worker import BaseWorker
 
+from jip_api.infrastructure.db.schema_version import (
+    SchemaVersionMismatch,
+    verify_schema_version,
+)
+from jip_api.infrastructure.db.session import get_engine
 from jip_config import configure_logging, get_settings
 
 logger = logging.getLogger(__name__)
@@ -41,9 +46,26 @@ def build_worker(redis: Redis, queue_names: list[str]) -> BaseWorker:
 
 
 def main() -> int:
-    """Start consuming queued tasks. Blocks until the worker is stopped."""
+    """Start consuming queued tasks. Blocks until the worker is stopped.
+
+    Returns 1 without consuming anything if the database is not at the revision
+    this build expects — see :func:`verify_schema_version`.
+    """
     settings = get_settings()
     configure_logging(settings.log_level)
+
+    # DEV-051, and it goes before Redis on purpose. A worker that has already
+    # registered with RQ is a worker that can be handed a job, and the whole
+    # point is to refuse before anything can be taken off the queue.
+    #
+    # Exits rather than raising: a traceback ending in a KeyError about a
+    # revision is the kind of thing people scroll past, and this failure is one
+    # sentence that deserves to be read.
+    try:
+        verify_schema_version(get_engine())
+    except SchemaVersionMismatch as mismatch:
+        logger.error("%s", mismatch)
+        return 1
 
     redis = Redis.from_url(settings.redis_url)
     worker = build_worker(redis, settings.worker_queues)
