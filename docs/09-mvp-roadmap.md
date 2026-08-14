@@ -88,6 +88,25 @@ Validation
 Tests
 ```
 
+### The slice lists below are not authoritative
+
+They are a plan, written early, and they have been wrong twice in the same way:
+shorter than the module they claim to cover.
+
+Phase 2 names six slices against the eleven elements `docs/01` lists for the
+Career Profile module. Two of the missing five were real omissions — career
+preferences (DEV-035, found nine phases late) and certifications (DEV-052, found
+after that). Phase 7 built all eight items on its list and never turned the
+"Approved statement library" section of `docs/06` into an item at all (DEV-053).
+
+**Before marking any phase DONE, run the phase exit protocol in
+`docs/12-project-tracking.md`**: compare the phase against the specification
+module it implements rather than against its own slice list, and account for
+every element as built, deferred with a reason, or filed.
+
+A phase closed against its own list can only confirm that the list was
+completed. It cannot notice that the list was short.
+
 ## Phases
 
 ### Phase 0 — Project Foundation

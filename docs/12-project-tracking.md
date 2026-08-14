@@ -181,6 +181,64 @@ Implementation and tracking must describe the same reality.
 
 A task is not fully complete when code is finished but repository tracking still says “Not Started.”
 
+## Phase exit protocol — read the specification, not the slice list
+
+Before marking a phase DONE, compare it against the **specification module it
+implements**, not against its own list of slices.
+
+The slice list is the thing most likely to be wrong. It was written once, early,
+and a phase that closes against it can only ever confirm that the list was
+completed — never that the list was right.
+
+### The check
+
+1. Open the module in `docs/01-product-requirements.md` that the phase covers,
+   and any section of `docs/03`, `docs/05`, `docs/06` or `docs/07` describing
+   the same area.
+2. List every element they name.
+3. Mark each one: **built**, **deliberately deferred**, or **missed**.
+4. Nothing may be left unmarked. A deferral needs a reason recorded; a miss
+   needs a `known-issues.md` entry or a slice in a later phase.
+5. Do the same for the MVP schema list in `docs/03-domain-model.md`. A table
+   named there and absent from the migrations is either a decision or a drift,
+   and the difference has to be written down.
+
+Record the result in `implementation-status.md` beside the phase.
+
+### Why this exists
+
+It has been run twice and found four things both times together.
+
+**2026-08-03 — DEV-035.** `docs/01` lists eleven elements in the Career Profile
+module. Phase 2's slice list named six. `CareerPreferences` was defined in
+`docs/03`, named in Flow 1 of `docs/02`, listed among the inputs a
+recommendation considers in `docs/05`, and scheduled in no phase. Phase 2 closed
+DONE against a list that was already short, and `/settings` rendered a
+placeholder for nine phases — a placeholder being indistinguishable from a page
+whose turn has not come, which is why nobody asked.
+
+**2026-08-15 — DEV-052, DEV-053, DEV-054, DEV-055.** The same reading, repeated
+because the first one suggested it should be. The same six-against-eleven gap in
+Phase 2 had dropped **certifications** as well, which the matcher turns into a
+wrong answer rather than a missing feature. Phase 7 built all eight items on its
+list and never turned an entire section of `docs/06` into an item at all. Two
+tables in the MVP schema were implemented as something else, both defensibly,
+neither recorded.
+
+Three of those four came through the same seam: **a phase whose slice list was
+shorter than the module it claimed to cover.**
+
+### What makes it worth doing
+
+It costs one careful reading and it has a base rate. Both runs found something;
+the second found three things the first missed, in phases already marked DONE.
+
+The failure it catches is specifically hard to see any other way. Tests cannot
+find a feature nobody wrote — there is nothing to assert against. A walkthrough
+cannot find it either: an absent screen looks like a screen whose phase has not
+arrived. Only reading the specification against the code surfaces it, and only
+if someone does it deliberately.
+
 ## Partial work
 
 Use `PARTIALLY_IMPLEMENTED` and document exactly what exists and what remains.
