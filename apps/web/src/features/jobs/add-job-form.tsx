@@ -298,7 +298,7 @@ function DuplicateNotice({
   onCreateAnyway: () => void;
 }) {
   return (
-    <Card className="border-amber-500/50">
+    <Card className="border-notice/50">
       <CardHeader>
         <CardTitle className="text-base">You may already have this job</CardTitle>
         <CardDescription>

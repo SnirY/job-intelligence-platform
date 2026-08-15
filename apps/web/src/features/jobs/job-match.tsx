@@ -527,12 +527,19 @@ const STATUS_ICONS: Record<MatchStatus, typeof CheckCircle2> = {
   UNKNOWN: CircleHelp,
 };
 
+// Tokens, not palette entries — DEV-057. These five are the roles
+// `docs/08-ui-ux.md` assigns meaning to, and hard-coding them here meant a
+// change of palette would move every colour in the product except the ones that
+// say something. `globals.css` carries the values and both themes.
+//
+// `ok` and `gap` were the same amber until 2026-08-15: two different verdicts,
+// one colour, told apart only by their icon.
 const TONE_CLASSES: Record<string, string> = {
-  strong: "text-emerald-600 dark:text-emerald-400",
-  ok: "text-amber-600 dark:text-amber-400",
-  transfer: "text-purple-600 dark:text-purple-400",
-  gap: "text-amber-600 dark:text-amber-400",
-  blocked: "text-destructive",
+  strong: "text-verdict-strong",
+  ok: "text-verdict-partial",
+  transfer: "text-verdict-transfer",
+  gap: "text-verdict-gap",
+  blocked: "text-verdict-blocked",
   neutral: "text-muted-foreground",
 };
 
@@ -614,7 +621,7 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: "warning
     <div
       className={
         tone === "warning"
-          ? "rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm"
+          ? "rounded-md border border-notice/40 bg-notice/5 p-3 text-sm"
           : "rounded-md border p-3 text-sm text-muted-foreground"
       }
     >

@@ -666,7 +666,7 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: "warning
     <div
       className={
         tone === "warning"
-          ? "rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm"
+          ? "rounded-md border border-notice/40 bg-notice/5 p-3 text-sm"
           : "rounded-md border p-3 text-sm text-muted-foreground"
       }
     >

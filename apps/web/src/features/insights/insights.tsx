@@ -251,7 +251,7 @@ function Header({ analysed }: { analysed: number }) {
  */
 function Sample({ analysed, minimum }: { analysed: number; minimum: number }) {
   return (
-    <div className="flex gap-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+    <div className="flex gap-3 rounded-md border border-notice/40 bg-notice/5 p-3 text-sm">
       <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
       <p>
         This is counted over {analysed === 1 ? "one posting" : `${analysed} postings`}. Below{" "}

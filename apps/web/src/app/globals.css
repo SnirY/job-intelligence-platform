@@ -32,6 +32,39 @@
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);
   --ring: oklch(0.704 0.04 256.788);
+
+  /*
+   * Verdict colours. DEV-057.
+   *
+   * These are the five roles `docs/08-ui-ux.md` assigns meaning to, and until
+   * now three of them had no token at all — `emerald-600`, `amber-600` and
+   * `purple-600` were written straight into `job-match.tsx`. The comment at the
+   * top of this file claims components reference semantic names "so the palette
+   * can change in one place", and for the only colours that carry product
+   * meaning that was not true.
+   *
+   * Named for what they mean, not what they look like. A redesign changes the
+   * value; it should never have to find out which hue meant "transferable".
+   */
+  --verdict-strong: oklch(0.596 0.145 163.225);
+  --verdict-partial: oklch(0.6 0.118 184.704);
+  --verdict-transfer: oklch(0.558 0.288 302.321);
+  --verdict-gap: oklch(0.666 0.179 58.318);
+  --verdict-blocked: var(--destructive);
+
+  /*
+   * `--verdict-partial` is new rather than moved. PARTIAL_MATCH and GAP both
+   * rendered `amber-600`, so two different verdicts were the same colour and
+   * only the icon told them apart.
+   *
+   * It leans green rather than amber because partial evidence *is* evidence —
+   * the caveat is strength, not absence. Rendering it as amber told the reader
+   * "problem" where the engine had said "this counts, less than fully", and
+   * overstating a shortfall is the same class of error as overstating a match.
+   */
+
+  /* A caution surface: bordered panels that qualify what is above them. */
+  --notice: oklch(0.769 0.188 70.08);
 }
 
 .dark {
@@ -56,6 +89,15 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.551 0.027 264.364);
+
+  /* Lighter, because these sit on a dark surface. Same meanings. */
+  --verdict-strong: oklch(0.765 0.177 163.223);
+  --verdict-partial: oklch(0.777 0.152 181.912);
+  --verdict-transfer: oklch(0.714 0.203 305.504);
+  --verdict-gap: oklch(0.828 0.189 84.429);
+  --verdict-blocked: var(--destructive);
+
+  --notice: oklch(0.828 0.189 84.429);
 }
 
 @theme inline {
@@ -77,6 +119,12 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-verdict-strong: var(--verdict-strong);
+  --color-verdict-partial: var(--verdict-partial);
+  --color-verdict-transfer: var(--verdict-transfer);
+  --color-verdict-gap: var(--verdict-gap);
+  --color-verdict-blocked: var(--verdict-blocked);
+  --color-notice: var(--notice);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

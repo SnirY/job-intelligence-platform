@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { SidebarNav } from "@/features/navigation/sidebar-nav";
+import { ThemeToggle } from "@/features/navigation/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -97,6 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
 
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             {/*
               Sign-out destination comes from the Clerk instance configuration;
               v7 removed the per-component afterSignOutUrl prop. The middleware
