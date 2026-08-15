@@ -473,7 +473,9 @@ def _demonstrations(held: SkillEvidence, snapshot: ProfileSnapshot) -> list[Evid
 # --- experience ---------------------------------------------------------------
 
 
-def _years_met_sentence(held_years: int, required_years: int) -> str:
+def _years_met_sentence(
+    held_years: int, required_years: int, counted: list[EvidenceRef] | None = None
+) -> str:
     """Say that the years are covered, without inventing a demand.
 
     A posting whose minimum parses to zero — "0-3 years experience in
@@ -490,9 +492,10 @@ def _years_met_sentence(held_years: int, required_years: int) -> str:
     question and a different one. It belongs to DEV-011, with the rest of the
     values nobody has calibrated.
     """
+    phrase = _years_phrase(held_years, counted or [])
     if required_years <= 0:
-        return f"This asks for no minimum experience, and you have {held_years} years."
-    return f"You have {held_years} years against the {required_years} asked for."
+        return f"This asks for no minimum experience, and you have {phrase}."
+    return f"You have {phrase} against the {required_years} asked for."
 
 
 def _match_experience(
@@ -540,21 +543,69 @@ def _match_experience(
     if held_years is None:
         held_years = snapshot.total_months // 12
 
+    # DEV-061, part 2. A requirement naming a subject must find the subject.
+    #
+    # Until now the years branch compared numbers and nothing else, so "1 year
+    # of experience with digital logic design" was answered STRONG_MATCH by
+    # three years of anything — radar technician work from 2014, in the case
+    # that found this. "3 years of experience in neurosurgery" scored 100.
+    #
+    # PARTIAL_MATCH rather than GAP, and the difference matters more than it
+    # looks: a GAP on a CORE requirement becomes a BLOCKER, the strongest claim
+    # this engine makes, and keyword absence does not justify it. [employer 1]'s "1-2
+    # years of experience in Data Science and/or AI Engineering" blocked a
+    # profile carrying three machine-learning projects, because none of them
+    # writes the words "data science".
+    #
+    # So: credit the years, deny the subject, and say both. The sentence carries
+    # the doubt, which is where `docs/05` wants it — the reader may know better
+    # than a word comparison does.
+    #
+    # Checked only when there is something to search. A profile carrying a stated "6
+    # years" and no roles has no text for the keyword pass to read, so every
+    # subject-bearing requirement would fail it — and **"cannot check" is not
+    # "absent"**. That is the half-filled profile `GOAL.md` protects, and it is
+    # a different case from a profile full of radar work that genuinely says
+    # nothing about chip design.
+    searchable = bool(snapshot.experiences or snapshot.projects)
+
+    subject = _subject_of(requirement.normalized_text)
+    if subject and searchable and not _subject_is_evidenced(subject, snapshot):
+        sources = _years_evidence(snapshot)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            45,
+            f"You have {_years_phrase(held_years, sources)}, but nothing in your "
+            f"profile is about {subject}.",
+            sources,
+        )
+
+    # DEV-061, parts 1 and 3. Cite the roles the years were counted from, and
+    # say so in the sentence.
+    #
+    # These used to disagree. The number came from summing `experiences`, the
+    # evidence came from a keyword search that also reads projects, and nothing
+    # made them meet — so a verdict reading "you have 3 years" cited three
+    # projects that had contributed no part of it. The evidence drawer is the
+    # feature this product is built on, and it was showing decoration.
+    counted = _years_evidence(snapshot) if snapshot.stated_years is None else []
+    shown = counted or evidence
+
     if held_years >= required_years:
         return (
             MatchStatus.STRONG_MATCH,
             85,
-            _years_met_sentence(held_years, required_years),
-            evidence,
+            _years_met_sentence(held_years, required_years, counted),
+            shown,
         )
 
     if required_years and held_years >= required_years * 0.6:
         return (
             MatchStatus.PARTIAL_MATCH,
             70,
-            f"You have {held_years} years against the {required_years} asked for — "
-            "close, and years are rarely a hard cut-off.",
-            evidence,
+            f"You have {_years_phrase(held_years, counted)} against the "
+            f"{required_years} asked for — close, and years are rarely a hard cut-off.",
+            shown,
         )
 
     if held_years == 0:
@@ -569,8 +620,165 @@ def _match_experience(
         MatchStatus.GAP,
         70,
         f"This asks for {required_years} years and your profile shows {held_years}.",
-        evidence,
+        shown,
     )
+
+
+_YEARS_BOILERPLATE = frozenset(
+    {
+        # Connectives. `_terms` filters on length alone, and "with" is four
+        # characters — long enough to survive, common enough to appear in
+        # almost every description. It let "digital logic design" pass the
+        # subject check on "with" plus "design", found in "Designed for
+        # medical-grade reliability" in a computer-vision project.
+        "with",
+        "within",
+        "and",
+        "the",
+        "for",
+        "from",
+        "that",
+        "this",
+        "into",
+        "using",
+        "such",
+        "including",
+        "across",
+        "over",
+        "have",
+        "must",
+        "should",
+        # Intensifiers. They qualify a subject without naming one.
+        "strong",
+        "solid",
+        "good",
+        "deep",
+        "excellent",
+        "demonstrated",
+        "practical",
+        "extensive",
+        "some",
+        "prior",
+        "previous",
+        "year",
+        "years",
+        "experience",
+        "experienced",
+        "professional",
+        "industry",
+        "commercial",
+        "hands",
+        "working",
+        "work",
+        "minimum",
+        "least",
+        "plus",
+        "relevant",
+        "proven",
+        "track",
+        "record",
+        "role",
+        "roles",
+        "position",
+        "full",
+        "time",
+    }
+)
+
+
+def _subject_of(text: str) -> str | None:
+    """What a years requirement is *about*, if it is about anything.
+
+    "3+ years of professional experience" is a quantity and nothing else, and
+    the total is the right answer for it. "1 year of experience with digital
+    logic design principles" is a quantity **and a subject**, and answering it
+    without looking for the subject is how a radar technician came to have a
+    year of chip design.
+
+    Returns the subject words joined, for the explanation to quote back, or
+    ``None`` when the requirement names none.
+    """
+    words = [word for word in _terms(text) if word not in _YEARS_BOILERPLATE]
+    return " ".join(words) if words else None
+
+
+def _subject_is_evidenced(subject: str, snapshot: ProfileSnapshot) -> bool:
+    """Whether one role or project is about ``subject``, rather than sharing a
+    word with it.
+
+    Two words have to land **in the same item**, which is what separates
+    evidence from coincidence. "Digital logic design" first passed this check on
+    the word `design` alone, found inside "Designed for medical-grade
+    reliability" in a computer-vision project — a single common word, in an
+    unrelated sentence, standing in for a subject the profile knows nothing
+    about.
+
+    A one-word subject needs that one word, because there is nothing else to
+    ask for. Two is the threshold everywhere else, not a majority: "digital
+    logic design principles" should not need `principles`, which appears in no
+    CV ever written.
+    """
+    # Deduplicated. "digital logic design principles and RTL design concepts"
+    # names `design` twice, and counting it twice let one word clear a
+    # two-word threshold — the coincidence this function exists to reject,
+    # passing because the posting repeated itself.
+    words = sorted(set(subject.split()))
+    needed = min(2, len(words))
+
+    for haystack in _searchable_texts(snapshot):
+        if sum(1 for word in words if word in haystack) >= needed:
+            return True
+    return False
+
+
+def _searchable_texts(snapshot: ProfileSnapshot) -> list[str]:
+    """Every role and project as one lowercased blob each.
+
+    Per item rather than concatenated, so words from two unrelated projects
+    cannot combine into evidence for a subject neither of them is about.
+    """
+    texts = [
+        " ".join(part for part in (e.title, e.description) if part).casefold()
+        for e in snapshot.experiences
+    ]
+    texts += [
+        " ".join(part for part in (p.name, p.summary, p.description) if part).casefold()
+        for p in snapshot.projects
+    ]
+    return texts
+
+
+def _years_evidence(snapshot: ProfileSnapshot) -> list[EvidenceRef]:
+    """The roles the year count was actually summed from, newest first."""
+    dated = [experience for experience in snapshot.experiences if experience.months]
+    dated.sort(key=lambda e: (e.months, str(e.id)), reverse=True)
+    return [
+        EvidenceRef(
+            evidence_type=EvidenceType.EXPERIENCE,
+            entity_id=experience.id,
+            label=f"{experience.title} at {experience.company}",
+            detail=experience.description,
+            verification_status=experience.verification_status,
+            relevance=90,
+        )
+        for experience in dated
+    ]
+
+
+def _years_phrase(held_years: int, counted: list[EvidenceRef]) -> str:
+    """ "3 years" or "3 years, from Team Leader Technician at the IDF".
+
+    Naming the source is the whole of DEV-061 part 3. A reader who is told what
+    was counted can disagree with it in one glance; a bare number gives them
+    nothing to disagree with, which is how three years of radar work passed for
+    three years of software.
+    """
+    plural = "year" if held_years == 1 else "years"
+    if not counted:
+        return f"{held_years} {plural}"
+    if len(counted) == 1:
+        return f"{held_years} {plural}, from {counted[0].label}"
+    return f"{held_years} {plural}, from {counted[0].label} and {len(counted) - 1} more"
 
 
 def _experience_evidence(

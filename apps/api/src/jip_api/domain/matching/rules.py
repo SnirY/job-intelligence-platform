@@ -18,12 +18,40 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "3.0.0"
+MATCHING_ENGINE_VERSION = "4.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**4.0.0 (2026-08-15) — DEV-061**, and the first change here that *lowers*
+scores. Found by a user asking why the engine credited him a year of chip
+design.
+
+The years branch compared numbers and read nothing else, so three years of
+radar-technician work answered "1 year of experience with digital logic design"
+with STRONG_MATCH and a score of 100. "3 years of experience in neurosurgery"
+scored 100 as well. Three parts:
+
+*The evidence must be what produced the verdict.* The number was summed from
+`experiences`; the evidence came from a keyword pass that also reads projects;
+nothing made them meet. A verdict reading "you have 3 years" cited three
+projects that had contributed none of it.
+
+*A requirement naming a subject must find the subject*, and two of its words
+have to land in the same item. One word is coincidence: "digital logic design"
+first passed on `design` alone, inside "Designed for medical-grade reliability"
+in a computer-vision project.
+
+*The sentence must say what it counted.* "You have 3 years, from Team Leader
+Technician at the IDF" is disagreed with in one glance; "You have 3 years" gives
+a reader nothing to disagree with, which is how three years of radar work passed
+for three years of software.
+
+A bare "3+ years of experience" is still answered by the total, and a profile
+with stated years and no roles listed still passes — it has no text to search,
+and cannot check is not absent.
 
 **3.0.0 (2026-08-15) — DEV-055 and DEV-060**, both found on posting 3 of the
 DEV-011 calibration and both turning a qualification the user holds into a gap.

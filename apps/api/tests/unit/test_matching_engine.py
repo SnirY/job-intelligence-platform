@@ -30,7 +30,12 @@ from jip_api.application.matching.evidence import (
 )
 from jip_api.application.matching.matcher import Verdict, match_requirements
 from jip_api.application.matching.scoring import score_match
-from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
+from jip_api.domain.matching.models import (
+    EvidenceType,
+    MatchCategory,
+    MatchStatus,
+    Recommendation,
+)
 from jip_api.domain.matching.rules import BLOCKER_CAP, weighted_score
 from jip_api.domain.matching.transferable import find_transfer, groups_for
 
@@ -62,6 +67,27 @@ def skill(
     )
 
 
+def role(title: str, company: str, months: int) -> ExperienceEvidence:
+    """A dated role, for the years arithmetic to have something to sum."""
+    start = dt.date(2011, 1, 1)
+    # Exact calendar months rather than days-times-30.44, which loses one to
+    # rounding and turns a 36-month role into 35.
+    end = dt.date(
+        start.year + (start.month - 1 + months) // 12, (start.month - 1 + months) % 12 + 1, 1
+    )
+    return ExperienceEvidence(
+        id=uuid.uuid4(),
+        company=company,
+        title=title,
+        normalized_title=title.casefold(),
+        start_date=start,
+        end_date=end,
+        is_current=False,
+        description=None,
+        verification_status="USER_CONFIRMED",
+    )
+
+
 def profile(*skills: SkillEvidence, years: int | None = 6, **extra: object) -> ProfileSnapshot:
     snapshot = ProfileSnapshot(
         user_id=uuid.uuid4(),
@@ -71,6 +97,24 @@ def profile(*skills: SkillEvidence, years: int | None = 6, **extra: object) -> P
         snapshot.skills.append(item)
         snapshot.skills_by_id[item.skill_id] = item
         snapshot.skills_by_normalized[item.normalized_name] = item
+
+    roles = extra.get("roles")
+    if isinstance(roles, list):
+        snapshot.experiences.extend(roles)
+
+    if extra.get("projects_text"):
+        snapshot.projects.append(
+            ProjectEvidence(
+                id=uuid.uuid4(),
+                name="A project",
+                summary=None,
+                description=str(extra["projects_text"]),
+                start_date=None,
+                end_date=None,
+                has_repository=False,
+                verification_status="USER_CONFIRMED",
+            )
+        )
 
     if extra.get("with_experience"):
         snapshot.experiences.append(
@@ -120,6 +164,108 @@ def verdict_for(
 
 
 # --- transferability ----------------------------------------------------------
+
+
+def test_years_of_anything_do_not_answer_a_subject() -> None:
+    """DEV-061, found by a user asking why the engine credited him three years
+    of chip design.
+
+    The years branch compared numbers and read nothing else, so three years of
+    radar-technician work from 2014 answered "1 year of experience with digital
+    logic design principles" with STRONG_MATCH and a score of 100. "3 years of
+    experience in neurosurgery" scored 100 as well.
+    """
+    result = verdict_for(
+        [requirement("1 year of digital logic design", "EXPERIENCE", years_min=1)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    # PARTIAL rather than GAP: a GAP on a CORE requirement becomes a BLOCKER,
+    # and keyword absence is not strong enough evidence for the strongest claim
+    # the engine makes. The years are credited, the subject is denied, and the
+    # sentence says both.
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert result.is_blocker is False
+    assert "digital logic design" in result.explanation
+
+
+def test_a_connective_is_not_a_subject_word() -> None:
+    """The first version of the subject check passed on the word `with`.
+
+    `_terms` filters on length alone and "with" is four characters — long
+    enough to survive, common enough to sit in nearly every description. So
+    "digital logic design" was evidenced by `with` plus `design`, the latter
+    found inside "Designed for medical-grade reliability" in a computer-vision
+    project. Two words in one item, neither of them the subject.
+    """
+    result = verdict_for(
+        [requirement("1 year with digital logic design", "EXPERIENCE", years_min=1)],
+        profile(
+            skill("Python"),
+            years=None,
+            roles=[role("Vision Engineer", "Lab", 36)],
+            projects_text="Designed for medical-grade reliability with deep learning",
+        ),
+    )
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+
+
+def test_a_bare_years_requirement_is_still_answered_by_years() -> None:
+    """The subject check must not swallow the ordinary case. "3+ years of
+    professional experience" names a quantity and nothing else, and the total
+    is the right answer to it."""
+    result = verdict_for(
+        [requirement("3+ years of professional experience", "EXPERIENCE", years_min=3)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_a_profile_with_no_roles_is_not_punished_for_being_unsearchable() -> None:
+    """A stated "6 years" with no roles listed has no text to search, so every
+    subject-bearing requirement would fail the check above.
+
+    Cannot check is not absent — the distinction `GOAL.md` is about. This is a
+    half-filled profile, not a profile that says nothing about the subject.
+    """
+    result = verdict_for(
+        [requirement("5+ years backend", "EXPERIENCE", years_min=5)],
+        profile(skill("Python"), years=6),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_the_verdict_cites_the_roles_the_years_came_from() -> None:
+    """DEV-061 part 1. The number was summed from `experiences` and the evidence
+    came from a keyword search that also reads projects, and nothing made them
+    meet: a verdict reading "you have 3 years" cited three projects that had
+    contributed none of it."""
+    result = verdict_for(
+        [requirement("2+ years of experience", "EXPERIENCE", years_min=2)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert [ref.evidence_type for ref in result.evidence] == [EvidenceType.EXPERIENCE]
+    assert "Radar Technician" in result.evidence[0].label
+
+
+def test_the_sentence_says_what_it_counted() -> None:
+    """DEV-061 part 3, and the half that would have made this self-evident.
+
+    "You have 3 years" gives a reader nothing to disagree with. "You have 3
+    years, from Radar Technician at IDF" is disagreed with in one glance, which
+    is how the defect was found in the first place — by a user who could see the
+    number and not what produced it.
+    """
+    result = verdict_for(
+        [requirement("2+ years of experience", "EXPERIENCE", years_min=2)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert "from Radar Technician at IDF" in result.explanation
 
 
 def test_a_slash_requirement_is_met_by_either_side() -> None:
