@@ -1,9 +1,37 @@
 name: CI
 
+# Two triggers, not three overlapping ones.
+#
+# `push: branches: ["**"]` alongside `pull_request` ran the whole suite **twice**
+# for every push to a branch with an open pull request — same commit, two run
+# ids, ~15 billed job-minutes each. It did that all month and nobody read the
+# run list closely enough to notice, until the account's 2,000 Actions minutes
+# ran out on 2026-08-15 and every job began failing in two seconds.
+#
+# `push` on `main` only, so a merge is still verified on the branch that
+# matters; `pull_request` for everything before it. A commit pushed to a branch
+# with no pull request open is now unverified until one exists, which is the
+# right trade: the check that matters is the one before a merge.
+#
+# `paths-ignore` skips documentation-only changes. The calibration in
+# `docs/development/` is written up one posting at a time, and running 466
+# integration tests and a Docker Compose stack against a markdown edit is the
+# other half of what emptied the quota. A pull request touching code *and* docs
+# still runs — the filter only skips when every changed file matches.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
   workflow_dispatch:
 
 concurrency:
