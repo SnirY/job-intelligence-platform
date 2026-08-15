@@ -18,12 +18,29 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "4.0.0"
+MATCHING_ENGINE_VERSION = "4.0.1"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**4.0.1 (2026-08-15).** Two bugs in 4.0.0's own subject check, both found on
+the next posting.
+
+`required`, `preferred` and `mandatory` say how much a posting wants something
+and nothing about what, and they appear in no CV ever written. Left in the
+subject, "5 years of backend required" asked for a profile containing the word
+"required" — so **every requirement phrased that way** failed the check,
+whatever the candidate had done.
+
+And the check ran on postings demanding nothing. "No prior professional
+experience required" parses to zero years, and produced *"you have 3 years, but
+nothing in your profile is about required"* — a shortfall invented against an
+invitation to juniors.
+
+Patch rather than major: 4.0.0 shipped hours earlier and these restore what it
+intended rather than changing it. Scores move, but only back.
 
 **4.0.0 (2026-08-15) — DEV-061**, and the first change here that *lowers*
 scores. Found by a user asking why the engine credited him a year of chip

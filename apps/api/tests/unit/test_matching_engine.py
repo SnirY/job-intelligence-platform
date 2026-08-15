@@ -211,6 +211,45 @@ def test_a_connective_is_not_a_subject_word() -> None:
     assert result.status is MatchStatus.PARTIAL_MATCH
 
 
+def test_a_posting_demanding_nothing_is_not_given_a_subject() -> None:
+    """Found on posting 5, one posting after the subject check shipped.
+
+    "No prior professional experience required" parses to zero years — an
+    invitation to juniors — and the check ran on it anyway, extracting
+    `required` as the subject and reporting *"you have 3 years, but nothing in
+    your profile is about required"*. A shortfall invented against a posting
+    that asked for none.
+    """
+    result = verdict_for(
+        [requirement("No prior professional experience required", "EXPERIENCE", years_min=0)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert "no minimum experience" in result.explanation
+
+
+def test_how_much_a_posting_wants_it_is_not_what_it_wants() -> None:
+    """`required`, `preferred`, `mandatory` say nothing about the subject and
+    appear in no CV ever written.
+
+    Left in, "5 years of backend required" asked for a profile containing the
+    word "required" — so **every** requirement phrased that way failed the
+    subject check, whatever the candidate had done.
+    """
+    result = verdict_for(
+        [requirement("5 years of backend required", "EXPERIENCE", years_min=3)],
+        profile(
+            skill("Python"),
+            years=None,
+            roles=[role("Backend Engineer", "Acme", 48)],
+            projects_text="Backend services and APIs",
+        ),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
 def test_a_bare_years_requirement_is_still_answered_by_years() -> None:
     """The subject check must not swallow the ordinary case. "3+ years of
     professional experience" names a quantity and nothing else, and the total

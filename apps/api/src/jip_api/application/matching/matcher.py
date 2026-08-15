@@ -569,7 +569,11 @@ def _match_experience(
     # nothing about chip design.
     searchable = bool(snapshot.experiences or snapshot.projects)
 
-    subject = _subject_of(requirement.normalized_text)
+    # A posting demanding nothing has no subject to evidence. "No prior
+    # professional experience required" parses to zero years, and running the
+    # check on it produced *"you have 3 years, but nothing in your profile is
+    # about required"* — a shortfall invented against an invitation to juniors.
+    subject = _subject_of(requirement.normalized_text) if required_years > 0 else None
     if subject and searchable and not _subject_is_evidenced(subject, snapshot):
         sources = _years_evidence(snapshot)
         return (
@@ -648,6 +652,24 @@ _YEARS_BOILERPLATE = frozenset(
         "have",
         "must",
         "should",
+        # How much the posting wants it. These say nothing about *what* it
+        # wants, and they never appear in anybody's CV — so leaving them in the
+        # subject made "5 years of backend required" ask for a profile
+        # containing the word "required", which no profile contains. Every
+        # requirement phrased that way would have failed the check below.
+        "required",
+        "require",
+        "requires",
+        "preferred",
+        "mandatory",
+        "essential",
+        "advantage",
+        "advantageous",
+        "needed",
+        "necessary",
+        "nice",
+        "ideally",
+        "desirable",
         # Intensifiers. They qualify a subject without naming one.
         "strong",
         "solid",
