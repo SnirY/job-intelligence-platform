@@ -18,12 +18,29 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "1.0.0"
+MATCHING_ENGINE_VERSION = "2.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**2.0.0 (2026-08-15) — DEV-059.** A requirement that resolved through a
+catalogue alias lost transferability, because `_match_skill` handed the
+posting's own wording to `find_transfer` instead of the canonical name the
+transfer table is keyed by. `C/C++` is an alias of `C++`; a profile holding `C`
+was told it had no `C/C++`, while the same requirement written `C++` returned
+TRANSFERABLE.
+
+Major rather than patch, and the values below are untouched. GAP scores 0 and
+TRANSFERABLE_MATCH scores 50, so every affected requirement moves fifty points
+and jobs reorder against each other. The rule above is about consequence, not
+about which file changed.
+
+Found on the second posting of the DEV-011 calibration, and fixed before the
+remaining eighteen so the set is measured against one engine.
+
+**1.0.0** — the values from `docs/05-ai-and-matching.md` as first written.
 """
 
 

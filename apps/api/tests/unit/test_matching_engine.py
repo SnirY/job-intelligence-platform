@@ -111,11 +111,63 @@ def requirement(
     )
 
 
-def verdict_for(requirements: list[SimpleNamespace], snapshot: ProfileSnapshot) -> Verdict:
-    return match_requirements(requirements, snapshot)[0]
+def verdict_for(
+    requirements: list[SimpleNamespace],
+    snapshot: ProfileSnapshot,
+    canonical_names: dict[uuid.UUID, str] | None = None,
+) -> Verdict:
+    return match_requirements(requirements, snapshot, canonical_names)[0]
 
 
 # --- transferability ----------------------------------------------------------
+
+
+def test_an_alias_still_finds_the_transfer_behind_it() -> None:
+    """DEV-059, found on the second posting of the DEV-011 calibration.
+
+    A posting asked for `C/C++`, which the catalogue holds as an alias of `C++`,
+    so it resolved correctly. The transfer table is keyed by canonical names, and
+    `_match_skill` was handing it the posting's own wording:
+
+        find_transfer("C++",   ["C", ...])  ->  C via systems languages
+        find_transfer("C/C++", ["C", ...])  ->  NO TRANSFER
+
+    A profile holding C was told it had no C/C++, while the same requirement
+    written `C++` on another posting returned TRANSFERABLE. Same skill, same
+    profile, opposite verdicts, decided by how the posting happened to spell it.
+    """
+    skill_id = uuid.uuid4()
+    written_as_alias = requirement("Experience with C/C++", skill_name="C/C++")
+    written_as_alias.skill_id = skill_id
+
+    result = verdict_for([written_as_alias], profile(skill("C")), {skill_id: "C++"})
+
+    assert result.status is MatchStatus.TRANSFERABLE_MATCH
+
+
+def test_the_user_reads_the_wording_the_posting_used() -> None:
+    """The canonical name is for looking up, not for talking.
+
+    Telling someone "C++ is not in your profile" when the posting said `C/C++`
+    describes a requirement they did not read. The explanation quotes the
+    posting; only the lookup is translated.
+    """
+    skill_id = uuid.uuid4()
+    asked = requirement("Experience with C/C++", skill_name="C/C++")
+    asked.skill_id = skill_id
+
+    result = verdict_for([asked], profile(skill("C")), {skill_id: "C++"})
+
+    assert "C/C++" in result.explanation
+
+
+def test_transferability_still_works_with_no_catalogue_lookup() -> None:
+    """The mapping is optional, and its absence must not be silently worse than
+    passing it. A posting whose wording *is* the canonical name — the ordinary
+    case — resolves the same either way."""
+    result = verdict_for([requirement("C++")], profile(skill("C")))
+
+    assert result.status is MatchStatus.TRANSFERABLE_MATCH
 
 
 def test_a_transferable_skill_is_never_a_direct_match() -> None:

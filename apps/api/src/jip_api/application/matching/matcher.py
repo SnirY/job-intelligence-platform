@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
@@ -123,22 +123,39 @@ class Verdict:
 
 
 def match_requirements(
-    requirements: Sequence[MatchableRequirement], snapshot: ProfileSnapshot
+    requirements: Sequence[MatchableRequirement],
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str] | None = None,
 ) -> list[Verdict]:
     """Evaluate every requirement independently.
 
     Independently is the operative word: no requirement's verdict depends on
     another's, so a posting cannot drag its own score down by asking for
     something unusual, and the results can be read in any order.
+
+    ``canonical_names`` maps a resolved ``skill_id`` to the catalogue's own name
+    for it. Passed in rather than looked up, for the same reason ``snapshot``
+    is: the matcher must not touch a database, and that property is what the
+    determinism tests rest on.
+
+    Optional, and its absence is a silent loss of transferability rather than an
+    error — see :func:`_match_skill` for why, and DEV-059 for what that cost.
     """
-    return [_match_one(requirement, snapshot) for requirement in requirements]
+    lookup = canonical_names or {}
+    return [_match_one(requirement, snapshot, lookup) for requirement in requirements]
 
 
-def _match_one(requirement: MatchableRequirement, snapshot: ProfileSnapshot) -> Verdict:
+def _match_one(
+    requirement: MatchableRequirement,
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
+) -> Verdict:
     importance = RequirementImportance(requirement.importance)
     requirement_type = RequirementType(requirement.requirement_type)
 
-    status, confidence, explanation, evidence = _evaluate(requirement, requirement_type, snapshot)
+    status, confidence, explanation, evidence = _evaluate(
+        requirement, requirement_type, snapshot, canonical_names
+    )
 
     # A core requirement with a real gap is the blocker case. NO_EVIDENCE never
     # blocks: we have nothing on file, which is a fact about our data rather
@@ -167,10 +184,11 @@ def _evaluate(
     requirement: MatchableRequirement,
     requirement_type: RequirementType,
     snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
     """Dispatch to the rule for this requirement type."""
     if requirement_type is RequirementType.TECHNICAL_SKILL:
-        return _match_skill(requirement, snapshot)
+        return _match_skill(requirement, snapshot, canonical_names)
     if requirement_type is RequirementType.EXPERIENCE:
         return _match_experience(requirement, snapshot)
     if requirement_type is RequirementType.EDUCATION:
@@ -192,11 +210,34 @@ def _evaluate(
 
 
 def _match_skill(
-    requirement: MatchableRequirement, snapshot: ProfileSnapshot
+    requirement: MatchableRequirement,
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
-    """Exact, then alias, then demonstration, then transferability."""
+    """Exact, then alias, then demonstration, then transferability.
+
+    Two names, deliberately. ``name`` is what the posting wrote and is what the
+    user reads back; ``lookup`` is what the catalogue calls it and is what the
+    transferability table is keyed by.
+
+    Collapsing them cost DEV-059. A posting asking for `C/C++` — an alias of
+    `C++` — resolved correctly, and then lost transferability, because
+    `find_transfer` was handed the alias:
+
+        find_transfer("C++",   ["C", ...])  ->  C via systems languages
+        find_transfer("C/C++", ["C", ...])  ->  NO TRANSFER
+
+    A profile holding C was told it had no C/C++, while the same requirement
+    written `C++` on another posting returned TRANSFERABLE. Every alias in the
+    catalogue had this, not only the ones spelling out alternatives, and only
+    on the transfer path — direct matching goes by ``skill_id`` and was always
+    right, which is why it stayed hidden.
+    """
     name = requirement.skill_name or requirement.normalized_text
-    held = snapshot.find_skill(skill_id=requirement.skill_id, name=name)
+    lookup = canonical_names.get(requirement.skill_id) if requirement.skill_id else None
+    lookup = lookup or name
+
+    held = snapshot.find_skill(skill_id=requirement.skill_id, name=lookup)
 
     if held is not None:
         return _classify_held_skill(held, name, snapshot)
@@ -209,7 +250,7 @@ def _match_skill(
             [],
         )
 
-    transfer = find_transfer(name, snapshot.held_skill_names())
+    transfer = find_transfer(lookup, snapshot.held_skill_names())
     if transfer is not None:
         held_name, group = transfer
         transferred = snapshot.skills_by_normalized.get(

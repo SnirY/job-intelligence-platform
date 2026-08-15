@@ -28,6 +28,7 @@ from jip_api.application.errors import ApplicationError
 from jip_api.application.matching.evidence import ProfileSnapshot, load_profile_snapshot
 from jip_api.application.matching.matcher import Verdict, match_requirements
 from jip_api.application.matching.scoring import MatchResult, score_match
+from jip_api.domain.career.skills import Skill
 from jip_api.domain.jobs.analysis import JobAnalysis, JobRequirement
 from jip_api.domain.jobs.models import Job
 from jip_api.domain.matching.models import (
@@ -69,7 +70,7 @@ def run_match(
     """
     profile = snapshot if snapshot is not None else load_profile_snapshot(session, user_id)
 
-    verdicts = match_requirements(requirements, profile)
+    verdicts = match_requirements(requirements, profile, _canonical_names(session, requirements))
     result = score_match(verdicts)
 
     match = _persist(
@@ -92,6 +93,27 @@ def run_match(
         },
     )
     return MatchOutcome(match=match, verdicts=verdicts, result=result)
+
+
+def _canonical_names(session: Session, requirements: list[JobRequirement]) -> dict[uuid.UUID, str]:
+    """The catalogue's own name for each skill these requirements resolved to.
+
+    One query for the whole set rather than one per requirement, and read here
+    rather than in the matcher, which must stay free of a database.
+
+    This is what a posting's wording is translated *through*. `C/C++` is an
+    alias of `C++`, and the transferability table knows only `C++`, so without
+    this the transfer lookup misses and a profile holding `C` is told it has
+    nothing — DEV-059.
+    """
+    skill_ids = {r.skill_id for r in requirements if r.skill_id is not None}
+    if not skill_ids:
+        return {}
+
+    rows = session.execute(
+        select(Skill.id, Skill.canonical_name).where(Skill.id.in_(skill_ids))
+    ).all()
+    return {row[0]: row[1] for row in rows}
 
 
 def _persist(
