@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 from jip_api.application.matching.evidence import (
+    EducationEvidence,
     ExperienceEvidence,
     ProfileSnapshot,
     ProjectEvidence,
@@ -164,6 +165,105 @@ def verdict_for(
 
 
 # --- transferability ----------------------------------------------------------
+
+
+def test_a_skill_the_profile_guarantees_is_not_a_gap() -> None:
+    """DEV-064, four sightings across ten calibration postings.
+
+    Nobody writes HTML on a CV after they have written React, so a posting
+    asking for it produced a gap against an assumption rather than a fact.
+    Posting 8 carried three of these at once — OOP, data structures and
+    algorithms — and lost seventeen points to them.
+    """
+    result = verdict_for([requirement("HTML")], profile(skill("React")))
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "React" in result.explanation
+
+
+def test_a_degree_guarantees_what_its_curriculum_contains() -> None:
+    """A Software Engineering degree contains a data structures course. This is
+    entailment, not resemblance: the degree does not *look like* the skill, it
+    includes it."""
+    snapshot = profile(skill("Python"))
+    snapshot.education.append(
+        EducationEvidence(
+            id=uuid.uuid4(),
+            institution="[engineering college]",
+            degree="B.Sc.",
+            field_of_study="Software Engineering",
+            end_date=None,
+            is_current=False,
+            searchable="b.sc. software engineering braude",
+        )
+    )
+
+    result = verdict_for([requirement("Data Structures")], snapshot)
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "Software Engineering" in result.explanation
+
+
+def test_entailment_never_claims_the_skill_outright() -> None:
+    """PARTIAL, never MATCH. The user has not claimed this and the product's
+    rule is never to claim more than the evidence supports. What is true is
+    "you have something that requires it", and the sentence has to say which —
+    so a reader who rejects the inference can see exactly what to reject."""
+    result = verdict_for([requirement("CSS")], profile(skill("Next.js")))
+
+    assert result.status is not MatchStatus.MATCH
+    assert result.status is not MatchStatus.STRONG_MATCH
+    assert "not listed on your profile" in result.explanation
+
+
+def test_a_real_gap_is_still_a_gap() -> None:
+    """The table is small on purpose. Nothing in a React profile implies
+    Kubernetes, and a fix for false gaps that erased true ones would be worse
+    than the defect."""
+    for absent in ("Kubernetes", "Verilog", "Selenium"):
+        result = verdict_for([requirement(absent)], profile(skill("React")))
+        assert result.status is MatchStatus.GAP, absent
+
+
+def test_a_multi_paradigm_language_does_not_imply_object_orientation() -> None:
+    """The test for an entry is "could someone hold the first and genuinely not
+    have the second". A great deal of Python is written without designing a
+    class hierarchy, so Python is out where Java is in."""
+    assert verdict_for(
+        [requirement("Object-Oriented Design")], profile(skill("Python"))
+    ).status is (MatchStatus.GAP)
+    assert verdict_for([requirement("Object-Oriented Design")], profile(skill("Java"))).status is (
+        MatchStatus.PARTIAL_MATCH
+    )
+
+
+def test_an_unanswerable_education_requirement_is_unknown_not_a_gap() -> None:
+    """DEV-066, posting 10. "Exceptional academic track record from high school
+    and university" names no degree level and no field, so it fell past the
+    equivalence check, past word overlap, and onto GAP — a claim about the
+    candidate where the truth is a claim about our data. The `grade` column
+    exists and is empty.
+
+    `_unassessable` already said UNKNOWN is never GAP; EDUCATION was the one
+    type that did not route there.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.education.append(
+        EducationEvidence(
+            id=uuid.uuid4(),
+            institution="[engineering college]",
+            degree="B.Sc.",
+            field_of_study="Software Engineering",
+            end_date=None,
+            is_current=False,
+            searchable="b.sc. software engineering braude",
+        )
+    )
+
+    result = verdict_for([requirement("Exceptional academic track record", "EDUCATION")], snapshot)
+
+    assert result.status is MatchStatus.UNKNOWN
+    assert result.is_blocker is False
 
 
 def test_years_of_anything_do_not_answer_a_subject() -> None:

@@ -18,12 +18,41 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "4.0.1"
+MATCHING_ENGINE_VERSION = "5.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**5.0.0 (2026-08-16) — DEV-064 and DEV-066**, the two the calibration measured
+rather than stumbled on, applied after it stopped at ten postings.
+
+*DEV-064.* Four postings in ten reported a gap in something the profile plainly
+has — object-oriented design, data structures, algorithms, HTML, CSS — because
+nobody writes those down once they have written React or a degree. Posting 8
+carried three at once and scored 33%, seventeen points below the human reading.
+
+`domain/matching/entailment.py` holds what one skill guarantees about another,
+and what a degree's curriculum contains. **Entailment, not resemblance**: React
+is not *like* HTML, React cannot be written without it — which is why it is a
+separate table from `transferable.py` and returns PARTIAL_MATCH rather than
+TRANSFERABLE.
+
+PARTIAL and never MATCH, because the user has not claimed the skill. The
+sentence names the implying item — "HTML is not listed on your profile, but your
+Next.js implies it" — so a reader who rejects the inference can see exactly
+which one to reject. Python is deliberately absent from the object-orientation
+entry and Java present: the test for an entry is whether someone could hold the
+first and genuinely not have the second.
+
+*DEV-066.* A requirement typed EDUCATION naming neither a degree level nor a
+known field now routes to `_unassessable` instead of falling through to GAP.
+"Exceptional academic track record" was a claim about the candidate where the
+truth was a claim about our data, and `_unassessable` already said UNKNOWN is
+never GAP — EDUCATION was the one type that did not route there.
+
+Major: both move requirements off zero, so scores rise and jobs reorder.
 
 **4.0.1 (2026-08-15).** Two bugs in 4.0.0's own subject check, both found on
 the next posting.

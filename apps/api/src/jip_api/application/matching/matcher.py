@@ -37,6 +37,9 @@ from jip_api.domain.jobs.analysis import (
     RequirementType,
 )
 from jip_api.domain.matching.education import answers as education_answers
+from jip_api.domain.matching.education import degree_level as education_degree_level
+from jip_api.domain.matching.education import fields_in as education_fields_in
+from jip_api.domain.matching.entailment import implied_by
 from jip_api.domain.matching.models import EvidenceType, MatchCategory, MatchStatus
 from jip_api.domain.matching.rules import can_block, category_for, score_for, weight_for
 from jip_api.domain.matching.transferable import find_transfer
@@ -318,6 +321,34 @@ def _match_skill(
             f"You have {held_name}, not {name}. Both are {group.label}, so the "
             f"experience should transfer — but it is not the same thing.",
             evidence,
+        )
+
+    # DEV-064. Last, and only after everything stronger has failed: something
+    # the profile holds may *guarantee* this rather than resemble it.
+    #
+    # Four postings in ten reported a gap in OOP, data structures, algorithms,
+    # HTML or CSS — every one mechanically correct and every one against an
+    # assumption rather than a fact, because nobody writes those on a CV after
+    # they have written React or a degree. Posting 8 carried three at once and
+    # lost seventeen points to them.
+    #
+    # PARTIAL_MATCH rather than MATCH, deliberately. The user has not claimed
+    # this skill, and the product's rule is never to claim more than the
+    # evidence supports. What is true is "you have something that requires it",
+    # and that is what the sentence says — with the implying item named, so a
+    # reader who thinks the inference is wrong can see exactly which one to
+    # reject.
+    implied = implied_by(
+        lookup,
+        snapshot.held_skill_names(),
+        [e.field_of_study for e in snapshot.education if e.field_of_study],
+    )
+    if implied is not None:
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            55,
+            f"{name} is not listed on your profile, but your {implied} implies it.",
+            [],
         )
 
     return (
@@ -895,6 +926,22 @@ def _match_education(
             "There is no education in your profile yet, so this could not be checked.",
             [],
         )
+
+    # DEV-066. A requirement typed EDUCATION that names neither a degree level
+    # nor a known field cannot be answered here at all — "Exceptional academic
+    # track record from high school and university" is the case that found this.
+    # It fell past the equivalence check, past the word comparison, and onto
+    # GAP: a claim about the candidate, where the truth is a claim about our
+    # data. The profile's `grade` column exists and is empty, and "exceptional"
+    # is not a judgement available from a field nobody filled in.
+    #
+    # This is the rule `_unassessable` already states — UNKNOWN is never GAP,
+    # because inferring one means inventing a shortfall from an absence. Every
+    # other unanswerable type routes there; EDUCATION did not.
+    if education_degree_level(requirement.normalized_text) is None and not education_fields_in(
+        requirement.normalized_text
+    ):
+        return _unassessable(RequirementType.EDUCATION)
 
     # Equivalence first, words second. DEV-060: a B.Sc. in Software Engineering
     # shares no word with "Bachelor's degree in Computer Science", so the word
