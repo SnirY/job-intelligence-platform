@@ -122,25 +122,65 @@ def verdict_for(
 # --- transferability ----------------------------------------------------------
 
 
+def test_a_slash_requirement_is_met_by_either_side() -> None:
+    """DEV-055, measured on posting 3 of the DEV-011 calibration.
+
+    A posting asking for `Linux/Unix` means either one. The whole string
+    resolved to neither, so a profile holding Linux was told it had no
+    Linux/Unix — at REQUIRED weight.
+    """
+    result = verdict_for([requirement("Linux/Unix")], profile(skill("Linux")))
+
+    assert result.status is MatchStatus.MATCH
+
+
+def test_an_or_requirement_is_met_by_either_side() -> None:
+    result = verdict_for([requirement("Python or Go")], profile(skill("Python")))
+
+    assert result.status is MatchStatus.MATCH
+
+
+def test_splitting_never_reaches_inside_a_word() -> None:
+    """The separator has to be surrounded by space, or `Fortran` splits into
+    `F` and `tran` and `Terraform` into `Terraf` and `m`. Both would then match
+    nothing, turning a held skill into a gap — the defect this fixes, caused by
+    the fix."""
+    for held in ("Fortran", "Terraform"):
+        result = verdict_for([requirement(held)], profile(skill(held)))
+        assert result.status is not MatchStatus.GAP, held
+
+
+def test_a_whole_sentence_is_not_split_into_fragments() -> None:
+    """ "Proficiency in at least one programming or scripting language" is not
+    repairable by splitting — the pieces match nothing. Length-guarded, so it
+    falls through to a gap rather than producing debris. The real fix is the
+    parse schema carrying a list, which is the open half of DEV-055."""
+    sentence = "Proficiency in at least one programming or scripting language (e.g. Python, Go)"
+
+    result = verdict_for([requirement(sentence)], profile(skill("Python")))
+
+    assert result.status is MatchStatus.GAP
+
+
 def test_an_alias_still_finds_the_transfer_behind_it() -> None:
-    """DEV-059, found on the second posting of the DEV-011 calibration.
+    """DEV-059, found on posting 2 of the DEV-011 calibration.
 
-    A posting asked for `C/C++`, which the catalogue holds as an alias of `C++`,
-    so it resolved correctly. The transfer table is keyed by canonical names, and
-    `_match_skill` was handing it the posting's own wording:
+    A posting writing `Postgres` resolves to the canonical `PostgreSQL`, and the
+    transfer table is keyed by canonical names. `_match_skill` was handing it the
+    posting's wording:
 
-        find_transfer("C++",   ["C", ...])  ->  C via systems languages
-        find_transfer("C/C++", ["C", ...])  ->  NO TRANSFER
+        find_transfer("PostgreSQL", ["MySQL"])  ->  MySQL via relational databases
+        find_transfer("Postgres",   ["MySQL"])  ->  NO TRANSFER
 
-    A profile holding C was told it had no C/C++, while the same requirement
-    written `C++` on another posting returned TRANSFERABLE. Same skill, same
-    profile, opposite verdicts, decided by how the posting happened to spell it.
+    A single-token alias, deliberately: `C/C++` exposed this first but is now
+    also repaired by splitting alternatives, so it no longer isolates the bug
+    this test is about.
     """
     skill_id = uuid.uuid4()
-    written_as_alias = requirement("Experience with C/C++", skill_name="C/C++")
-    written_as_alias.skill_id = skill_id
+    asked = requirement("Postgres", skill_name="Postgres")
+    asked.skill_id = skill_id
 
-    result = verdict_for([written_as_alias], profile(skill("C")), {skill_id: "C++"})
+    result = verdict_for([asked], profile(skill("MySQL")), {skill_id: "PostgreSQL"})
 
     assert result.status is MatchStatus.TRANSFERABLE_MATCH
 
@@ -148,17 +188,17 @@ def test_an_alias_still_finds_the_transfer_behind_it() -> None:
 def test_the_user_reads_the_wording_the_posting_used() -> None:
     """The canonical name is for looking up, not for talking.
 
-    Telling someone "C++ is not in your profile" when the posting said `C/C++`
-    describes a requirement they did not read. The explanation quotes the
-    posting; only the lookup is translated.
+    Telling someone "PostgreSQL is not in your profile" when the posting said
+    `Postgres` describes a requirement they did not read. The explanation quotes
+    the posting; only the lookup is translated.
     """
     skill_id = uuid.uuid4()
-    asked = requirement("Experience with C/C++", skill_name="C/C++")
+    asked = requirement("Postgres", skill_name="Postgres")
     asked.skill_id = skill_id
 
-    result = verdict_for([asked], profile(skill("C")), {skill_id: "C++"})
+    result = verdict_for([asked], profile(skill("MySQL")), {skill_id: "PostgreSQL"})
 
-    assert "C/C++" in result.explanation
+    assert "Postgres" in result.explanation
 
 
 def test_transferability_still_works_with_no_catalogue_lookup() -> None:

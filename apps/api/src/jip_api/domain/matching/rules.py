@@ -18,12 +18,33 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "2.0.0"
+MATCHING_ENGINE_VERSION = "3.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**3.0.0 (2026-08-15) — DEV-055 and DEV-060**, both found on posting 3 of the
+DEV-011 calibration and both turning a qualification the user holds into a gap.
+
+*DEV-055, the half that costs nothing to apply.* A posting writing `Linux/Unix`
+offers either, and the whole string resolved to neither — so a profile holding
+Linux was told it had no Linux/Unix, at REQUIRED weight. `_match_skill` now
+splits a composite name on `/`, `or` and `and/or` and accepts any alternative.
+The separator must be surrounded by space or `Fortran` splits into `F` and
+`tran`. Whole sentences are left alone: "at least one programming or scripting
+language (e.g. Python, Go, Bash)" is not repairable by splitting, and needs the
+parse schema to carry a list, which remains open.
+
+*DEV-060.* `_match_education` counted shared words, and a **B.Sc. in Software
+Engineering** shares none with **"Bachelor's degree in Computer Science"** —
+GAP, and on a CORE requirement a BLOCKER. `domain/matching/education.py` now
+holds degree-level abbreviations and one group of fields a software posting
+treats as answering each other. It returns MATCH rather than STRONG_MATCH and
+names both sides, because `docs/05` forbids reporting similarity as equivalence.
+
+Major again: both move requirements off zero, so scores rise and jobs reorder.
 
 **2.0.0 (2026-08-15) — DEV-059.** A requirement that resolved through a
 catalogue alias lost transferability, because `_match_skill` handed the

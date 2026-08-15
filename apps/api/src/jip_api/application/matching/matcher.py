@@ -28,6 +28,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from jip_api.application.matching.evidence import (
+    EducationEvidence,
     ProfileSnapshot,
     SkillEvidence,
 )
@@ -35,6 +36,7 @@ from jip_api.domain.jobs.analysis import (
     RequirementImportance,
     RequirementType,
 )
+from jip_api.domain.matching.education import answers as education_answers
 from jip_api.domain.matching.models import EvidenceType, MatchCategory, MatchStatus
 from jip_api.domain.matching.rules import can_block, category_for, score_for, weight_for
 from jip_api.domain.matching.transferable import find_transfer
@@ -209,6 +211,39 @@ def _evaluate(
 # --- technical skills ---------------------------------------------------------
 
 
+_ALTERNATIVE_SEPARATORS = re.compile(
+    r"\s*/\s*|\s+(?:or|and/or)\s+",
+    re.IGNORECASE,
+)
+"""What separates one offered skill from another.
+
+A slash with optional spaces, or the words "or" / "and/or" **surrounded by
+spaces**. The spaces are load-bearing: without them this splits `Fortran` into
+`F` and `tran`, and `Terraform` into `Terraf` and `m`.
+"""
+
+
+def _alternatives(name: str) -> list[str]:
+    """The separate skills a composite requirement name offers.
+
+    `Linux/Unix` is two, `C/C++` is two, `Node.js` is one — the split is on
+    separators between words, and a dot inside a name is not one.
+
+    Returns nothing for a name with no separator, so the ordinary case does no
+    extra work and cannot be changed by this at all.
+
+    Length-guarded: a requirement whose "skill name" is a whole sentence — "at
+    least one programming or scripting language (e.g. Python, Go, Bash)" — is
+    not repairable by splitting, and pretending otherwise would produce
+    fragments that match nothing. That case needs the parse schema to carry a
+    list, which is the other half of DEV-055 and is still open.
+    """
+    if len(name) > 40:
+        return []
+    parts = [part.strip() for part in _ALTERNATIVE_SEPARATORS.split(name)]
+    return [part for part in parts if part and part != name]
+
+
 def _match_skill(
     requirement: MatchableRequirement,
     snapshot: ProfileSnapshot,
@@ -238,6 +273,23 @@ def _match_skill(
     lookup = lookup or name
 
     held = snapshot.find_skill(skill_id=requirement.skill_id, name=lookup)
+
+    # DEV-055. A posting writing `Linux/Unix` means either one, and the whole
+    # string resolves to neither — so a profile holding Linux was told it had
+    # no Linux/Unix. Splitting is done here rather than at parse time because
+    # it repairs the postings already analysed; the parse schema still carries
+    # one name per requirement, and until it carries a list this is the half of
+    # the fix that costs nothing to apply.
+    #
+    # "Any of these" is the right reading: a posting offering alternatives is
+    # satisfied by one of them, and treating it as demanding all would make the
+    # posting stricter than it wrote itself.
+    if held is None:
+        for alternative in _alternatives(name):
+            held = snapshot.find_skill(skill_id=None, name=alternative)
+            if held is not None:
+                lookup = alternative
+                break
 
     if held is not None:
         return _classify_held_skill(held, name, snapshot)
@@ -583,6 +635,26 @@ def _experience_evidence(
 # --- education ----------------------------------------------------------------
 
 
+def _education_evidence(education: EducationEvidence, *, relevance: int = 90) -> EvidenceRef:
+    """One qualification, cited.
+
+    The label reads as the user wrote it — degree and field — because the point
+    of evidence is that they recognise it.
+    """
+    return EvidenceRef(
+        evidence_type=EvidenceType.EDUCATION,
+        entity_id=education.id,
+        label=" — ".join(
+            part
+            for part in (education.degree or education.institution, education.field_of_study)
+            if part
+        ),
+        detail=education.institution,
+        verification_status="USER_CONFIRMED",
+        relevance=relevance,
+    )
+
+
 def _match_education(
     requirement: MatchableRequirement, snapshot: ProfileSnapshot
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
@@ -594,6 +666,33 @@ def _match_education(
             [],
         )
 
+    # Equivalence first, words second. DEV-060: a B.Sc. in Software Engineering
+    # shares no word with "Bachelor's degree in Computer Science", so the word
+    # comparison below returned a GAP — and on a CORE requirement, which these
+    # usually are, a BLOCKER against a qualification the user holds.
+    for education in snapshot.education:
+        matched, via = education_answers(
+            requirement.normalized_text,
+            education.degree or "",
+            education.field_of_study or "",
+        )
+        if not matched:
+            continue
+
+        ref = _education_evidence(education)
+        if via is None:
+            return (MatchStatus.MATCH, 80, f"Your {ref.label} covers this.", [ref])
+        # Named on both sides rather than asserted. `docs/05` forbids reporting
+        # similarity as equivalence, and a reader who disagrees that these two
+        # fields answer each other can see exactly what was claimed.
+        return (
+            MatchStatus.MATCH,
+            70,
+            f"Your {ref.label} is in {via.title()}, not what the posting named, "
+            "but it is the same kind of degree.",
+            [ref],
+        )
+
     terms = _terms(requirement.normalized_text)
     best: tuple[int, EvidenceRef] | None = None
 
@@ -601,18 +700,7 @@ def _match_education(
         overlap = sum(1 for term in terms if term in education.searchable)
         if not overlap:
             continue
-        ref = EvidenceRef(
-            evidence_type=EvidenceType.EDUCATION,
-            entity_id=education.id,
-            label=" — ".join(
-                part
-                for part in (education.degree or education.institution, education.field_of_study)
-                if part
-            ),
-            detail=education.institution,
-            verification_status="USER_CONFIRMED",
-            relevance=min(50 + overlap * 20, 100),
-        )
+        ref = _education_evidence(education, relevance=min(50 + overlap * 20, 100))
         if best is None or overlap > best[0]:
             best = (overlap, ref)
 
