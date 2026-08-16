@@ -33,7 +33,14 @@ from jip_api.domain.career.history import (
     ProjectSkill,
 )
 from jip_api.domain.career.models import CareerProfile, VerificationStatus
-from jip_api.domain.career.skills import Skill, SkillAlias, UserSkill, normalize_skill_name
+from jip_api.domain.career.skills import (
+    EvidenceSource,
+    Skill,
+    SkillAlias,
+    UserSkill,
+    normalize_skill_name,
+)
+from jip_api.domain.career.skills import SkillEvidence as SkillEvidenceRecord
 
 
 class ProfileFacts(Protocol):
@@ -81,13 +88,22 @@ class SkillEvidence:
     distinction ``docs/03-domain-model.md`` built ``ProjectSkill`` and
     ``ExperienceSkill`` to preserve."""
 
+    stated_reasons: tuple[str, ...] = ()
+    """Evidence the user wrote themselves, from the ``skill_evidence`` table.
+
+    DEV-054. Until that table existed a skill could only be demonstrated by a
+    role or a project, so anything learned outside employment — a course, a
+    competition, a thing built and never shipped — could be claimed and never
+    evidenced. The matcher scores a demonstrated skill above a listed one, so
+    the profile penalised exactly the people whose work is not on a payslip."""
+
     @property
     def is_strongly_verified(self) -> bool:
         return self.verification_status in STRONG_VERIFICATION
 
     @property
     def demonstration_count(self) -> int:
-        return len(self.experience_ids) + len(self.project_ids)
+        return len(self.experience_ids) + len(self.project_ids) + len(self.stated_reasons)
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,6 +285,11 @@ class ProfileSnapshot:
                 f":{skill.last_used_year}:{skill.verification_status}"
                 f":{sorted(str(i) for i in skill.experience_ids)}"
                 f":{sorted(str(i) for i in skill.project_ids)}"
+                # DEV-054. Stated evidence changes what the matcher does with a
+                # skill, so it has to change the fingerprint — otherwise adding
+                # a reason silently leaves every existing match looking current
+                # while the verdict it would produce has moved.
+                f":{sorted(skill.stated_reasons)}"
             )
 
         for experience in sorted(self.experiences, key=lambda e: str(e.id)):
@@ -332,6 +353,20 @@ def _load_skills(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot
     ):
         project_links.setdefault(skill_id, []).append(project_id)
 
+    # DEV-054. Read here rather than joined onto the query above because it is
+    # keyed by `user_skill_id` where the two link tables are keyed by
+    # `skill_id`, and flattening that difference into one join would make the
+    # loader harder to read than the fact it is loading.
+    stated: dict[uuid.UUID, list[str]] = {}
+    for user_skill_id, note in session.execute(
+        select(SkillEvidenceRecord.user_skill_id, SkillEvidenceRecord.note)
+        .where(SkillEvidenceRecord.user_id == user_id)
+        .where(SkillEvidenceRecord.source == EvidenceSource.MANUAL)
+        .order_by(SkillEvidenceRecord.created_at, SkillEvidenceRecord.id)
+    ):
+        if note:
+            stated.setdefault(user_skill_id, []).append(note)
+
     for user_skill, skill in rows:
         evidence = SkillEvidence(
             user_skill_id=user_skill.id,
@@ -344,6 +379,7 @@ def _load_skills(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot
             verification_status=str(user_skill.verification_status),
             experience_ids=tuple(sorted(experience_links.get(skill.id, []), key=str)),
             project_ids=tuple(sorted(project_links.get(skill.id, []), key=str)),
+            stated_reasons=tuple(stated.get(user_skill.id, ())),
         )
         snapshot.skills.append(evidence)
         snapshot.skills_by_id[skill.id] = evidence

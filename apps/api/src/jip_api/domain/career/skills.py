@@ -117,6 +117,103 @@ class SkillAlias(TimestampMixin, Base):
         return f"<SkillAlias {self.alias!r}>"
 
 
+class EvidenceSource(enum.StrEnum):
+    """Where a claim about a skill comes from.
+
+    The six ``docs/03-domain-model.md`` names for ``SkillEvidence``. Two of them
+    are structural and derived rather than stored — a skill linked to a role or
+    a project already has a row in ``experience_skills`` or ``project_skills``,
+    and duplicating that here would give the same fact two places to disagree.
+    They are in the enum because a caller reading evidence should see one list,
+    not two.
+    """
+
+    MANUAL = "MANUAL"
+    """The user said so, in their own words. The one source with nothing behind
+    it but the sentence they wrote, and the reason this table exists: before it,
+    a skill could only be demonstrated by a role or a project, so anything
+    learned outside employment could be claimed and never evidenced."""
+
+    EDUCATION = "EDUCATION"
+    CERTIFICATION = "CERTIFICATION"
+    """Waiting on DEV-052. Certifications have no entity yet, so nothing can
+    write this value; it is here so the enum matches the specification rather
+    than the current state of the schema."""
+
+    RESUME = "RESUME"
+    EXPERIENCE = "EXPERIENCE"
+    PROJECT = "PROJECT"
+
+
+class SkillEvidence(TimestampMixin, UserOwnedMixin, Base):
+    """Why the user says they have a skill.
+
+    DEV-054. ``docs/03-domain-model.md`` lists this in the MVP schema and it was
+    never built: evidence existed only as a dataclass assembled in memory during
+    a match, from the two join tables, and discarded afterwards. Four of the six
+    sources it names had nowhere to live, and **manual evidence** — the one the
+    specification is most explicit about — had no substitute at all.
+
+    Not a replacement for ``experience_skills`` and ``project_skills``. Those
+    stay where they are; a skill used in a role is a property of the role. This
+    holds what those cannot express, and the profile snapshot unions the two.
+
+    Naming: the matcher has an unrelated dataclass also called ``SkillEvidence``
+    — the in-memory view of a held skill, which this table now feeds. Both keep
+    the name they earned. They live in different layers and the collision is
+    visible at any import that needs both.
+    """
+
+    __tablename__ = "skill_evidence"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+    user_skill_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("user_skills.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    """Cascades: evidence for a skill nobody claims any more is not evidence of
+    anything."""
+
+    source: Mapped[EvidenceSource] = mapped_column(String(20), nullable=False)
+
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True, index=True
+    )
+    """The row this points at, for the sources that have one.
+
+    Deliberately not a foreign key. It addresses five different tables
+    depending on ``source``, and the alternative — five nullable columns with a
+    check constraint keeping four of them empty — describes the same thing
+    less clearly. ``ResumeItem.source_entity_id`` already made this trade.
+
+    Null for MANUAL, which points at nothing but its own note.
+    """
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """The user's own words. Required for MANUAL and optional elsewhere, where
+    it annotates a link rather than being the whole of it."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "(source = 'MANUAL' AND entity_id IS NULL AND note IS NOT NULL "
+            "AND length(trim(note)) > 0) OR (source <> 'MANUAL' AND entity_id IS NOT NULL)",
+            name="evidence_has_a_source",
+        ),
+        # Manual evidence with an empty note is a claim with nothing behind it,
+        # which is the thing this table exists to prevent. Enforced in the
+        # database rather than only in the service, because the rule is about
+        # what the row *means* and not about who wrote it.
+        UniqueConstraint(
+            "user_skill_id", "source", "entity_id", name="uq_skill_evidence_skill_source_entity"
+        ),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<SkillEvidence skill={self.user_skill_id} source={self.source}>"
+
+
 class UserSkill(TimestampMixin, UserOwnedMixin, Base):
     """A skill the user claims, pointing at a canonical skill."""
 

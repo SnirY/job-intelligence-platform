@@ -27,7 +27,7 @@ from sqlalchemy import Engine, text
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_SCHEMA_REVISION = "f2a91c47d8e3"
+EXPECTED_SCHEMA_REVISION = "b3c8d1e7f204"
 """The Alembic head this code is written against.
 
 Update it in the same commit as the migration that moves the head.
