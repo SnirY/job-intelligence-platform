@@ -101,6 +101,19 @@ services:
       JIP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jip}:${POSTGRES_PASSWORD:-jip_local_dev_only}@postgres:5432/${POSTGRES_DB:-jip}
       JIP_REDIS_URL: redis://redis:6379/0
       JIP_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      # DEV-068. Without these the API starts, reports ready, and answers 503 to
+      # every authenticated request: `resolved_auth_jwks_url` raises when no
+      # issuer is set, so the token verifier cannot be built. An anonymous
+      # request still returns 401 — it is rejected before the verifier is
+      # needed — which is why the smoke test in CI passed for weeks while the
+      # stack could not serve one signed-in user.
+      #
+      # No default. A blank issuer is the broken state, and `${VAR:-}` would
+      # spell it as a supported configuration.
+      JIP_AUTH_PROVIDER: ${JIP_AUTH_PROVIDER:-clerk}
+      JIP_AUTH_ISSUER: ${JIP_AUTH_ISSUER:?set JIP_AUTH_ISSUER in .env — the API cannot verify tokens without it}
+      JIP_AUTH_AUTHORIZED_PARTIES: ${JIP_AUTH_AUTHORIZED_PARTIES:-http://localhost:3000}
+      JIP_AUTH_JWKS_URL: ${JIP_AUTH_JWKS_URL:-}
       JIP_STORAGE_BUCKET: ${JIP_STORAGE_BUCKET:-jip-documents}
       JIP_STORAGE_ENDPOINT_URL: http://minio:9000
       JIP_STORAGE_ACCESS_KEY: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
@@ -160,8 +173,17 @@ services:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+    # DEV-068. Clerk's keys live here and not in the root `.env`, because this
+    # is the file Next already reads when the dev server runs on the host — and
+    # it is **not** in the image, so the containerised web app rendered a shell
+    # that could never sign anyone in. Read the file rather than restating its
+    # values above: one copy of a secret is one place to rotate it.
+    env_file:
+      - apps/web/.env.local
     environment:
-      # Resolved by the browser, not by the container, so it must be a host URL.
+      # Listed after `env_file` and therefore authoritative over it. The file's
+      # own copy of this is written for the host dev server; from a container
+      # the browser still resolves it, so it must stay a host URL.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${JIP_API_PORT:-8000}
     ports:
       - "3000:3000"
