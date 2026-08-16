@@ -365,6 +365,27 @@ jobs:
           echo "GET /api/v1/users/me without a token -> HTTP ${status}"
           test "${status}" = "401"
 
+      # DEV-068. The check above passes whether or not authentication is
+      # configured: a request with no token is rejected before the verifier is
+      # ever built, so for weeks it reported green while the stack answered 503
+      # to every signed-in user.
+      #
+      # A *malformed* token forces the verifier into existence. 401 means it was
+      # built and rejected the token, which is the whole contract. 503 means
+      # `resolved_auth_jwks_url` raised and no real user could sign in either.
+      - name: Verify the API can actually verify a token
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H 'Authorization: Bearer not.a.real.token' \
+            http://localhost:8000/api/v1/users/me)
+          echo "GET /api/v1/users/me with a malformed token -> HTTP ${status}"
+          if [ "${status}" = "503" ]; then
+            echo "The API cannot build a token verifier — auth is not configured." >&2
+            docker compose logs --no-color api | tail -40 >&2
+            exit 1
+          fi
+          test "${status}" = "401"
+
       - name: Verify the worker processes a queued task
         run: |
           docker compose exec -T api python - <<'PY'
