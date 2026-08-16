@@ -54,6 +54,7 @@ from jip_api.domain.career.skills import (
     normalize_skill_name,
 )
 from jip_api.domain.jobs.analysis import JobRequirement
+from jip_api.domain.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,18 @@ class CandidateAlreadyReviewedError(ApplicationError):
 
 @dataclass(frozen=True, slots=True)
 class CandidateView:
-    """A queue entry, with what a reviewer needs to decide."""
+    """A queue entry, with what a reviewer needs to decide.
+
+    The context fields are not decoration. `CAN` appears in the development data
+    as a three-letter string that is also an ordinary English word; the sentence
+    it came from reads *"communication protocols such as UART, SPI, I2C, TCP/IP,
+    or CAN"*, and nothing short of that sentence identifies it as the CAN bus.
+
+    A screen that asks someone to decide `CAN` while showing only the name and a
+    count is asking for a guess. That is the defect shape this project's manual
+    walkthroughs keep finding — presenting a result rather than enabling a
+    decision — and it is cheaper to avoid than to discover.
+    """
 
     id: uuid.UUID
     normalized_name: str
@@ -78,6 +90,13 @@ class CandidateView:
     status: CandidateStatus
     resolved_skill_id: uuid.UUID | None
     note: str | None
+
+    example_source_text: str | None = None
+    """One posting's own sentence, verbatim. Queried live rather than stored:
+    a snapshot taken at refresh would drift from the posting, and the whole
+    point is that the reviewer reads what the posting actually says."""
+
+    example_job_title: str | None = None
 
 
 def resolve_pending_requirements(session: Session) -> int:
@@ -191,18 +210,51 @@ def list_candidates(
 
     statement = statement.order_by(SkillCandidate.occurrences.desc(), SkillCandidate.display_name)
 
+    rows = list(session.execute(statement).scalars())
+    context = _example_context(session, {row.normalized_name for row in rows})
+
     return [
-        CandidateView(
-            id=candidate.id,
-            normalized_name=candidate.normalized_name,
-            display_name=candidate.display_name,
-            occurrences=candidate.occurrences,
-            status=CandidateStatus(candidate.status),
-            resolved_skill_id=candidate.resolved_skill_id,
-            note=candidate.note,
-        )
-        for candidate in session.execute(statement).scalars()
+        _view(candidate, context.get(candidate.normalized_name, (None, None))) for candidate in rows
     ]
+
+
+def _example_context(
+    session: Session, normalized_names: set[str]
+) -> dict[str, tuple[str | None, str | None]]:
+    """One source sentence and job title per queued name.
+
+    `DISTINCT ON` with an explicit ordering rather than an arbitrary row: the
+    queue is re-read every time the screen loads, and an example that changes
+    between reloads of unchanged data reads as the data being unstable.
+
+    One query for the whole queue. Per-candidate lookups would be twenty-three
+    round trips to render one screen.
+    """
+    if not normalized_names:
+        return {}
+
+    normalized = func.trim(
+        func.regexp_replace(func.lower(JobRequirement.skill_name), "[^a-z0-9+#]+", "-", "g"),
+        "-",
+    )
+
+    rows = session.execute(
+        select(
+            normalized.label("key"),
+            JobRequirement.source_text,
+            Job.title,
+        )
+        .join(Job, Job.id == JobRequirement.job_id)
+        .where(
+            JobRequirement.skill_id.is_(None),
+            JobRequirement.skill_name.is_not(None),
+            normalized.in_(normalized_names),
+        )
+        .distinct(normalized)
+        .order_by(normalized, JobRequirement.source_text, JobRequirement.id)
+    ).all()
+
+    return {key: (source_text, title) for key, source_text, title in rows}
 
 
 def _pending(session: Session, candidate_id: uuid.UUID) -> SkillCandidate:
@@ -352,7 +404,10 @@ def _apply_to_requirements(session: Session, normalized_name: str, skill_id: uui
     )
 
 
-def _view(candidate: SkillCandidate) -> CandidateView:
+def _view(
+    candidate: SkillCandidate, context: tuple[str | None, str | None] = (None, None)
+) -> CandidateView:
+    source_text, job_title = context
     return CandidateView(
         id=candidate.id,
         normalized_name=candidate.normalized_name,
@@ -361,4 +416,6 @@ def _view(candidate: SkillCandidate) -> CandidateView:
         status=CandidateStatus(candidate.status),
         resolved_skill_id=candidate.resolved_skill_id,
         note=candidate.note,
+        example_source_text=source_text,
+        example_job_title=job_title,
     )

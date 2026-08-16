@@ -1310,6 +1310,10 @@ def test_a_core_certification_no_longer_blocks_someone_who_holds_it() -> None:
     )
 
     assert result.has_blockers is False
+    # Narrowed rather than asserted through: `overall_score` is `int | None`,
+    # and None is the "profile too empty to score" case — a real state that
+    # would make `> BLOCKER_CAP` a TypeError instead of a failed assertion.
+    assert result.overall_score is not None
     assert result.overall_score > BLOCKER_CAP
 
 

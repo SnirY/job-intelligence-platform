@@ -321,6 +321,54 @@ export interface CertificationCreate {
   description?: string | null;
 }
 
+// --- skill review queue -------------------------------------------------------
+
+export type CandidateStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+
+/**
+ * A technology a posting named that the canonical catalogue could not resolve.
+ *
+ * DEV-062. Job postings are not allowed to write to the shared catalogue — the
+ * name came from a model reading someone else's prose, and that path would fill
+ * a shared table with "Rust (advantageous)". So an unresolved name queues here
+ * and a person decides.
+ */
+export interface SkillCandidate {
+  id: string;
+  normalized_name: string;
+  display_name: string;
+  /** How many stored requirements use this name. The queue is ordered by it. */
+  occurrences: number;
+  status: CandidateStatus;
+  resolved_skill_id: string | null;
+  note: string | null;
+  /**
+   * The posting's own sentence. Load-bearing rather than decorative: `CAN`
+   * arrives as a three-letter string that is also an ordinary English word, and
+   * only *"communication protocols such as UART, SPI, I2C, TCP/IP, or CAN"*
+   * identifies it as the CAN bus.
+   */
+  example_source_text: string | null;
+  example_job_title: string | null;
+}
+
+export interface AcceptAsAliasRequest {
+  skill_id: string;
+  note?: string | null;
+}
+
+export interface AcceptAsNewSkillRequest {
+  category: SkillCategory;
+  /** Lets the reviewer correct the posting's spelling. The posting's wording is
+   * kept as an alias either way, so the requirement still resolves. */
+  canonical_name?: string | null;
+  note?: string | null;
+}
+
+export interface RejectCandidateRequest {
+  note?: string | null;
+}
+
 // --- preferences --------------------------------------------------------------
 
 /**

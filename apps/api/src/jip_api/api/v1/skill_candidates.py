@@ -47,6 +47,10 @@ class CandidatePayload(BaseModel):
     status: CandidateStatus
     resolved_skill_id: uuid.UUID | None
     note: str | None
+    example_source_text: str | None
+    """The posting's own sentence. Without it a reviewer deciding `CAN` is
+    guessing at a three-letter string that is also an ordinary English word."""
+    example_job_title: str | None
 
 
 class AcceptAsAliasRequest(BaseModel):

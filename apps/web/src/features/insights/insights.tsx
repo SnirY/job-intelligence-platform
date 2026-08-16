@@ -23,6 +23,7 @@ import {
   useSkillDemand,
   useSkillGaps,
 } from "@/features/insights/api";
+import { SkillReview } from "@/features/insights/skill-review";
 
 /**
  * Insights.
@@ -86,6 +87,8 @@ export function InsightsScreen() {
 
       <Gaps gaps={gaps.data.gaps} analysed={report.analysed_jobs} />
       <Demand skills={report.skills} analysed={report.analysed_jobs} total={report.total_skills} />
+
+      <SkillReview />
 
       {roles.data && <Roles report={roles.data} />}
       {funnel.data && funnel.data.applications > 0 && <Funnel report={funnel.data} />}
