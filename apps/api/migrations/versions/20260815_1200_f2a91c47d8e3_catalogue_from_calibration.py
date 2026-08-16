@@ -126,7 +126,18 @@ COMPOUND_ALIASES: list[tuple[str, str]] = [
     ("RESTful APIs", "REST APIs"),
     ("REST API", "REST APIs"),
     ("RESTful services", "REST APIs"),
-    ("Unix", "Linux"),
+    # `Unix` is deliberately absent. It is already a canonical skill of its own
+    # (seeded by `c4d7e1f9ab32`), so aliasing it here put the same normalized
+    # name on both sides of the catalogue — and resolution checks canonical
+    # names and aliases separately, so the answer would have depended on which
+    # lookup ran first. `test_no_alias_shadows_a_canonical_name` exists for
+    # exactly this and caught it.
+    #
+    # Removing it is also the right answer on the merits: Linux is Unix-*like*,
+    # not Unix, and folding one into the other would tell a user who wrote
+    # "Unix" that they hold Linux. If the two should count toward each other
+    # that belongs in `transferable.py`, which has no OS group yet and is not
+    # this migration's decision to make.
     ("Linux/Unix", "Linux"),
     ("OOP", "Object-Oriented Design"),
     ("Object-oriented programming", "Object-Oriented Design"),
