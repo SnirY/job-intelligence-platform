@@ -22,9 +22,11 @@ from jip_api.domain.career.history import (
 )
 from jip_api.domain.career.models import CareerProfile, Seniority, TargetRole, VerificationStatus
 from jip_api.domain.career.skills import (
+    CandidateStatus,
     Proficiency,
     Skill,
     SkillAlias,
+    SkillCandidate,
     SkillCategory,
     SkillSource,
     UserSkill,
@@ -32,6 +34,7 @@ from jip_api.domain.career.skills import (
 )
 
 __all__ = [
+    "CandidateStatus",
     "CareerProfile",
     "Certification",
     "Education",
@@ -47,6 +50,7 @@ __all__ = [
     "Seniority",
     "Skill",
     "SkillAlias",
+    "SkillCandidate",
     "SkillCategory",
     "SkillSource",
     "TargetRole",

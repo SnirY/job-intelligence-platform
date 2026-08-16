@@ -27,7 +27,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jip_api.domain.common import TimestampMixin, UserOwnedMixin, new_uuid_column
+from jip_api.domain.common import (
+    StrEnumType,
+    TimestampMixin,
+    UserOwnedMixin,
+    new_uuid_column,
+)
 from jip_api.infrastructure.db.base import Base
 
 _NON_ALNUM = re.compile(r"[^a-z0-9+#]+")
@@ -55,6 +60,95 @@ class SkillCategory(enum.StrEnum):
     DOMAIN = "DOMAIN"
     SOFT_SKILL = "SOFT_SKILL"
     OTHER = "OTHER"
+
+
+class CandidateStatus(enum.StrEnum):
+    """Where a proposed catalogue entry is in its review."""
+
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    """Reviewed and declined. Kept rather than deleted, because the queue is
+    rebuilt from the postings each time and a deleted row simply comes back —
+    "General-purpose programming language" would be re-proposed forever."""
+
+
+class SkillCandidate(TimestampMixin, Base):
+    """A technology a posting named that the catalogue could not resolve.
+
+    DEV-062, candidate 2. `requirement_skills.py` refuses to let job postings
+    write to the catalogue, for a good reason it states at length: the name came
+    from a model reading someone else's prose, nobody reviews it, and there are
+    as many requirements as there are postings. Letting that path create skills
+    fills a table shared by every user with "Rust (advantageous)" and "RUST".
+
+    That module also names what was missing — *"exactly what a later
+    reviewed-candidate mechanism would read from"*. This is that mechanism. The
+    posting still cannot write to the catalogue; it can only queue a proposal,
+    and a person decides.
+
+    **Global, like `Skill` itself.** No `user_id`, and `owned()` raises for it
+    by design: the catalogue it feeds is shared, so one user accepting "Playwright"
+    makes it resolvable for everyone. That is the point rather than a leak — no
+    profile data crosses, only the name a public posting used.
+    """
+
+    __tablename__ = "skill_candidates"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    """The matching key, so the same technology spelled two ways queues once."""
+
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    """As a posting wrote it, for the reviewer to recognise."""
+
+    occurrences: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1")
+    """How many requirements name it. Recomputed on each refresh, and the
+    reason the queue is ordered rather than alphabetical: a term six postings
+    used is worth a decision before one that appeared once."""
+
+    status: Mapped[CandidateStatus] = mapped_column(
+        StrEnumType(CandidateStatus, 20), nullable=False
+    )
+    """`StrEnumType`, not a bare `String`, so the annotation is true.
+
+    The other enum columns in this module are declared `String(20)` and read
+    back as `str`, which makes `value is CandidateStatus.PENDING` false for a
+    row that is pending — identity against a member of a `StrEnum` fails even
+    when equality holds. That cost a debugging cycle here before this column was
+    changed. The existing columns are left alone: correcting them changes what
+    `category` and `source` return at runtime, which is a wider change than this
+    one and belongs on its own.
+    """
+
+    resolved_skill_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("skills.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    """What a human decided this means, once ACCEPTED.
+
+    `SET NULL` rather than CASCADE: deleting a canonical skill should not erase
+    the record that somebody reviewed this name, only the conclusion they
+    reached.
+    """
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Why it was rejected, or why the mapping is what it is. Free text, because
+    the useful reasons are unforeseeable — "this is a protocol, not a skill" and
+    "the posting meant the other Transformers" are both worth keeping."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'ACCEPTED' AND resolved_skill_id IS NOT NULL) OR status <> 'ACCEPTED'",
+            name="accepted_names_a_skill",
+        ),
+    )
+    """An accepted candidate that resolves to nothing is the state this whole
+    mechanism exists to prevent: a name marked reviewed that still matches
+    nothing, and will never be looked at again."""
 
 
 class Proficiency(enum.StrEnum):

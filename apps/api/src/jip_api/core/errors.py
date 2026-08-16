@@ -23,6 +23,7 @@ from jip_api.application.errors import (
     DuplicateResourceError,
     ResourceNotFoundError,
 )
+from jip_api.application.jobs.skill_candidates import CandidateAlreadyReviewedError
 from jip_api.application.processing.jobs import JobNotRetriableError
 from jip_api.application.resumes.authoring import (
     ResumeFamilyError,
@@ -209,6 +210,11 @@ _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     # Retrying a job that cannot be retried is a conflict with its current
     # state, which is what 409 means.
     JobNotRetriableError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # Reviewing a candidate twice conflicts with the decision already recorded.
+    # 409 rather than 404: the row exists and says something, and overwriting
+    # one reviewer's conclusion with another's silently is how a shared
+    # catalogue acquires changes nobody remembers making.
+    CandidateAlreadyReviewedError: (status.HTTP_409_CONFLICT, "CONFLICT"),
     # An item id that is not part of this extraction. Reported as not found,
     # for the same reason every other cross-user lookup is: distinguishing
     # "not yours" from "does not exist" is an enumeration oracle.
