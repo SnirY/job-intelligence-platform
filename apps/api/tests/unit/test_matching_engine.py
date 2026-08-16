@@ -52,6 +52,7 @@ def skill(
     verification: str = "USER_CONFIRMED",
     experiences: tuple[uuid.UUID, ...] = (),
     projects: tuple[uuid.UUID, ...] = (),
+    reasons: tuple[str, ...] = (),
 ) -> SkillEvidence:
     normalized = name.lower().replace(".", "").replace(" ", "-")
     return SkillEvidence(
@@ -65,6 +66,7 @@ def skill(
         verification_status=verification,
         experience_ids=experiences,
         project_ids=projects,
+        stated_reasons=reasons,
     )
 
 
@@ -1156,3 +1158,88 @@ def test_a_soft_skill_can_never_block() -> None:
     )
 
     assert result.is_blocker is False
+
+
+# --- stated reasons (DEV-054) -------------------------------------------------
+#
+# The `skill_evidence` table let a skill be backed by a sentence the user wrote,
+# which is the first evidence source in the engine that is not a record of work.
+# These pin the band it lands in, because the temptation is to treat "has
+# evidence" as one predicate and the whole point is that it is two.
+
+
+def test_a_stated_reason_lifts_a_bare_skill() -> None:
+    """The defect DEV-054 fixed. Without a role or a project the profile had no
+    way to say a skill was more than a name, and said so in the sentence."""
+    bare = match_requirements(
+        [requirement("Rust")], profile(skill("Rust", proficiency=None, years=None))
+    )[0]
+    explained = match_requirements(
+        [requirement("Rust")],
+        profile(
+            skill(
+                "Rust",
+                proficiency=None,
+                years=None,
+                reasons=("Built a ray tracer over two winters.",),
+            )
+        ),
+    )[0]
+
+    assert bare.confidence == 60
+    assert "nothing in your profile shows where you used it" in bare.explanation
+    assert explained.confidence == 75
+    assert "nothing in your profile" not in explained.explanation
+
+
+def test_a_stated_reason_does_not_reach_the_top_band() -> None:
+    """STRONG_MATCH is reserved for work. A typed sentence is the user's own
+    account of themselves, and `docs/06` does not let an unbacked claim outrank
+    a role — which here is the difference between a score of 85 and one of 100."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(skill("Rust", proficiency="EXPERT", years=6, reasons=("Ray tracer.",))),
+    )[0]
+
+    assert result.status is MatchStatus.MATCH
+    assert result.score == 85
+    assert result.confidence == 75
+
+
+def test_a_stated_reason_never_claims_a_project() -> None:
+    """The regression the change was really about. The STRONG_MATCH branch picks
+    its noun with `"role" if experience_ids else "project"`, so routing a stated
+    reason into it would have told the user about a project they do not have."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(skill("Rust", proficiency="EXPERT", reasons=("A course.",))),
+    )[0]
+
+    assert "project" not in result.explanation
+    assert "role" not in result.explanation
+
+
+def test_work_still_reaches_the_top_band() -> None:
+    """The other side of the same guard: separating the two predicates must not
+    have cost a real role its 90."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(
+            skill("Rust", proficiency="EXPERT", experiences=(EXPERIENCE_ID,)), with_experience=True
+        ),
+    )[0]
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert result.score == 100
+    assert result.confidence == 90
+    assert "role" in result.explanation
+
+
+def test_a_stated_reason_changes_the_fingerprint() -> None:
+    """Evidence that does not reach the fingerprint is evidence that will not
+    invalidate a cached match, which is how a profile edit gets silently
+    ignored."""
+    without = profile(skill("Rust"))
+    with_reason = profile(skill("Rust", reasons=("Built a ray tracer.",)))
+
+    assert without.fingerprint() != with_reason.fingerprint()

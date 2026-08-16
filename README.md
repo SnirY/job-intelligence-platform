@@ -5,7 +5,7 @@ verified career profile with traceable evidence, and writes a tailored résumé
 that cannot make a claim your profile does not support.**
 
 A personal full-stack project: FastAPI, Next.js, PostgreSQL, Redis, Docker.
-~46,000 lines, 86 REST endpoints, 1,676 automated tests in CI.
+~46,000 lines, 92 REST endpoints, 1,730 automated tests in CI.
 
 ---
 
@@ -64,17 +64,17 @@ are the files where the thinking is:
 
 ## Engineering
 
-**Tests.** 1,676 across three layers, all run in CI:
+**Tests.** 1,730 across three layers, all run in CI:
 
 | | |
 |---|---|
-| Backend unit + offline AI evaluations | 891 |
-| Integration, against real PostgreSQL and Redis | 466 |
-| Frontend | 319 |
+| Backend unit + offline AI evaluations | 923 |
+| Integration, against real PostgreSQL and Redis | 482 |
+| Frontend | 325 |
 
 Plus a live-model evaluation suite that runs on request, because it costs money.
 
-**Checks.** `mypy --strict` over 245 files, TypeScript `strict` with
+**Checks.** `mypy --strict` over 260 files, TypeScript `strict` with
 `noUncheckedIndexedAccess`, ruff, eslint, prettier, an Alembic
 `upgrade head → downgrade base` round-trip, and a Docker Compose stack brought up
 from scratch. All on every pull request.

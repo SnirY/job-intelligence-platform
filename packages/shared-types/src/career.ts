@@ -1,3 +1,4 @@
+import { API_ROUTES } from "./health";
 import type { RoleFamily, WorkMode } from "./jobs";
 
 /** Contracts for the career profile API. */
@@ -135,6 +136,29 @@ export interface UserSkillCreate {
   years_of_experience?: number | null;
   last_used_year?: number | null;
   notes?: string | null;
+}
+
+/** Where a piece of evidence for a skill came from. */
+export type EvidenceSource =
+  "MANUAL" | "EDUCATION" | "CERTIFICATION" | "RESUME" | "EXPERIENCE" | "PROJECT";
+
+export interface SkillEvidence {
+  id: string;
+  source: EvidenceSource;
+  note: string | null;
+}
+
+export interface SkillEvidenceCreate {
+  note: string;
+}
+
+/**
+ * Stated reasons for one skill. Nested under the skill because evidence has no
+ * meaning apart from it, and because scoping the read by both ids is what stops
+ * one user reaching another's.
+ */
+export function careerSkillEvidenceRoute(skillId: string): string {
+  return `${API_ROUTES.careerSkills}/${skillId}/evidence`;
 }
 
 // --- experience --------------------------------------------------------------

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jip_api.application.applications.service import TransitionNotAllowedError
+from jip_api.application.career.skills import BlankEvidenceError
 from jip_api.application.documents.upload import UploadRejected
 from jip_api.application.errors import (
     ApplicationError,
@@ -197,6 +198,10 @@ async def _handle_application_error(_: Request, exc: Exception) -> JSONResponse:
 _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     ResourceNotFoundError: (status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
     DuplicateResourceError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # A stated reason that is blank once trimmed. The request is malformed
+    # rather than in conflict with anything, and the route's own constraint
+    # normally catches it first.
+    BlankEvidenceError: (HTTP_422_UNPROCESSABLE_CONTENT, "UNPROCESSABLE_ENTITY"),
     # An unacceptable upload is the caller's request being wrong, not a server
     # fault, and the message is written to be shown to the person who chose the
     # file.

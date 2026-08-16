@@ -42,7 +42,12 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "skill_evidence",
-        sa.Column("id", PgUUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "id",
+            PgUUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            primary_key=True,
+        ),
         sa.Column("user_id", PgUUID(as_uuid=True), nullable=False),
         sa.Column("user_skill_id", PgUUID(as_uuid=True), nullable=False),
         sa.Column("source", sa.String(20), nullable=False),

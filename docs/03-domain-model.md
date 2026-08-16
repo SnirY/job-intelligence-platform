@@ -147,6 +147,27 @@ Links a user skill to:
 - resume
 - manual evidence
 
+Built 2026-08-16 (DEV-054), having been specified here from the start and
+missed by Phase 2. **The schema carries all six sources; only manual evidence
+has anything writing it**, which was the source with no substitute and the
+reason the issue was filed. RESUME and EDUCATION have a home and no producer;
+CERTIFICATION waits on DEV-052, since there is no certification record for an
+`entity_id` to address.
+
+Two things about the table differ from the plain reading of the list above, and
+both are deliberate:
+
+**The link is a bare `entity_id`, not six foreign keys.** It addresses five
+different tables depending on `source`. Five nullable columns with a check
+constraint keeping four of them empty describes the same thing less clearly;
+`ResumeItem.source_entity_id` already made this trade. MANUAL rows carry a note
+and no entity, and a check constraint enforces exactly that split.
+
+**`experience_skills` and `project_skills` are not folded into it.** A skill
+used in a role is a property of the role. Copying it here would give one fact
+two places to disagree, so the profile snapshot unions the two sources instead
+and `skill_evidence` holds only what those cannot express.
+
 ### Experience
 
 Includes:

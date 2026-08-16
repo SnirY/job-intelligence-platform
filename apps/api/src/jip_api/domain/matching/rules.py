@@ -18,12 +18,33 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "5.0.0"
+MATCHING_ENGINE_VERSION = "5.1.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**5.1.0 (2026-08-16) — DEV-054.** A skill can now be backed by a reason the
+user typed, from the `skill_evidence` table that `docs/03-domain-model.md`
+specified and nobody built. Minor and not major: no stored match can move,
+because before this migration there was nowhere for such a reason to be
+recorded, so no existing snapshot contains one.
+
+What it moves is **confidence, not score**. A confirmed skill with a stated
+reason goes from 60 to 75 and loses the sentence "nothing in your profile shows
+where you used it"; the status stays MATCH and the score stays 85. The larger
+effect is outside the matcher — `insights/gaps.py` treats a demonstration count
+of zero as WEAK_EVIDENCE, so a stated reason takes the skill off the gap list
+altogether, which is the outcome DEV-054 was actually for.
+
+STRONG_MATCH now tests `shown_in_work` rather than `demonstration_count`, so it
+keeps meaning *used in a role or a project*. Not tidiness: that branch names its
+source in the sentence the user reads, picking the noun with `"role" if
+experience_ids else "project"`, and a stated reason has neither — it would have
+reported a project the user does not have. For any snapshot without stated
+reasons the two predicates are identical, which is the other half of why this
+is minor.
 
 **5.0.0 (2026-08-16) — DEV-064 and DEV-066**, the two the calibration measured
 rather than stumbled on, applied after it stopped at ten postings.

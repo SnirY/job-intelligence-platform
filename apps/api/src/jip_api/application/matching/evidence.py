@@ -103,7 +103,26 @@ class SkillEvidence:
 
     @property
     def demonstration_count(self) -> int:
+        """How many places in the profile back this skill up, of any kind."""
         return len(self.experience_ids) + len(self.project_ids) + len(self.stated_reasons)
+
+    @property
+    def shown_in_work(self) -> bool:
+        """Whether a *role or project* backs this skill, as against a typed reason.
+
+        The distinction is load-bearing and DEV-054 is what created the need for
+        it. Before the `skill_evidence` table there were only two sources, both
+        of them real work, so "demonstrated" and "used on the job" were the same
+        predicate and the matcher used them interchangeably: it said *"you have
+        used it in at least one project"* and picked the noun with
+        ``"role" if experience_ids else "project"``.
+
+        A stated reason has no role and no project behind it, so that fallback
+        would have reported a project the user does not have. Inventing evidence
+        is the one thing `GOAL.md` will not tolerate, and it would have been
+        this codebase doing it about its own user.
+        """
+        return bool(self.experience_ids or self.project_ids)
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,7 +9,8 @@ import {
   type UserSkill,
   type UserSkillCreate,
 } from "@jip/shared-types";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { FieldHint, Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { CollectionSection } from "@/features/career/section";
+import { SkillEvidencePanel } from "@/features/career/skill-evidence";
 import { useCollection, useDraft } from "@/features/career/use-collection";
 import { ApiError } from "@/lib/api";
 
@@ -38,6 +40,7 @@ export function SkillsSection() {
     API_ROUTES.careerSkills,
   );
   const { draft, setDraft, editingId, isEditing, edit, reset } = useDraft(EMPTY);
+  const [openEvidence, setOpenEvidence] = useState<string | null>(null);
 
   const nameIsBlank = draft.name.trim() === "";
   const saving = create.isPending || update.isPending;
@@ -73,6 +76,22 @@ export function SkillsSection() {
           <Button
             type="button"
             variant="ghost"
+            size="sm"
+            aria-expanded={openEvidence === skill.id}
+            aria-controls={`evidence-panel-${skill.id}`}
+            onClick={() => setOpenEvidence(openEvidence === skill.id ? null : skill.id)}
+          >
+            {openEvidence === skill.id ? (
+              <ChevronDown aria-hidden className="size-4" />
+            ) : (
+              <ChevronRight aria-hidden className="size-4" />
+            )}
+            Why I know this
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
             size="icon"
             aria-label={`Edit ${skill.name}`}
             onClick={() => edit(skill.id, toDraft(skill))}
@@ -90,6 +109,17 @@ export function SkillsSection() {
           >
             <Trash2 aria-hidden className="size-4" />
           </Button>
+
+          {/* `basis-full` drops the panel onto its own line inside the row's
+              flex-wrap, so the shared section layout does not have to know
+              that one collection has something to expand. Mounted only when
+              open: the list fetches per skill, and mounting all of them would
+              be one request per row on every visit to the page. */}
+          {openEvidence === skill.id && (
+            <div id={`evidence-panel-${skill.id}`} className="basis-full">
+              <SkillEvidencePanel skillId={skill.id} skillName={skill.name} />
+            </div>
+          )}
         </>
       )}
       form={

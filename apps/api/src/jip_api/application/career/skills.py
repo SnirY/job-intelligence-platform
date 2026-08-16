@@ -18,14 +18,20 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from jip_api.application.errors import DuplicateResourceError, ResourceNotFoundError
+from jip_api.application.errors import (
+    ApplicationError,
+    DuplicateResourceError,
+    ResourceNotFoundError,
+)
 from jip_api.application.ownership import owned
 from jip_api.domain.career.models import VerificationStatus
 from jip_api.domain.career.skills import (
+    EvidenceSource,
     Proficiency,
     Skill,
     SkillAlias,
     SkillCategory,
+    SkillEvidence,
     SkillSource,
     UserSkill,
     normalize_skill_name,
@@ -229,4 +235,92 @@ def remove_user_skill(session: Session, user_id: uuid.UUID, skill_id: uuid.UUID)
     is RESTRICT so a stray delete fails loudly rather than cascading.
     """
     session.delete(get_user_skill(session, user_id, skill_id))
+    session.flush()
+
+
+class BlankEvidenceError(ApplicationError):
+    """A stated reason with nothing in it.
+
+    The route strips and length-checks before this is reachable, so over HTTP it
+    never fires. It exists for the callers that are not the route — an importer,
+    the worker, a later feature that fills evidence in from a resume — because a
+    row saying "I have this skill because" and nothing after it is worse than no
+    row at all: it raises the confidence and tells a reader nothing.
+
+    Mapped in `_APPLICATION_ERROR_MAP`. An unmapped `ApplicationError` becomes a
+    500, which would report the caller's bad input as the server's fault.
+    """
+
+
+def list_skill_evidence(
+    session: Session, user_id: uuid.UUID, skill_id: uuid.UUID
+) -> list[SkillEvidence]:
+    """Stated reasons for one skill, oldest first.
+
+    Scoped through `get_user_skill`, which raises when the skill belongs to
+    somebody else — so a caller cannot read another user's reasons by guessing
+    an id.
+    """
+    get_user_skill(session, user_id, skill_id)
+    return list(
+        session.execute(
+            owned(SkillEvidence, user_id)
+            .where(SkillEvidence.user_skill_id == skill_id)
+            .order_by(SkillEvidence.created_at, SkillEvidence.id)
+        ).scalars()
+    )
+
+
+def add_manual_evidence(
+    session: Session, user_id: uuid.UUID, skill_id: uuid.UUID, note: str
+) -> SkillEvidence:
+    """Record why the user says they have a skill.
+
+    DEV-054. The only evidence source with nothing behind it but the sentence
+    the user wrote, and the reason the table exists: until now a skill could
+    only be demonstrated by a role or a project, so anything learned outside
+    employment could be claimed and never evidenced.
+
+    Verification is deliberately not raised. A reason the user typed is their
+    own claim about their own history — `docs/05` reserves confirmation for a
+    decision, and this is an explanation. What it changes is
+    `demonstration_count`, which is a statement about how much is on file rather
+    than about how sure anyone is.
+    """
+    cleaned = note.strip()
+    if not cleaned:
+        raise BlankEvidenceError("Say what makes this a skill you have.")
+
+    get_user_skill(session, user_id, skill_id)
+
+    evidence = SkillEvidence(
+        user_id=user_id,
+        user_skill_id=skill_id,
+        source=EvidenceSource.MANUAL,
+        entity_id=None,
+        note=cleaned,
+    )
+    session.add(evidence)
+    session.flush()
+    return evidence
+
+
+def remove_skill_evidence(
+    session: Session, user_id: uuid.UUID, skill_id: uuid.UUID, evidence_id: uuid.UUID
+) -> None:
+    """Delete one stated reason.
+
+    Scoped by both the skill and the evidence id, so a mismatched pair is a 404
+    rather than a deletion of the right row for the wrong reason.
+    """
+    get_user_skill(session, user_id, skill_id)
+    evidence = session.execute(
+        owned(SkillEvidence, user_id)
+        .where(SkillEvidence.id == evidence_id)
+        .where(SkillEvidence.user_skill_id == skill_id)
+    ).scalar_one_or_none()
+    if evidence is None:
+        raise ResourceNotFoundError("Evidence not found.")
+
+    session.delete(evidence)
     session.flush()

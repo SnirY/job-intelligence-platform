@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from jip_api.application.matching.evidence import (
     STRONG_VERIFICATION,
     ProfileSnapshot,
+    SkillEvidence,
     load_profile_snapshot,
 )
 from jip_api.domain.matching.models import (
@@ -223,7 +224,7 @@ def _add_skills(
                 entity_id=skill.user_skill_id,
                 text=skill.canonical_name,
                 heading=None,
-                score=weight + skill.demonstration_count * 25,
+                score=weight + _evidence_bonus(skill),
                 reasons=tuple(reasons.get(skill.user_skill_id, [])),
                 verification_status=skill.verification_status,
             )
@@ -231,6 +232,19 @@ def _add_skills(
 
     for candidate in _ranked(candidates)[:MAX_SKILLS]:
         _place(result, candidate, result.skills)
+
+
+def _evidence_bonus(skill: SkillEvidence) -> int:
+    """How much the profile's backing for a skill lifts it up the page.
+
+    Work is worth more than an explanation. Both are evidence, and DEV-054 built
+    the second one precisely so it would count — but a role a reader can verify
+    against the experience section is a different order of thing from a sentence
+    the candidate wrote about themselves, and scoring them alike would let three
+    typed reasons push a shipped role off a one-page resume.
+    """
+    worked = len(skill.experience_ids) + len(skill.project_ids)
+    return worked * 25 + len(skill.stated_reasons) * 10
 
 
 def _add_experience(

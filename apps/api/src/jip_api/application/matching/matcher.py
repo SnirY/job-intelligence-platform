@@ -392,7 +392,7 @@ def _classify_held_skill(
             evidence,
         )
 
-    if demonstrated and (proficient or (held.years_of_experience or 0) >= 3):
+    if held.shown_in_work and (proficient or (held.years_of_experience or 0) >= 3):
         where = "role" if held.experience_ids else "project"
         return (
             MatchStatus.STRONG_MATCH,
@@ -402,6 +402,12 @@ def _classify_held_skill(
         )
 
     if demonstrated or proficient:
+        # A stated reason lands here rather than at STRONG_MATCH above. It is
+        # real evidence — the user took the trouble to say where the skill comes
+        # from, which is more than a name on a list — but it is still their own
+        # account of themselves, and `docs/06` does not let an unbacked claim
+        # reach the top band. The lift DEV-054 buys is confidence 60 to 75, not 60
+        # to 90 — the status stays MATCH and the score stays 85 either way.
         return (
             MatchStatus.MATCH,
             75,

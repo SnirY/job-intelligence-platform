@@ -12,7 +12,15 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Response, status
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy.orm import Session
 
 from jip_api.api.dependencies import CurrentUser
@@ -20,7 +28,7 @@ from jip_api.application.career import history as history_uc
 from jip_api.application.career import skills as skills_uc
 from jip_api.core.responses import DataResponse
 from jip_api.domain.career.history import EmploymentType, ProjectStatus, ProjectType
-from jip_api.domain.career.skills import Proficiency, SkillCategory
+from jip_api.domain.career.skills import EvidenceSource, Proficiency, SkillCategory
 from jip_api.infrastructure.db.session import get_session
 
 router = APIRouter(prefix="/career", tags=["career"])
@@ -219,6 +227,74 @@ def patch_skill(
 )
 def remove_skill(user: CurrentUser, session: SessionDep, skill_id: uuid.UUID) -> Response:
     skills_uc.remove_user_skill(session, user.id, skill_id)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class SkillEvidencePayload(BaseModel):
+    """One stated reason for a skill."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: EvidenceSource
+    note: str | None
+
+
+class SkillEvidenceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    """Why this is a skill you have.
+
+    Stripped before the length check, so a note of three spaces is rejected here
+    as a malformed request rather than reaching the use case and coming back as
+    a 500. Bounded because it is an explanation, not an essay, and the review
+    screen has to be able to show it whole.
+    """
+
+
+@router.get(
+    "/skills/{skill_id}/evidence",
+    response_model=DataResponse[list[SkillEvidencePayload]],
+    summary="List the stated reasons for a skill",
+)
+def list_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID
+) -> DataResponse[list[SkillEvidencePayload]]:
+    rows = skills_uc.list_skill_evidence(session, user.id, skill_id)
+    return DataResponse(data=[SkillEvidencePayload.model_validate(row) for row in rows])
+
+
+@router.post(
+    "/skills/{skill_id}/evidence",
+    response_model=DataResponse[SkillEvidencePayload],
+    status_code=status.HTTP_201_CREATED,
+    summary="Say why you have a skill",
+)
+def add_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID, body: SkillEvidenceCreateRequest
+) -> DataResponse[SkillEvidencePayload]:
+    """DEV-054. The half of the profile that could not be written down.
+
+    A skill learned outside employment had no way to be demonstrated, and the
+    matcher scores a demonstrated skill above a listed one — so the profile
+    penalised whoever's work is not on a payslip.
+    """
+    evidence = skills_uc.add_manual_evidence(session, user.id, skill_id, body.note)
+    session.commit()
+    return DataResponse(data=SkillEvidencePayload.model_validate(evidence))
+
+
+@router.delete(
+    "/skills/{skill_id}/evidence/{evidence_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a stated reason",
+)
+def remove_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID, evidence_id: uuid.UUID
+) -> Response:
+    skills_uc.remove_skill_evidence(session, user.id, skill_id, evidence_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
