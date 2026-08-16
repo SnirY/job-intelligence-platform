@@ -18,12 +18,188 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "1.0.0"
+MATCHING_ENGINE_VERSION = "6.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**6.0.0 (2026-08-16) — DEV-052, certifications.** Major, and the first bump in
+this file that is major for the reason the rule describes rather than out of
+caution: it moves stored scores by up to 55 points and reorders jobs against
+each other.
+
+`RequirementType` gained a tenth member. It had nine, and the job parser prompt
+told the model in as many words that EDUCATION covers "degrees, fields of study,
+certifications" — so a posting demanding *AWS Certified Solutions Architect*
+arrived as EDUCATION, `_match_education` searched degree, institution and field
+of study, shared no term with it, and returned:
+
+    GAP, "Your education does not appear to cover this."
+
+**To a user holding the certification.** At CORE importance that GAP became a
+BLOCKER and capped the entire match at `BLOCKER_CAP`, 45. A job the candidate
+was qualified for presented as one they were shut out of.
+
+`_match_certification` compares the requirement against the credentials on the
+profile, after removing the words every such requirement contains —
+*certification*, *certified*, *valid*, *required* — because leaving them in
+makes "certification required" match the first credential the user holds,
+whatever it is. A requirement left with no distinguishing term routes to
+`_unassessable` rather than GAP: "relevant certification preferred" names
+nothing, and inferring a shortfall from a vague sentence is the mistake DEV-066
+fixed for EDUCATION.
+
+An expired credential returns PARTIAL_MATCH and names the date, rather than GAP.
+The exam was passed and the knowledge did not evaporate on the expiry date; what
+the user needs is the fact, not a verdict about what to do with it.
+
+**Expiry is resolved in the snapshot loader, never in the matcher.**
+`test_matching_engine.py` opens by stating the engine runs "without a database,
+a clock, or a model", and expiry is the one fact in a profile that changes with
+the calendar rather than with an edit. The loader already does I/O and is the
+honest place for the one date call; `CertificationEvidence.is_current` arrives
+pre-decided. `expires_on` is in the snapshot fingerprint so a lapsing credential
+invalidates a cached match instead of serving a verdict the calendar has since
+made wrong.
+
+Scored in `MatchCategory.EDUCATION` rather than a new category. The five
+categories are fixed by `docs/05` and rendered as a breakdown; a sixth would
+appear empty on almost every posting.
+
+**5.1.0 (2026-08-16) — DEV-054.** A skill can now be backed by a reason the
+user typed, from the `skill_evidence` table that `docs/03-domain-model.md`
+specified and nobody built. Minor and not major: no stored match can move,
+because before this migration there was nowhere for such a reason to be
+recorded, so no existing snapshot contains one.
+
+What it moves is **confidence, not score**. A confirmed skill with a stated
+reason goes from 60 to 75 and loses the sentence "nothing in your profile shows
+where you used it"; the status stays MATCH and the score stays 85. The larger
+effect is outside the matcher — `insights/gaps.py` treats a demonstration count
+of zero as WEAK_EVIDENCE, so a stated reason takes the skill off the gap list
+altogether, which is the outcome DEV-054 was actually for.
+
+STRONG_MATCH now tests `shown_in_work` rather than `demonstration_count`, so it
+keeps meaning *used in a role or a project*. Not tidiness: that branch names its
+source in the sentence the user reads, picking the noun with `"role" if
+experience_ids else "project"`, and a stated reason has neither — it would have
+reported a project the user does not have. For any snapshot without stated
+reasons the two predicates are identical, which is the other half of why this
+is minor.
+
+**5.0.0 (2026-08-16) — DEV-064 and DEV-066**, the two the calibration measured
+rather than stumbled on, applied after it stopped at ten postings.
+
+*DEV-064.* Four postings in ten reported a gap in something the profile plainly
+has — object-oriented design, data structures, algorithms, HTML, CSS — because
+nobody writes those down once they have written React or a degree. Posting 8
+carried three at once and scored 33%, seventeen points below the human reading.
+
+`domain/matching/entailment.py` holds what one skill guarantees about another,
+and what a degree's curriculum contains. **Entailment, not resemblance**: React
+is not *like* HTML, React cannot be written without it — which is why it is a
+separate table from `transferable.py` and returns PARTIAL_MATCH rather than
+TRANSFERABLE.
+
+PARTIAL and never MATCH, because the user has not claimed the skill. The
+sentence names the implying item — "HTML is not listed on your profile, but your
+Next.js implies it" — so a reader who rejects the inference can see exactly
+which one to reject. Python is deliberately absent from the object-orientation
+entry and Java present: the test for an entry is whether someone could hold the
+first and genuinely not have the second.
+
+*DEV-066.* A requirement typed EDUCATION naming neither a degree level nor a
+known field now routes to `_unassessable` instead of falling through to GAP.
+"Exceptional academic track record" was a claim about the candidate where the
+truth was a claim about our data, and `_unassessable` already said UNKNOWN is
+never GAP — EDUCATION was the one type that did not route there.
+
+Major: both move requirements off zero, so scores rise and jobs reorder.
+
+**4.0.1 (2026-08-15).** Two bugs in 4.0.0's own subject check, both found on
+the next posting.
+
+`required`, `preferred` and `mandatory` say how much a posting wants something
+and nothing about what, and they appear in no CV ever written. Left in the
+subject, "5 years of backend required" asked for a profile containing the word
+"required" — so **every requirement phrased that way** failed the check,
+whatever the candidate had done.
+
+And the check ran on postings demanding nothing. "No prior professional
+experience required" parses to zero years, and produced *"you have 3 years, but
+nothing in your profile is about required"* — a shortfall invented against an
+invitation to juniors.
+
+Patch rather than major: 4.0.0 shipped hours earlier and these restore what it
+intended rather than changing it. Scores move, but only back.
+
+**4.0.0 (2026-08-15) — DEV-061**, and the first change here that *lowers*
+scores. Found by a user asking why the engine credited him a year of chip
+design.
+
+The years branch compared numbers and read nothing else, so three years of
+radar-technician work answered "1 year of experience with digital logic design"
+with STRONG_MATCH and a score of 100. "3 years of experience in neurosurgery"
+scored 100 as well. Three parts:
+
+*The evidence must be what produced the verdict.* The number was summed from
+`experiences`; the evidence came from a keyword pass that also reads projects;
+nothing made them meet. A verdict reading "you have 3 years" cited three
+projects that had contributed none of it.
+
+*A requirement naming a subject must find the subject*, and two of its words
+have to land in the same item. One word is coincidence: "digital logic design"
+first passed on `design` alone, inside "Designed for medical-grade reliability"
+in a computer-vision project.
+
+*The sentence must say what it counted.* "You have 3 years, from Team Leader
+Technician at the IDF" is disagreed with in one glance; "You have 3 years" gives
+a reader nothing to disagree with, which is how three years of radar work passed
+for three years of software.
+
+A bare "3+ years of experience" is still answered by the total, and a profile
+with stated years and no roles listed still passes — it has no text to search,
+and cannot check is not absent.
+
+**3.0.0 (2026-08-15) — DEV-055 and DEV-060**, both found on posting 3 of the
+DEV-011 calibration and both turning a qualification the user holds into a gap.
+
+*DEV-055, the half that costs nothing to apply.* A posting writing `Linux/Unix`
+offers either, and the whole string resolved to neither — so a profile holding
+Linux was told it had no Linux/Unix, at REQUIRED weight. `_match_skill` now
+splits a composite name on `/`, `or` and `and/or` and accepts any alternative.
+The separator must be surrounded by space or `Fortran` splits into `F` and
+`tran`. Whole sentences are left alone: "at least one programming or scripting
+language (e.g. Python, Go, Bash)" is not repairable by splitting, and needs the
+parse schema to carry a list, which remains open.
+
+*DEV-060.* `_match_education` counted shared words, and a **B.Sc. in Software
+Engineering** shares none with **"Bachelor's degree in Computer Science"** —
+GAP, and on a CORE requirement a BLOCKER. `domain/matching/education.py` now
+holds degree-level abbreviations and one group of fields a software posting
+treats as answering each other. It returns MATCH rather than STRONG_MATCH and
+names both sides, because `docs/05` forbids reporting similarity as equivalence.
+
+Major again: both move requirements off zero, so scores rise and jobs reorder.
+
+**2.0.0 (2026-08-15) — DEV-059.** A requirement that resolved through a
+catalogue alias lost transferability, because `_match_skill` handed the
+posting's own wording to `find_transfer` instead of the canonical name the
+transfer table is keyed by. `C/C++` is an alias of `C++`; a profile holding `C`
+was told it had no `C/C++`, while the same requirement written `C++` returned
+TRANSFERABLE.
+
+Major rather than patch, and the values below are untouched. GAP scores 0 and
+TRANSFERABLE_MATCH scores 50, so every affected requirement moves fifty points
+and jobs reorder against each other. The rule above is about consequence, not
+about which file changed.
+
+Found on the second posting of the DEV-011 calibration, and fixed before the
+remaining eighteen so the set is measured against one engine.
+
+**1.0.0** — the values from `docs/05-ai-and-matching.md` as first written.
 """
 
 
@@ -72,6 +248,11 @@ TYPE_CATEGORIES: dict[RequirementType, MatchCategory] = {
     RequirementType.TECHNICAL_SKILL: MatchCategory.TECHNICAL,
     RequirementType.EXPERIENCE: MatchCategory.EXPERIENCE,
     RequirementType.EDUCATION: MatchCategory.EDUCATION,
+    # Scored with education rather than beside it. `MatchCategory` is a fixed
+    # set of five that `docs/05` fixes and the UI renders as a breakdown;
+    # inventing a sixth for one requirement type would change every score
+    # display to give a category that is empty on almost every posting.
+    RequirementType.CERTIFICATION: MatchCategory.EDUCATION,
     RequirementType.DOMAIN_KNOWLEDGE: MatchCategory.DOMAIN,
     RequirementType.LANGUAGE: MatchCategory.OTHER,
     RequirementType.SOFT_SKILL: MatchCategory.OTHER,

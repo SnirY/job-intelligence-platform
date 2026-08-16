@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// No DOM here. `vitest.config.mts` sets jsdom for every file, which is right
+// for the component tests and pure cost for this one — DEV-058 measured jsdom
+// setup as the dominant shared expense in a parallel run. Overriding it per
+// file is the supported way to opt out.
 import type { CandidateType, ExtractionItem } from "@jip/shared-types";
 import { describe, expect, it } from "vitest";
 

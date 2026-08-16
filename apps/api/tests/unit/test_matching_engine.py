@@ -23,6 +23,8 @@ from types import SimpleNamespace
 import pytest
 
 from jip_api.application.matching.evidence import (
+    CertificationEvidence,
+    EducationEvidence,
     ExperienceEvidence,
     ProfileSnapshot,
     ProjectEvidence,
@@ -30,7 +32,12 @@ from jip_api.application.matching.evidence import (
 )
 from jip_api.application.matching.matcher import Verdict, match_requirements
 from jip_api.application.matching.scoring import score_match
-from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
+from jip_api.domain.matching.models import (
+    EvidenceType,
+    MatchCategory,
+    MatchStatus,
+    Recommendation,
+)
 from jip_api.domain.matching.rules import BLOCKER_CAP, weighted_score
 from jip_api.domain.matching.transferable import find_transfer, groups_for
 
@@ -46,6 +53,7 @@ def skill(
     verification: str = "USER_CONFIRMED",
     experiences: tuple[uuid.UUID, ...] = (),
     projects: tuple[uuid.UUID, ...] = (),
+    reasons: tuple[str, ...] = (),
 ) -> SkillEvidence:
     normalized = name.lower().replace(".", "").replace(" ", "-")
     return SkillEvidence(
@@ -59,6 +67,28 @@ def skill(
         verification_status=verification,
         experience_ids=experiences,
         project_ids=projects,
+        stated_reasons=reasons,
+    )
+
+
+def role(title: str, company: str, months: int) -> ExperienceEvidence:
+    """A dated role, for the years arithmetic to have something to sum."""
+    start = dt.date(2011, 1, 1)
+    # Exact calendar months rather than days-times-30.44, which loses one to
+    # rounding and turns a 36-month role into 35.
+    end = dt.date(
+        start.year + (start.month - 1 + months) // 12, (start.month - 1 + months) % 12 + 1, 1
+    )
+    return ExperienceEvidence(
+        id=uuid.uuid4(),
+        company=company,
+        title=title,
+        normalized_title=title.casefold(),
+        start_date=start,
+        end_date=end,
+        is_current=False,
+        description=None,
+        verification_status="USER_CONFIRMED",
     )
 
 
@@ -71,6 +101,24 @@ def profile(*skills: SkillEvidence, years: int | None = 6, **extra: object) -> P
         snapshot.skills.append(item)
         snapshot.skills_by_id[item.skill_id] = item
         snapshot.skills_by_normalized[item.normalized_name] = item
+
+    roles = extra.get("roles")
+    if isinstance(roles, list):
+        snapshot.experiences.extend(roles)
+
+    if extra.get("projects_text"):
+        snapshot.projects.append(
+            ProjectEvidence(
+                id=uuid.uuid4(),
+                name="A project",
+                summary=None,
+                description=str(extra["projects_text"]),
+                start_date=None,
+                end_date=None,
+                has_repository=False,
+                verification_status="USER_CONFIRMED",
+            )
+        )
 
     if extra.get("with_experience"):
         snapshot.experiences.append(
@@ -111,11 +159,343 @@ def requirement(
     )
 
 
-def verdict_for(requirements: list[SimpleNamespace], snapshot: ProfileSnapshot) -> Verdict:
-    return match_requirements(requirements, snapshot)[0]
+def verdict_for(
+    requirements: list[SimpleNamespace],
+    snapshot: ProfileSnapshot,
+    canonical_names: dict[uuid.UUID, str] | None = None,
+) -> Verdict:
+    return match_requirements(requirements, snapshot, canonical_names)[0]
 
 
 # --- transferability ----------------------------------------------------------
+
+
+def test_a_skill_the_profile_guarantees_is_not_a_gap() -> None:
+    """DEV-064, four sightings across ten calibration postings.
+
+    Nobody writes HTML on a CV after they have written React, so a posting
+    asking for it produced a gap against an assumption rather than a fact.
+    Posting 8 carried three of these at once — OOP, data structures and
+    algorithms — and lost seventeen points to them.
+    """
+    result = verdict_for([requirement("HTML")], profile(skill("React")))
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "React" in result.explanation
+
+
+def test_a_degree_guarantees_what_its_curriculum_contains() -> None:
+    """A Software Engineering degree contains a data structures course. This is
+    entailment, not resemblance: the degree does not *look like* the skill, it
+    includes it."""
+    snapshot = profile(skill("Python"))
+    snapshot.education.append(
+        EducationEvidence(
+            id=uuid.uuid4(),
+            institution="[engineering college]",
+            degree="B.Sc.",
+            field_of_study="Software Engineering",
+            end_date=None,
+            is_current=False,
+            searchable="b.sc. software engineering braude",
+        )
+    )
+
+    result = verdict_for([requirement("Data Structures")], snapshot)
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "Software Engineering" in result.explanation
+
+
+def test_entailment_never_claims_the_skill_outright() -> None:
+    """PARTIAL, never MATCH. The user has not claimed this and the product's
+    rule is never to claim more than the evidence supports. What is true is
+    "you have something that requires it", and the sentence has to say which —
+    so a reader who rejects the inference can see exactly what to reject."""
+    result = verdict_for([requirement("CSS")], profile(skill("Next.js")))
+
+    assert result.status is not MatchStatus.MATCH
+    assert result.status is not MatchStatus.STRONG_MATCH
+    assert "not listed on your profile" in result.explanation
+
+
+def test_a_real_gap_is_still_a_gap() -> None:
+    """The table is small on purpose. Nothing in a React profile implies
+    Kubernetes, and a fix for false gaps that erased true ones would be worse
+    than the defect."""
+    for absent in ("Kubernetes", "Verilog", "Selenium"):
+        result = verdict_for([requirement(absent)], profile(skill("React")))
+        assert result.status is MatchStatus.GAP, absent
+
+
+def test_a_multi_paradigm_language_does_not_imply_object_orientation() -> None:
+    """The test for an entry is "could someone hold the first and genuinely not
+    have the second". A great deal of Python is written without designing a
+    class hierarchy, so Python is out where Java is in."""
+    assert verdict_for(
+        [requirement("Object-Oriented Design")], profile(skill("Python"))
+    ).status is (MatchStatus.GAP)
+    assert verdict_for([requirement("Object-Oriented Design")], profile(skill("Java"))).status is (
+        MatchStatus.PARTIAL_MATCH
+    )
+
+
+def test_an_unanswerable_education_requirement_is_unknown_not_a_gap() -> None:
+    """DEV-066, posting 10. "Exceptional academic track record from high school
+    and university" names no degree level and no field, so it fell past the
+    equivalence check, past word overlap, and onto GAP — a claim about the
+    candidate where the truth is a claim about our data. The `grade` column
+    exists and is empty.
+
+    `_unassessable` already said UNKNOWN is never GAP; EDUCATION was the one
+    type that did not route there.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.education.append(
+        EducationEvidence(
+            id=uuid.uuid4(),
+            institution="[engineering college]",
+            degree="B.Sc.",
+            field_of_study="Software Engineering",
+            end_date=None,
+            is_current=False,
+            searchable="b.sc. software engineering braude",
+        )
+    )
+
+    result = verdict_for([requirement("Exceptional academic track record", "EDUCATION")], snapshot)
+
+    assert result.status is MatchStatus.UNKNOWN
+    assert result.is_blocker is False
+
+
+def test_years_of_anything_do_not_answer_a_subject() -> None:
+    """DEV-061, found by a user asking why the engine credited him three years
+    of chip design.
+
+    The years branch compared numbers and read nothing else, so three years of
+    radar-technician work from 2014 answered "1 year of experience with digital
+    logic design principles" with STRONG_MATCH and a score of 100. "3 years of
+    experience in neurosurgery" scored 100 as well.
+    """
+    result = verdict_for(
+        [requirement("1 year of digital logic design", "EXPERIENCE", years_min=1)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    # PARTIAL rather than GAP: a GAP on a CORE requirement becomes a BLOCKER,
+    # and keyword absence is not strong enough evidence for the strongest claim
+    # the engine makes. The years are credited, the subject is denied, and the
+    # sentence says both.
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert result.is_blocker is False
+    assert "digital logic design" in result.explanation
+
+
+def test_a_connective_is_not_a_subject_word() -> None:
+    """The first version of the subject check passed on the word `with`.
+
+    `_terms` filters on length alone and "with" is four characters — long
+    enough to survive, common enough to sit in nearly every description. So
+    "digital logic design" was evidenced by `with` plus `design`, the latter
+    found inside "Designed for medical-grade reliability" in a computer-vision
+    project. Two words in one item, neither of them the subject.
+    """
+    result = verdict_for(
+        [requirement("1 year with digital logic design", "EXPERIENCE", years_min=1)],
+        profile(
+            skill("Python"),
+            years=None,
+            roles=[role("Vision Engineer", "Lab", 36)],
+            projects_text="Designed for medical-grade reliability with deep learning",
+        ),
+    )
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+
+
+def test_a_posting_demanding_nothing_is_not_given_a_subject() -> None:
+    """Found on posting 5, one posting after the subject check shipped.
+
+    "No prior professional experience required" parses to zero years — an
+    invitation to juniors — and the check ran on it anyway, extracting
+    `required` as the subject and reporting *"you have 3 years, but nothing in
+    your profile is about required"*. A shortfall invented against a posting
+    that asked for none.
+    """
+    result = verdict_for(
+        [requirement("No prior professional experience required", "EXPERIENCE", years_min=0)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert "no minimum experience" in result.explanation
+
+
+def test_how_much_a_posting_wants_it_is_not_what_it_wants() -> None:
+    """`required`, `preferred`, `mandatory` say nothing about the subject and
+    appear in no CV ever written.
+
+    Left in, "5 years of backend required" asked for a profile containing the
+    word "required" — so **every** requirement phrased that way failed the
+    subject check, whatever the candidate had done.
+    """
+    result = verdict_for(
+        [requirement("5 years of backend required", "EXPERIENCE", years_min=3)],
+        profile(
+            skill("Python"),
+            years=None,
+            roles=[role("Backend Engineer", "Acme", 48)],
+            projects_text="Backend services and APIs",
+        ),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_a_bare_years_requirement_is_still_answered_by_years() -> None:
+    """The subject check must not swallow the ordinary case. "3+ years of
+    professional experience" names a quantity and nothing else, and the total
+    is the right answer to it."""
+    result = verdict_for(
+        [requirement("3+ years of professional experience", "EXPERIENCE", years_min=3)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_a_profile_with_no_roles_is_not_punished_for_being_unsearchable() -> None:
+    """A stated "6 years" with no roles listed has no text to search, so every
+    subject-bearing requirement would fail the check above.
+
+    Cannot check is not absent — the distinction `GOAL.md` is about. This is a
+    half-filled profile, not a profile that says nothing about the subject.
+    """
+    result = verdict_for(
+        [requirement("5+ years backend", "EXPERIENCE", years_min=5)],
+        profile(skill("Python"), years=6),
+    )
+
+    assert result.status is MatchStatus.STRONG_MATCH
+
+
+def test_the_verdict_cites_the_roles_the_years_came_from() -> None:
+    """DEV-061 part 1. The number was summed from `experiences` and the evidence
+    came from a keyword search that also reads projects, and nothing made them
+    meet: a verdict reading "you have 3 years" cited three projects that had
+    contributed none of it."""
+    result = verdict_for(
+        [requirement("2+ years of experience", "EXPERIENCE", years_min=2)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert [ref.evidence_type for ref in result.evidence] == [EvidenceType.EXPERIENCE]
+    assert "Radar Technician" in result.evidence[0].label
+
+
+def test_the_sentence_says_what_it_counted() -> None:
+    """DEV-061 part 3, and the half that would have made this self-evident.
+
+    "You have 3 years" gives a reader nothing to disagree with. "You have 3
+    years, from Radar Technician at IDF" is disagreed with in one glance, which
+    is how the defect was found in the first place — by a user who could see the
+    number and not what produced it.
+    """
+    result = verdict_for(
+        [requirement("2+ years of experience", "EXPERIENCE", years_min=2)],
+        profile(skill("Python"), years=None, roles=[role("Radar Technician", "IDF", 36)]),
+    )
+
+    assert "from Radar Technician at IDF" in result.explanation
+
+
+def test_a_slash_requirement_is_met_by_either_side() -> None:
+    """DEV-055, measured on posting 3 of the DEV-011 calibration.
+
+    A posting asking for `Linux/Unix` means either one. The whole string
+    resolved to neither, so a profile holding Linux was told it had no
+    Linux/Unix — at REQUIRED weight.
+    """
+    result = verdict_for([requirement("Linux/Unix")], profile(skill("Linux")))
+
+    assert result.status is MatchStatus.MATCH
+
+
+def test_an_or_requirement_is_met_by_either_side() -> None:
+    result = verdict_for([requirement("Python or Go")], profile(skill("Python")))
+
+    assert result.status is MatchStatus.MATCH
+
+
+def test_splitting_never_reaches_inside_a_word() -> None:
+    """The separator has to be surrounded by space, or `Fortran` splits into
+    `F` and `tran` and `Terraform` into `Terraf` and `m`. Both would then match
+    nothing, turning a held skill into a gap — the defect this fixes, caused by
+    the fix."""
+    for held in ("Fortran", "Terraform"):
+        result = verdict_for([requirement(held)], profile(skill(held)))
+        assert result.status is not MatchStatus.GAP, held
+
+
+def test_a_whole_sentence_is_not_split_into_fragments() -> None:
+    """ "Proficiency in at least one programming or scripting language" is not
+    repairable by splitting — the pieces match nothing. Length-guarded, so it
+    falls through to a gap rather than producing debris. The real fix is the
+    parse schema carrying a list, which is the open half of DEV-055."""
+    sentence = "Proficiency in at least one programming or scripting language (e.g. Python, Go)"
+
+    result = verdict_for([requirement(sentence)], profile(skill("Python")))
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_an_alias_still_finds_the_transfer_behind_it() -> None:
+    """DEV-059, found on posting 2 of the DEV-011 calibration.
+
+    A posting writing `Postgres` resolves to the canonical `PostgreSQL`, and the
+    transfer table is keyed by canonical names. `_match_skill` was handing it the
+    posting's wording:
+
+        find_transfer("PostgreSQL", ["MySQL"])  ->  MySQL via relational databases
+        find_transfer("Postgres",   ["MySQL"])  ->  NO TRANSFER
+
+    A single-token alias, deliberately: `C/C++` exposed this first but is now
+    also repaired by splitting alternatives, so it no longer isolates the bug
+    this test is about.
+    """
+    skill_id = uuid.uuid4()
+    asked = requirement("Postgres", skill_name="Postgres")
+    asked.skill_id = skill_id
+
+    result = verdict_for([asked], profile(skill("MySQL")), {skill_id: "PostgreSQL"})
+
+    assert result.status is MatchStatus.TRANSFERABLE_MATCH
+
+
+def test_the_user_reads_the_wording_the_posting_used() -> None:
+    """The canonical name is for looking up, not for talking.
+
+    Telling someone "PostgreSQL is not in your profile" when the posting said
+    `Postgres` describes a requirement they did not read. The explanation quotes
+    the posting; only the lookup is translated.
+    """
+    skill_id = uuid.uuid4()
+    asked = requirement("Postgres", skill_name="Postgres")
+    asked.skill_id = skill_id
+
+    result = verdict_for([asked], profile(skill("MySQL")), {skill_id: "PostgreSQL"})
+
+    assert "Postgres" in result.explanation
+
+
+def test_transferability_still_works_with_no_catalogue_lookup() -> None:
+    """The mapping is optional, and its absence must not be silently worse than
+    passing it. A posting whose wording *is* the canonical name — the ordinary
+    case — resolves the same either way."""
+    result = verdict_for([requirement("C++")], profile(skill("C")))
+
+    assert result.status is MatchStatus.TRANSFERABLE_MATCH
 
 
 def test_a_transferable_skill_is_never_a_direct_match() -> None:
@@ -779,3 +1159,297 @@ def test_a_soft_skill_can_never_block() -> None:
     )
 
     assert result.is_blocker is False
+
+
+# --- stated reasons (DEV-054) -------------------------------------------------
+#
+# The `skill_evidence` table let a skill be backed by a sentence the user wrote,
+# which is the first evidence source in the engine that is not a record of work.
+# These pin the band it lands in, because the temptation is to treat "has
+# evidence" as one predicate and the whole point is that it is two.
+
+
+def test_a_stated_reason_lifts_a_bare_skill() -> None:
+    """The defect DEV-054 fixed. Without a role or a project the profile had no
+    way to say a skill was more than a name, and said so in the sentence."""
+    bare = match_requirements(
+        [requirement("Rust")], profile(skill("Rust", proficiency=None, years=None))
+    )[0]
+    explained = match_requirements(
+        [requirement("Rust")],
+        profile(
+            skill(
+                "Rust",
+                proficiency=None,
+                years=None,
+                reasons=("Built a ray tracer over two winters.",),
+            )
+        ),
+    )[0]
+
+    assert bare.confidence == 60
+    assert "nothing in your profile shows where you used it" in bare.explanation
+    assert explained.confidence == 75
+    assert "nothing in your profile" not in explained.explanation
+
+
+def test_a_stated_reason_does_not_reach_the_top_band() -> None:
+    """STRONG_MATCH is reserved for work. A typed sentence is the user's own
+    account of themselves, and `docs/06` does not let an unbacked claim outrank
+    a role — which here is the difference between a score of 85 and one of 100."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(skill("Rust", proficiency="EXPERT", years=6, reasons=("Ray tracer.",))),
+    )[0]
+
+    assert result.status is MatchStatus.MATCH
+    assert result.score == 85
+    assert result.confidence == 75
+
+
+def test_a_stated_reason_never_claims_a_project() -> None:
+    """The regression the change was really about. The STRONG_MATCH branch picks
+    its noun with `"role" if experience_ids else "project"`, so routing a stated
+    reason into it would have told the user about a project they do not have."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(skill("Rust", proficiency="EXPERT", reasons=("A course.",))),
+    )[0]
+
+    assert "project" not in result.explanation
+    assert "role" not in result.explanation
+
+
+def test_work_still_reaches_the_top_band() -> None:
+    """The other side of the same guard: separating the two predicates must not
+    have cost a real role its 90."""
+    result = match_requirements(
+        [requirement("Rust")],
+        profile(
+            skill("Rust", proficiency="EXPERT", experiences=(EXPERIENCE_ID,)), with_experience=True
+        ),
+    )[0]
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert result.score == 100
+    assert result.confidence == 90
+    assert "role" in result.explanation
+
+
+def test_a_stated_reason_changes_the_fingerprint() -> None:
+    """Evidence that does not reach the fingerprint is evidence that will not
+    invalidate a cached match, which is how a profile edit gets silently
+    ignored."""
+    without = profile(skill("Rust"))
+    with_reason = profile(skill("Rust", reasons=("Built a ray tracer.",)))
+
+    assert without.fingerprint() != with_reason.fingerprint()
+
+
+# --- certifications (DEV-052) -------------------------------------------------
+#
+# The requirement type did not exist, so a posting demanding a credential
+# arrived as EDUCATION and `_match_education` searched degrees for it. These pin
+# the branch that replaced that, and the first one is the defect itself.
+
+
+def credential(
+    name: str = "AWS Certified Solutions Architect",
+    *,
+    issuer: str = "Amazon Web Services",
+    is_current: bool = True,
+    expires_on: dt.date | None = None,
+    verification: str = "USER_CONFIRMED",
+) -> CertificationEvidence:
+    return CertificationEvidence(
+        id=uuid.uuid4(),
+        name=name,
+        issuer=issuer,
+        issued_on=dt.date(2023, 1, 1),
+        expires_on=expires_on,
+        verification_status=verification,
+        searchable=f"{name} {issuer}".casefold(),
+        is_current=is_current,
+    )
+
+
+def test_a_held_certification_answers_the_requirement() -> None:
+    """The defect DEV-052 was filed for, stated as a passing test.
+
+    Before the CERTIFICATION type existed this requirement was classified
+    EDUCATION, matched against degree and field of study, shared no term, and
+    came back *"Your education does not appear to cover this."* — to someone
+    holding the certificate.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential())
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert not result.is_blocker
+    assert "AWS Certified Solutions Architect" in result.explanation
+    assert result.evidence[0].evidence_type is EvidenceType.CERTIFICATION
+
+
+def test_a_core_certification_no_longer_blocks_someone_who_holds_it() -> None:
+    """The expensive half. A GAP on a CORE requirement is a BLOCKER, and a
+    blocker caps the whole match at 45 — so this was not a missing credit, it
+    was a qualified candidate shown a job as closed to them."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential())
+
+    result = score_match(
+        match_requirements(
+            [requirement("AWS Certified Solutions Architect", "CERTIFICATION", "CORE")],
+            snapshot,
+        )
+    )
+
+    assert result.has_blockers is False
+    # Narrowed rather than asserted through: `overall_score` is `int | None`,
+    # and None is the "profile too empty to score" case — a real state that
+    # would make `> BLOCKER_CAP` a TypeError instead of a failed assertion.
+    assert result.overall_score is not None
+    assert result.overall_score > BLOCKER_CAP
+
+
+def test_an_expired_certification_is_partial_and_says_when() -> None:
+    """Not a GAP. The exam was passed and the knowledge did not evaporate on the
+    expiry date; what the user needs is the date, not a verdict."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential(is_current=False, expires_on=dt.date(2024, 6, 30)))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "2024-06-30" in result.explanation
+
+
+def test_a_certification_the_user_does_not_hold_is_a_gap() -> None:
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_a_vague_certification_requirement_is_unassessable_not_a_gap() -> None:
+    """ "Relevant certification preferred" names no credential. Deciding it is a
+    gap invents a shortfall out of a vague sentence, which is the mistake
+    DEV-066 fixed for EDUCATION and this branch must not repeat."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("Relevant certification preferred", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.UNKNOWN
+    assert not result.is_blocker
+
+
+def test_the_boilerplate_does_not_match_the_first_credential_on_file() -> None:
+    """Every certification requirement contains the word "certification". Left
+    in the comparison, "AWS certification required" would match a CCNA."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("AWS certification required", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_no_certifications_on_file_is_not_a_gap() -> None:
+    """An empty collection is a fact about our data, not about the candidate."""
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        profile(skill("Python")),
+    )[0]
+
+    assert result.status is MatchStatus.NO_EVIDENCE
+    assert not result.is_blocker
+
+
+def test_a_certification_changes_the_fingerprint() -> None:
+    without = profile(skill("Python"))
+    with_credential = profile(skill("Python"))
+    with_credential.certifications.append(credential())
+
+    assert without.fingerprint() != with_credential.fingerprint()
+
+
+def test_expiry_is_in_the_fingerprint() -> None:
+    """Expiry is the one profile fact that changes with the calendar rather than
+    with an edit. Out of the fingerprint, a cached match would go on asserting a
+    credential the date has since invalidated."""
+    current = profile(skill("Python"))
+    current.certifications.append(credential(expires_on=dt.date(2030, 1, 1)))
+    lapsing = profile(skill("Python"))
+    lapsing.certifications.append(credential(expires_on=dt.date(2024, 1, 1)))
+
+    assert current.fingerprint() != lapsing.fingerprint()
+
+
+def test_a_three_letter_credential_is_not_filtered_away() -> None:
+    """The trap the shared tokenizer set.
+
+    `_terms` drops every word of three characters or fewer — correctly, for
+    prose, where "of" and "in" would make any requirement look evidenced. But
+    certification names are mostly short acronyms, so reusing it here removed
+    the only word that carried meaning: "AWS certification required" tokenised
+    to the empty set and every such requirement came back UNKNOWN.
+
+    UNKNOWN never blocks, so this would not have shown up as a wrong blocker.
+    It would have shown up as certifications quietly never mattering.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("AWS Certified Developer", issuer="AWS"))
+
+    held = match_requirements(
+        [requirement("AWS certification required", "CERTIFICATION")], snapshot
+    )[0]
+
+    assert held.status is MatchStatus.STRONG_MATCH
+
+    other = profile(skill("Python"))
+    other.certifications.append(credential("PMP", issuer="PMI"))
+
+    assert (
+        match_requirements([requirement("PMP certification", "CERTIFICATION")], other)[0].status
+        is MatchStatus.STRONG_MATCH
+    )
+
+
+def test_an_unconfirmed_certification_is_not_strong_evidence() -> None:
+    """The rule that outranks the feature.
+
+    Nothing writes an AI_EXTRACTED certification today — the API is the only
+    writer and it stamps USER_CONFIRMED. But `EvidenceSource.RESUME` exists and
+    an importer is the obvious next writer, and "inferred or unverified profile
+    information is never strong evidence" is not a rule that should acquire an
+    exception the first time somebody adds a source.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential(verification="AI_EXTRACTED"))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")], snapshot
+    )[0]
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "has not been confirmed" in result.explanation

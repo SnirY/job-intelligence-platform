@@ -35,6 +35,8 @@ export const API_ROUTES = {
   careerExperiences: "/api/v1/career/experiences",
   careerProjects: "/api/v1/career/projects",
   careerEducation: "/api/v1/career/education",
+  careerCertifications: "/api/v1/career/certifications",
+  skillCandidates: "/api/v1/skill-candidates",
   resumeImport: "/api/v1/resumes/import",
   resumeImports: "/api/v1/resumes/imports",
   resumeSupportedFormats: "/api/v1/resumes/supported-formats",

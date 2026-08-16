@@ -9,6 +9,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    // DEV-058. A parallel run spends more time building test environments than
+    // running tests — 65-73s of jsdom setup against ~3s of assertions on this
+    // suite. That is the number to watch when the suite next fails under load,
+    // and without it a failure report says only "timed out".
+    logHeapUsage: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },

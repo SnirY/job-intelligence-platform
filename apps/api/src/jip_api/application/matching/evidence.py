@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from jip_api.application.ownership import owned
 from jip_api.domain.career.history import (
+    Certification,
     Education,
     Experience,
     ExperienceAchievement,
@@ -33,7 +34,14 @@ from jip_api.domain.career.history import (
     ProjectSkill,
 )
 from jip_api.domain.career.models import CareerProfile, VerificationStatus
-from jip_api.domain.career.skills import Skill, SkillAlias, UserSkill, normalize_skill_name
+from jip_api.domain.career.skills import (
+    EvidenceSource,
+    Skill,
+    SkillAlias,
+    UserSkill,
+    normalize_skill_name,
+)
+from jip_api.domain.career.skills import SkillEvidence as SkillEvidenceRecord
 
 
 class ProfileFacts(Protocol):
@@ -81,13 +89,41 @@ class SkillEvidence:
     distinction ``docs/03-domain-model.md`` built ``ProjectSkill`` and
     ``ExperienceSkill`` to preserve."""
 
+    stated_reasons: tuple[str, ...] = ()
+    """Evidence the user wrote themselves, from the ``skill_evidence`` table.
+
+    DEV-054. Until that table existed a skill could only be demonstrated by a
+    role or a project, so anything learned outside employment — a course, a
+    competition, a thing built and never shipped — could be claimed and never
+    evidenced. The matcher scores a demonstrated skill above a listed one, so
+    the profile penalised exactly the people whose work is not on a payslip."""
+
     @property
     def is_strongly_verified(self) -> bool:
         return self.verification_status in STRONG_VERIFICATION
 
     @property
     def demonstration_count(self) -> int:
-        return len(self.experience_ids) + len(self.project_ids)
+        """How many places in the profile back this skill up, of any kind."""
+        return len(self.experience_ids) + len(self.project_ids) + len(self.stated_reasons)
+
+    @property
+    def shown_in_work(self) -> bool:
+        """Whether a *role or project* backs this skill, as against a typed reason.
+
+        The distinction is load-bearing and DEV-054 is what created the need for
+        it. Before the `skill_evidence` table there were only two sources, both
+        of them real work, so "demonstrated" and "used on the job" were the same
+        predicate and the matcher used them interchangeably: it said *"you have
+        used it in at least one project"* and picked the noun with
+        ``"role" if experience_ids else "project"``.
+
+        A stated reason has no role and no project behind it, so that fallback
+        would have reported a project the user does not have. Inventing evidence
+        is the one thing `GOAL.md` will not tolerate, and it would have been
+        this codebase doing it about its own user.
+        """
+        return bool(self.experience_ids or self.project_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +153,40 @@ class ExperienceEvidence:
         if end is None or end < self.start_date:
             return 0
         return (end.year - self.start_date.year) * 12 + (end.month - self.start_date.month)
+
+
+@dataclass(frozen=True, slots=True)
+class CertificationEvidence:
+    """A credential the user holds, and whether it is still in date."""
+
+    id: uuid.UUID
+    name: str
+    issuer: str
+    issued_on: dt.date | None
+    expires_on: dt.date | None
+    verification_status: str
+    searchable: str
+    """Name and issuer, casefolded and joined. Certification names are proper
+    nouns owned by their issuer rather than entries in a shared vocabulary, so
+    there is no catalogue to resolve against and matching is substring work over
+    the user's own text."""
+
+    is_current: bool = True
+    """Whether the credential is still in date.
+
+    **Decided here, at load time, and never in the matcher.** Expiry is the one
+    fact in the profile that changes with the calendar rather than with an edit,
+    so answering it needs a clock — and `test_matching_engine.py` opens by
+    stating that the engine runs "without a database, a clock, or a model".
+    Reading the date in `_match_certification` would break that for the one
+    requirement type that needed it. The loader already does I/O; it is the
+    honest place for the one call.
+
+    A null `expires_on` sets this True: it means the credential does not expire,
+    **not** that expiry is unknown. The other reading would have the platform
+    decide a certification had lapsed on no evidence, which is the fabrication
+    the rest of the engine exists to refuse.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +256,7 @@ class ProfileSnapshot:
     experiences: list[ExperienceEvidence] = field(default_factory=list)
     projects: list[ProjectEvidence] = field(default_factory=list)
     education: list[EducationEvidence] = field(default_factory=list)
+    certifications: list[CertificationEvidence] = field(default_factory=list)
 
     skills_by_id: dict[uuid.UUID, SkillEvidence] = field(default_factory=dict)
     skills_by_normalized: dict[str, SkillEvidence] = field(default_factory=dict)
@@ -201,7 +272,13 @@ class ProfileSnapshot:
         Drives NO_EVIDENCE rather than GAP: with nothing on file, every absence
         is a fact about our data rather than about the candidate.
         """
-        return not (self.skills or self.experiences or self.projects or self.education)
+        return not (
+            self.skills
+            or self.experiences
+            or self.projects
+            or self.education
+            or self.certifications
+        )
 
     @property
     def total_months(self) -> int:
@@ -269,6 +346,11 @@ class ProfileSnapshot:
                 f":{skill.last_used_year}:{skill.verification_status}"
                 f":{sorted(str(i) for i in skill.experience_ids)}"
                 f":{sorted(str(i) for i in skill.project_ids)}"
+                # DEV-054. Stated evidence changes what the matcher does with a
+                # skill, so it has to change the fingerprint — otherwise adding
+                # a reason silently leaves every existing match looking current
+                # while the verdict it would produce has moved.
+                f":{sorted(skill.stated_reasons)}"
             )
 
         for experience in sorted(self.experiences, key=lambda e: str(e.id)):
@@ -289,6 +371,15 @@ class ProfileSnapshot:
         for education in sorted(self.education, key=lambda e: str(e.id)):
             parts.append(f"e:{education.id}:{education.searchable}:{education.end_date}")
 
+        # Expiry is in the fingerprint because it is the one field that can
+        # change a verdict without anyone editing the profile: a credential
+        # that lapses turns a MATCH into a PARTIAL. Leaving it out would serve
+        # a cached match that the calendar has since made wrong.
+        for certification in sorted(self.certifications, key=lambda c: str(c.id)):
+            parts.append(
+                f"c:{certification.id}:{certification.searchable}:{certification.expires_on}"
+            )
+
         parts.append(f"y:{self.stated_years}")
         parts.append(f"l:{self.profile.current_location if self.profile else None}")
 
@@ -307,6 +398,7 @@ def load_profile_snapshot(session: Session, user_id: uuid.UUID) -> ProfileSnapsh
     _load_experiences(session, user_id, snapshot)
     _load_projects(session, user_id, snapshot)
     _load_education(session, user_id, snapshot)
+    _load_certifications(session, user_id, snapshot)
 
     return snapshot
 
@@ -332,6 +424,20 @@ def _load_skills(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot
     ):
         project_links.setdefault(skill_id, []).append(project_id)
 
+    # DEV-054. Read here rather than joined onto the query above because it is
+    # keyed by `user_skill_id` where the two link tables are keyed by
+    # `skill_id`, and flattening that difference into one join would make the
+    # loader harder to read than the fact it is loading.
+    stated: dict[uuid.UUID, list[str]] = {}
+    for user_skill_id, note in session.execute(
+        select(SkillEvidenceRecord.user_skill_id, SkillEvidenceRecord.note)
+        .where(SkillEvidenceRecord.user_id == user_id)
+        .where(SkillEvidenceRecord.source == EvidenceSource.MANUAL)
+        .order_by(SkillEvidenceRecord.created_at, SkillEvidenceRecord.id)
+    ):
+        if note:
+            stated.setdefault(user_skill_id, []).append(note)
+
     for user_skill, skill in rows:
         evidence = SkillEvidence(
             user_skill_id=user_skill.id,
@@ -344,6 +450,7 @@ def _load_skills(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot
             verification_status=str(user_skill.verification_status),
             experience_ids=tuple(sorted(experience_links.get(skill.id, []), key=str)),
             project_ids=tuple(sorted(project_links.get(skill.id, []), key=str)),
+            stated_reasons=tuple(stated.get(user_skill.id, ())),
         )
         snapshot.skills.append(evidence)
         snapshot.skills_by_id[skill.id] = evidence
@@ -415,6 +522,24 @@ def _load_projects(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapsh
                 has_repository=bool(project.repository_url),
                 verification_status=str(project.verification_status),
                 skill_ids=frozenset(skills.get(project.id, set())),
+            )
+        )
+
+
+def _load_certifications(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot) -> None:
+    """Load credentials, resolving expiry against today while a clock is allowed."""
+    today = dt.date.today()
+    for certification in session.execute(owned(Certification, user_id)).scalars():
+        snapshot.certifications.append(
+            CertificationEvidence(
+                id=certification.id,
+                name=certification.name,
+                issuer=certification.issuer,
+                issued_on=certification.issued_on,
+                expires_on=certification.expires_on,
+                verification_status=certification.verification_status,
+                searchable=f"{certification.name} {certification.issuer}".casefold(),
+                is_current=(certification.expires_on is None or certification.expires_on >= today),
             )
         )
 

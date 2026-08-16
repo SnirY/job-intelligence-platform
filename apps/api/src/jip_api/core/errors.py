@@ -16,12 +16,14 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jip_api.application.applications.service import TransitionNotAllowedError
+from jip_api.application.career.skills import BlankEvidenceError
 from jip_api.application.documents.upload import UploadRejected
 from jip_api.application.errors import (
     ApplicationError,
     DuplicateResourceError,
     ResourceNotFoundError,
 )
+from jip_api.application.jobs.skill_candidates import CandidateAlreadyReviewedError
 from jip_api.application.processing.jobs import JobNotRetriableError
 from jip_api.application.resumes.authoring import (
     ResumeFamilyError,
@@ -197,6 +199,10 @@ async def _handle_application_error(_: Request, exc: Exception) -> JSONResponse:
 _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     ResourceNotFoundError: (status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
     DuplicateResourceError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # A stated reason that is blank once trimmed. The request is malformed
+    # rather than in conflict with anything, and the route's own constraint
+    # normally catches it first.
+    BlankEvidenceError: (HTTP_422_UNPROCESSABLE_CONTENT, "UNPROCESSABLE_ENTITY"),
     # An unacceptable upload is the caller's request being wrong, not a server
     # fault, and the message is written to be shown to the person who chose the
     # file.
@@ -204,6 +210,11 @@ _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     # Retrying a job that cannot be retried is a conflict with its current
     # state, which is what 409 means.
     JobNotRetriableError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # Reviewing a candidate twice conflicts with the decision already recorded.
+    # 409 rather than 404: the row exists and says something, and overwriting
+    # one reviewer's conclusion with another's silently is how a shared
+    # catalogue acquires changes nobody remembers making.
+    CandidateAlreadyReviewedError: (status.HTTP_409_CONFLICT, "CONFLICT"),
     # An item id that is not part of this extraction. Reported as not found,
     # for the same reason every other cross-user lookup is: distinguishing
     # "not yours" from "does not exist" is an enumeration oracle.

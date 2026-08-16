@@ -27,7 +27,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jip_api.domain.common import TimestampMixin, UserOwnedMixin, new_uuid_column
+from jip_api.domain.common import (
+    StrEnumType,
+    TimestampMixin,
+    UserOwnedMixin,
+    new_uuid_column,
+)
 from jip_api.infrastructure.db.base import Base
 
 _NON_ALNUM = re.compile(r"[^a-z0-9+#]+")
@@ -55,6 +60,95 @@ class SkillCategory(enum.StrEnum):
     DOMAIN = "DOMAIN"
     SOFT_SKILL = "SOFT_SKILL"
     OTHER = "OTHER"
+
+
+class CandidateStatus(enum.StrEnum):
+    """Where a proposed catalogue entry is in its review."""
+
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    """Reviewed and declined. Kept rather than deleted, because the queue is
+    rebuilt from the postings each time and a deleted row simply comes back —
+    "General-purpose programming language" would be re-proposed forever."""
+
+
+class SkillCandidate(TimestampMixin, Base):
+    """A technology a posting named that the catalogue could not resolve.
+
+    DEV-062, candidate 2. `requirement_skills.py` refuses to let job postings
+    write to the catalogue, for a good reason it states at length: the name came
+    from a model reading someone else's prose, nobody reviews it, and there are
+    as many requirements as there are postings. Letting that path create skills
+    fills a table shared by every user with "Rust (advantageous)" and "RUST".
+
+    That module also names what was missing — *"exactly what a later
+    reviewed-candidate mechanism would read from"*. This is that mechanism. The
+    posting still cannot write to the catalogue; it can only queue a proposal,
+    and a person decides.
+
+    **Global, like `Skill` itself.** No `user_id`, and `owned()` raises for it
+    by design: the catalogue it feeds is shared, so one user accepting "Playwright"
+    makes it resolvable for everyone. That is the point rather than a leak — no
+    profile data crosses, only the name a public posting used.
+    """
+
+    __tablename__ = "skill_candidates"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    """The matching key, so the same technology spelled two ways queues once."""
+
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    """As a posting wrote it, for the reviewer to recognise."""
+
+    occurrences: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1")
+    """How many requirements name it. Recomputed on each refresh, and the
+    reason the queue is ordered rather than alphabetical: a term six postings
+    used is worth a decision before one that appeared once."""
+
+    status: Mapped[CandidateStatus] = mapped_column(
+        StrEnumType(CandidateStatus, 20), nullable=False
+    )
+    """`StrEnumType`, not a bare `String`, so the annotation is true.
+
+    The other enum columns in this module are declared `String(20)` and read
+    back as `str`, which makes `value is CandidateStatus.PENDING` false for a
+    row that is pending — identity against a member of a `StrEnum` fails even
+    when equality holds. That cost a debugging cycle here before this column was
+    changed. The existing columns are left alone: correcting them changes what
+    `category` and `source` return at runtime, which is a wider change than this
+    one and belongs on its own.
+    """
+
+    resolved_skill_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("skills.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    """What a human decided this means, once ACCEPTED.
+
+    `SET NULL` rather than CASCADE: deleting a canonical skill should not erase
+    the record that somebody reviewed this name, only the conclusion they
+    reached.
+    """
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Why it was rejected, or why the mapping is what it is. Free text, because
+    the useful reasons are unforeseeable — "this is a protocol, not a skill" and
+    "the posting meant the other Transformers" are both worth keeping."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'ACCEPTED' AND resolved_skill_id IS NOT NULL) OR status <> 'ACCEPTED'",
+            name="accepted_names_a_skill",
+        ),
+    )
+    """An accepted candidate that resolves to nothing is the state this whole
+    mechanism exists to prevent: a name marked reviewed that still matches
+    nothing, and will never be looked at again."""
 
 
 class Proficiency(enum.StrEnum):
@@ -115,6 +209,103 @@ class SkillAlias(TimestampMixin, Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<SkillAlias {self.alias!r}>"
+
+
+class EvidenceSource(enum.StrEnum):
+    """Where a claim about a skill comes from.
+
+    The six ``docs/03-domain-model.md`` names for ``SkillEvidence``. Two of them
+    are structural and derived rather than stored — a skill linked to a role or
+    a project already has a row in ``experience_skills`` or ``project_skills``,
+    and duplicating that here would give the same fact two places to disagree.
+    They are in the enum because a caller reading evidence should see one list,
+    not two.
+    """
+
+    MANUAL = "MANUAL"
+    """The user said so, in their own words. The one source with nothing behind
+    it but the sentence they wrote, and the reason this table exists: before it,
+    a skill could only be demonstrated by a role or a project, so anything
+    learned outside employment could be claimed and never evidenced."""
+
+    EDUCATION = "EDUCATION"
+    CERTIFICATION = "CERTIFICATION"
+    """Waiting on DEV-052. Certifications have no entity yet, so nothing can
+    write this value; it is here so the enum matches the specification rather
+    than the current state of the schema."""
+
+    RESUME = "RESUME"
+    EXPERIENCE = "EXPERIENCE"
+    PROJECT = "PROJECT"
+
+
+class SkillEvidence(TimestampMixin, UserOwnedMixin, Base):
+    """Why the user says they have a skill.
+
+    DEV-054. ``docs/03-domain-model.md`` lists this in the MVP schema and it was
+    never built: evidence existed only as a dataclass assembled in memory during
+    a match, from the two join tables, and discarded afterwards. Four of the six
+    sources it names had nowhere to live, and **manual evidence** — the one the
+    specification is most explicit about — had no substitute at all.
+
+    Not a replacement for ``experience_skills`` and ``project_skills``. Those
+    stay where they are; a skill used in a role is a property of the role. This
+    holds what those cannot express, and the profile snapshot unions the two.
+
+    Naming: the matcher has an unrelated dataclass also called ``SkillEvidence``
+    — the in-memory view of a held skill, which this table now feeds. Both keep
+    the name they earned. They live in different layers and the collision is
+    visible at any import that needs both.
+    """
+
+    __tablename__ = "skill_evidence"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+    user_skill_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("user_skills.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    """Cascades: evidence for a skill nobody claims any more is not evidence of
+    anything."""
+
+    source: Mapped[EvidenceSource] = mapped_column(String(20), nullable=False)
+
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True, index=True
+    )
+    """The row this points at, for the sources that have one.
+
+    Deliberately not a foreign key. It addresses five different tables
+    depending on ``source``, and the alternative — five nullable columns with a
+    check constraint keeping four of them empty — describes the same thing
+    less clearly. ``ResumeItem.source_entity_id`` already made this trade.
+
+    Null for MANUAL, which points at nothing but its own note.
+    """
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """The user's own words. Required for MANUAL and optional elsewhere, where
+    it annotates a link rather than being the whole of it."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "(source = 'MANUAL' AND entity_id IS NULL AND note IS NOT NULL "
+            "AND length(trim(note)) > 0) OR (source <> 'MANUAL' AND entity_id IS NOT NULL)",
+            name="evidence_has_a_source",
+        ),
+        # Manual evidence with an empty note is a claim with nothing behind it,
+        # which is the thing this table exists to prevent. Enforced in the
+        # database rather than only in the service, because the rule is about
+        # what the row *means* and not about who wrote it.
+        UniqueConstraint(
+            "user_skill_id", "source", "entity_id", name="uq_skill_evidence_skill_source_entity"
+        ),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<SkillEvidence skill={self.user_skill_id} source={self.source}>"
 
 
 class UserSkill(TimestampMixin, UserOwnedMixin, Base):

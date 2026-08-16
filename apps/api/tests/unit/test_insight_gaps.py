@@ -32,6 +32,7 @@ def held(
     verification: str = "USER_CONFIRMED",
     experiences: tuple[uuid.UUID, ...] = (),
     projects: tuple[uuid.UUID, ...] = (),
+    reasons: tuple[str, ...] = (),
 ) -> SkillEvidence:
     return SkillEvidence(
         user_skill_id=uuid.uuid4(),
@@ -44,6 +45,7 @@ def held(
         verification_status=verification,
         experience_ids=experiences,
         project_ids=projects,
+        stated_reasons=reasons,
     )
 
 
@@ -217,3 +219,34 @@ def test_the_demand_list_is_capped_and_the_gap_list_is_not() -> None:
     assert len(most_asked(report)) == TOP_SKILLS
     assert len(build_gaps(report)) == TOP_SKILLS + 5
     assert len(report.skills) == TOP_SKILLS + 5, "the report itself must carry everything"
+
+
+# --- stated reasons (DEV-054) -------------------------------------------------
+
+
+def test_a_stated_reason_closes_a_weak_evidence_gap() -> None:
+    """The outcome DEV-054 was actually for.
+
+    WEAK_EVIDENCE means "you say you have this and the profile cannot show
+    where from". Until the `skill_evidence` table existed the only way out of
+    it was to attach the skill to a role or a project, so a skill learned on a
+    course or in a competition stayed on the gap list permanently — the platform
+    kept telling the user to fix something they had already done and had no way
+    to write down.
+    """
+    unexplained = held()
+    explained = held(reasons=("Built a compiler for it over a winter.",))
+
+    assert gap_state(unexplained) is GapState.WEAK_EVIDENCE
+    assert gap_state(explained) is GapState.NO_GAP
+    assert is_gap(gap_state(unexplained))
+    assert not is_gap(gap_state(explained))
+
+
+def test_a_stated_reason_does_not_rescue_an_unconfirmed_skill() -> None:
+    """Verification is checked before demonstration and stays that way. A reason
+    typed against a skill a resume import guessed at explains something the user
+    has still never agreed to."""
+    assert gap_state(held(verification="AI_EXTRACTED", reasons=("A course.",))) is (
+        GapState.PARTIAL_GAP
+    )

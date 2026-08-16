@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
 from jip_api.application.matching.evidence import (
+    STRONG_VERIFICATION,
+    CertificationEvidence,
+    EducationEvidence,
     ProfileSnapshot,
     SkillEvidence,
 )
@@ -35,6 +38,10 @@ from jip_api.domain.jobs.analysis import (
     RequirementImportance,
     RequirementType,
 )
+from jip_api.domain.matching.education import answers as education_answers
+from jip_api.domain.matching.education import degree_level as education_degree_level
+from jip_api.domain.matching.education import fields_in as education_fields_in
+from jip_api.domain.matching.entailment import implied_by
 from jip_api.domain.matching.models import EvidenceType, MatchCategory, MatchStatus
 from jip_api.domain.matching.rules import can_block, category_for, score_for, weight_for
 from jip_api.domain.matching.transferable import find_transfer
@@ -123,22 +130,39 @@ class Verdict:
 
 
 def match_requirements(
-    requirements: Sequence[MatchableRequirement], snapshot: ProfileSnapshot
+    requirements: Sequence[MatchableRequirement],
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str] | None = None,
 ) -> list[Verdict]:
     """Evaluate every requirement independently.
 
     Independently is the operative word: no requirement's verdict depends on
     another's, so a posting cannot drag its own score down by asking for
     something unusual, and the results can be read in any order.
+
+    ``canonical_names`` maps a resolved ``skill_id`` to the catalogue's own name
+    for it. Passed in rather than looked up, for the same reason ``snapshot``
+    is: the matcher must not touch a database, and that property is what the
+    determinism tests rest on.
+
+    Optional, and its absence is a silent loss of transferability rather than an
+    error — see :func:`_match_skill` for why, and DEV-059 for what that cost.
     """
-    return [_match_one(requirement, snapshot) for requirement in requirements]
+    lookup = canonical_names or {}
+    return [_match_one(requirement, snapshot, lookup) for requirement in requirements]
 
 
-def _match_one(requirement: MatchableRequirement, snapshot: ProfileSnapshot) -> Verdict:
+def _match_one(
+    requirement: MatchableRequirement,
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
+) -> Verdict:
     importance = RequirementImportance(requirement.importance)
     requirement_type = RequirementType(requirement.requirement_type)
 
-    status, confidence, explanation, evidence = _evaluate(requirement, requirement_type, snapshot)
+    status, confidence, explanation, evidence = _evaluate(
+        requirement, requirement_type, snapshot, canonical_names
+    )
 
     # A core requirement with a real gap is the blocker case. NO_EVIDENCE never
     # blocks: we have nothing on file, which is a fact about our data rather
@@ -167,14 +191,17 @@ def _evaluate(
     requirement: MatchableRequirement,
     requirement_type: RequirementType,
     snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
     """Dispatch to the rule for this requirement type."""
     if requirement_type is RequirementType.TECHNICAL_SKILL:
-        return _match_skill(requirement, snapshot)
+        return _match_skill(requirement, snapshot, canonical_names)
     if requirement_type is RequirementType.EXPERIENCE:
         return _match_experience(requirement, snapshot)
     if requirement_type is RequirementType.EDUCATION:
         return _match_education(requirement, snapshot)
+    if requirement_type is RequirementType.CERTIFICATION:
+        return _match_certification(requirement, snapshot)
     if requirement_type in {RequirementType.DOMAIN_KNOWLEDGE, RequirementType.SOFT_SKILL}:
         return _match_by_text(requirement, requirement_type, snapshot)
     if requirement_type in {
@@ -191,12 +218,85 @@ def _evaluate(
 # --- technical skills ---------------------------------------------------------
 
 
+_ALTERNATIVE_SEPARATORS = re.compile(
+    r"\s*/\s*|\s+(?:or|and/or)\s+",
+    re.IGNORECASE,
+)
+"""What separates one offered skill from another.
+
+A slash with optional spaces, or the words "or" / "and/or" **surrounded by
+spaces**. The spaces are load-bearing: without them this splits `Fortran` into
+`F` and `tran`, and `Terraform` into `Terraf` and `m`.
+"""
+
+
+def _alternatives(name: str) -> list[str]:
+    """The separate skills a composite requirement name offers.
+
+    `Linux/Unix` is two, `C/C++` is two, `Node.js` is one — the split is on
+    separators between words, and a dot inside a name is not one.
+
+    Returns nothing for a name with no separator, so the ordinary case does no
+    extra work and cannot be changed by this at all.
+
+    Length-guarded: a requirement whose "skill name" is a whole sentence — "at
+    least one programming or scripting language (e.g. Python, Go, Bash)" — is
+    not repairable by splitting, and pretending otherwise would produce
+    fragments that match nothing. That case needs the parse schema to carry a
+    list, which is the other half of DEV-055 and is still open.
+    """
+    if len(name) > 40:
+        return []
+    parts = [part.strip() for part in _ALTERNATIVE_SEPARATORS.split(name)]
+    return [part for part in parts if part and part != name]
+
+
 def _match_skill(
-    requirement: MatchableRequirement, snapshot: ProfileSnapshot
+    requirement: MatchableRequirement,
+    snapshot: ProfileSnapshot,
+    canonical_names: Mapping[uuid.UUID, str],
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
-    """Exact, then alias, then demonstration, then transferability."""
+    """Exact, then alias, then demonstration, then transferability.
+
+    Two names, deliberately. ``name`` is what the posting wrote and is what the
+    user reads back; ``lookup`` is what the catalogue calls it and is what the
+    transferability table is keyed by.
+
+    Collapsing them cost DEV-059. A posting asking for `C/C++` — an alias of
+    `C++` — resolved correctly, and then lost transferability, because
+    `find_transfer` was handed the alias:
+
+        find_transfer("C++",   ["C", ...])  ->  C via systems languages
+        find_transfer("C/C++", ["C", ...])  ->  NO TRANSFER
+
+    A profile holding C was told it had no C/C++, while the same requirement
+    written `C++` on another posting returned TRANSFERABLE. Every alias in the
+    catalogue had this, not only the ones spelling out alternatives, and only
+    on the transfer path — direct matching goes by ``skill_id`` and was always
+    right, which is why it stayed hidden.
+    """
     name = requirement.skill_name or requirement.normalized_text
-    held = snapshot.find_skill(skill_id=requirement.skill_id, name=name)
+    lookup = canonical_names.get(requirement.skill_id) if requirement.skill_id else None
+    lookup = lookup or name
+
+    held = snapshot.find_skill(skill_id=requirement.skill_id, name=lookup)
+
+    # DEV-055. A posting writing `Linux/Unix` means either one, and the whole
+    # string resolves to neither — so a profile holding Linux was told it had
+    # no Linux/Unix. Splitting is done here rather than at parse time because
+    # it repairs the postings already analysed; the parse schema still carries
+    # one name per requirement, and until it carries a list this is the half of
+    # the fix that costs nothing to apply.
+    #
+    # "Any of these" is the right reading: a posting offering alternatives is
+    # satisfied by one of them, and treating it as demanding all would make the
+    # posting stricter than it wrote itself.
+    if held is None:
+        for alternative in _alternatives(name):
+            held = snapshot.find_skill(skill_id=None, name=alternative)
+            if held is not None:
+                lookup = alternative
+                break
 
     if held is not None:
         return _classify_held_skill(held, name, snapshot)
@@ -209,7 +309,7 @@ def _match_skill(
             [],
         )
 
-    transfer = find_transfer(name, snapshot.held_skill_names())
+    transfer = find_transfer(lookup, snapshot.held_skill_names())
     if transfer is not None:
         held_name, group = transfer
         transferred = snapshot.skills_by_normalized.get(
@@ -225,6 +325,34 @@ def _match_skill(
             f"You have {held_name}, not {name}. Both are {group.label}, so the "
             f"experience should transfer — but it is not the same thing.",
             evidence,
+        )
+
+    # DEV-064. Last, and only after everything stronger has failed: something
+    # the profile holds may *guarantee* this rather than resemble it.
+    #
+    # Four postings in ten reported a gap in OOP, data structures, algorithms,
+    # HTML or CSS — every one mechanically correct and every one against an
+    # assumption rather than a fact, because nobody writes those on a CV after
+    # they have written React or a degree. Posting 8 carried three at once and
+    # lost seventeen points to them.
+    #
+    # PARTIAL_MATCH rather than MATCH, deliberately. The user has not claimed
+    # this skill, and the product's rule is never to claim more than the
+    # evidence supports. What is true is "you have something that requires it",
+    # and that is what the sentence says — with the implying item named, so a
+    # reader who thinks the inference is wrong can see exactly which one to
+    # reject.
+    implied = implied_by(
+        lookup,
+        snapshot.held_skill_names(),
+        [e.field_of_study for e in snapshot.education if e.field_of_study],
+    )
+    if implied is not None:
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            55,
+            f"{name} is not listed on your profile, but your {implied} implies it.",
+            [],
         )
 
     return (
@@ -268,7 +396,7 @@ def _classify_held_skill(
             evidence,
         )
 
-    if demonstrated and (proficient or (held.years_of_experience or 0) >= 3):
+    if held.shown_in_work and (proficient or (held.years_of_experience or 0) >= 3):
         where = "role" if held.experience_ids else "project"
         return (
             MatchStatus.STRONG_MATCH,
@@ -278,6 +406,12 @@ def _classify_held_skill(
         )
 
     if demonstrated or proficient:
+        # A stated reason lands here rather than at STRONG_MATCH above. It is
+        # real evidence — the user took the trouble to say where the skill comes
+        # from, which is more than a name on a list — but it is still their own
+        # account of themselves, and `docs/06` does not let an unbacked claim
+        # reach the top band. The lift DEV-054 buys is confidence 60 to 75, not 60
+        # to 90 — the status stays MATCH and the score stays 85 either way.
         return (
             MatchStatus.MATCH,
             75,
@@ -380,7 +514,9 @@ def _demonstrations(held: SkillEvidence, snapshot: ProfileSnapshot) -> list[Evid
 # --- experience ---------------------------------------------------------------
 
 
-def _years_met_sentence(held_years: int, required_years: int) -> str:
+def _years_met_sentence(
+    held_years: int, required_years: int, counted: list[EvidenceRef] | None = None
+) -> str:
     """Say that the years are covered, without inventing a demand.
 
     A posting whose minimum parses to zero — "0-3 years experience in
@@ -397,9 +533,10 @@ def _years_met_sentence(held_years: int, required_years: int) -> str:
     question and a different one. It belongs to DEV-011, with the rest of the
     values nobody has calibrated.
     """
+    phrase = _years_phrase(held_years, counted or [])
     if required_years <= 0:
-        return f"This asks for no minimum experience, and you have {held_years} years."
-    return f"You have {held_years} years against the {required_years} asked for."
+        return f"This asks for no minimum experience, and you have {phrase}."
+    return f"You have {phrase} against the {required_years} asked for."
 
 
 def _match_experience(
@@ -447,21 +584,73 @@ def _match_experience(
     if held_years is None:
         held_years = snapshot.total_months // 12
 
+    # DEV-061, part 2. A requirement naming a subject must find the subject.
+    #
+    # Until now the years branch compared numbers and nothing else, so "1 year
+    # of experience with digital logic design" was answered STRONG_MATCH by
+    # three years of anything — radar technician work from 2014, in the case
+    # that found this. "3 years of experience in neurosurgery" scored 100.
+    #
+    # PARTIAL_MATCH rather than GAP, and the difference matters more than it
+    # looks: a GAP on a CORE requirement becomes a BLOCKER, the strongest claim
+    # this engine makes, and keyword absence does not justify it. [employer 1]'s "1-2
+    # years of experience in Data Science and/or AI Engineering" blocked a
+    # profile carrying three machine-learning projects, because none of them
+    # writes the words "data science".
+    #
+    # So: credit the years, deny the subject, and say both. The sentence carries
+    # the doubt, which is where `docs/05` wants it — the reader may know better
+    # than a word comparison does.
+    #
+    # Checked only when there is something to search. A profile carrying a stated "6
+    # years" and no roles has no text for the keyword pass to read, so every
+    # subject-bearing requirement would fail it — and **"cannot check" is not
+    # "absent"**. That is the half-filled profile `GOAL.md` protects, and it is
+    # a different case from a profile full of radar work that genuinely says
+    # nothing about chip design.
+    searchable = bool(snapshot.experiences or snapshot.projects)
+
+    # A posting demanding nothing has no subject to evidence. "No prior
+    # professional experience required" parses to zero years, and running the
+    # check on it produced *"you have 3 years, but nothing in your profile is
+    # about required"* — a shortfall invented against an invitation to juniors.
+    subject = _subject_of(requirement.normalized_text) if required_years > 0 else None
+    if subject and searchable and not _subject_is_evidenced(subject, snapshot):
+        sources = _years_evidence(snapshot)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            45,
+            f"You have {_years_phrase(held_years, sources)}, but nothing in your "
+            f"profile is about {subject}.",
+            sources,
+        )
+
+    # DEV-061, parts 1 and 3. Cite the roles the years were counted from, and
+    # say so in the sentence.
+    #
+    # These used to disagree. The number came from summing `experiences`, the
+    # evidence came from a keyword search that also reads projects, and nothing
+    # made them meet — so a verdict reading "you have 3 years" cited three
+    # projects that had contributed no part of it. The evidence drawer is the
+    # feature this product is built on, and it was showing decoration.
+    counted = _years_evidence(snapshot) if snapshot.stated_years is None else []
+    shown = counted or evidence
+
     if held_years >= required_years:
         return (
             MatchStatus.STRONG_MATCH,
             85,
-            _years_met_sentence(held_years, required_years),
-            evidence,
+            _years_met_sentence(held_years, required_years, counted),
+            shown,
         )
 
     if required_years and held_years >= required_years * 0.6:
         return (
             MatchStatus.PARTIAL_MATCH,
             70,
-            f"You have {held_years} years against the {required_years} asked for — "
-            "close, and years are rarely a hard cut-off.",
-            evidence,
+            f"You have {_years_phrase(held_years, counted)} against the "
+            f"{required_years} asked for — close, and years are rarely a hard cut-off.",
+            shown,
         )
 
     if held_years == 0:
@@ -476,8 +665,183 @@ def _match_experience(
         MatchStatus.GAP,
         70,
         f"This asks for {required_years} years and your profile shows {held_years}.",
-        evidence,
+        shown,
     )
+
+
+_YEARS_BOILERPLATE = frozenset(
+    {
+        # Connectives. `_terms` filters on length alone, and "with" is four
+        # characters — long enough to survive, common enough to appear in
+        # almost every description. It let "digital logic design" pass the
+        # subject check on "with" plus "design", found in "Designed for
+        # medical-grade reliability" in a computer-vision project.
+        "with",
+        "within",
+        "and",
+        "the",
+        "for",
+        "from",
+        "that",
+        "this",
+        "into",
+        "using",
+        "such",
+        "including",
+        "across",
+        "over",
+        "have",
+        "must",
+        "should",
+        # How much the posting wants it. These say nothing about *what* it
+        # wants, and they never appear in anybody's CV — so leaving them in the
+        # subject made "5 years of backend required" ask for a profile
+        # containing the word "required", which no profile contains. Every
+        # requirement phrased that way would have failed the check below.
+        "required",
+        "require",
+        "requires",
+        "preferred",
+        "mandatory",
+        "essential",
+        "advantage",
+        "advantageous",
+        "needed",
+        "necessary",
+        "nice",
+        "ideally",
+        "desirable",
+        # Intensifiers. They qualify a subject without naming one.
+        "strong",
+        "solid",
+        "good",
+        "deep",
+        "excellent",
+        "demonstrated",
+        "practical",
+        "extensive",
+        "some",
+        "prior",
+        "previous",
+        "year",
+        "years",
+        "experience",
+        "experienced",
+        "professional",
+        "industry",
+        "commercial",
+        "hands",
+        "working",
+        "work",
+        "minimum",
+        "least",
+        "plus",
+        "relevant",
+        "proven",
+        "track",
+        "record",
+        "role",
+        "roles",
+        "position",
+        "full",
+        "time",
+    }
+)
+
+
+def _subject_of(text: str) -> str | None:
+    """What a years requirement is *about*, if it is about anything.
+
+    "3+ years of professional experience" is a quantity and nothing else, and
+    the total is the right answer for it. "1 year of experience with digital
+    logic design principles" is a quantity **and a subject**, and answering it
+    without looking for the subject is how a radar technician came to have a
+    year of chip design.
+
+    Returns the subject words joined, for the explanation to quote back, or
+    ``None`` when the requirement names none.
+    """
+    words = [word for word in _terms(text) if word not in _YEARS_BOILERPLATE]
+    return " ".join(words) if words else None
+
+
+def _subject_is_evidenced(subject: str, snapshot: ProfileSnapshot) -> bool:
+    """Whether one role or project is about ``subject``, rather than sharing a
+    word with it.
+
+    Two words have to land **in the same item**, which is what separates
+    evidence from coincidence. "Digital logic design" first passed this check on
+    the word `design` alone, found inside "Designed for medical-grade
+    reliability" in a computer-vision project — a single common word, in an
+    unrelated sentence, standing in for a subject the profile knows nothing
+    about.
+
+    A one-word subject needs that one word, because there is nothing else to
+    ask for. Two is the threshold everywhere else, not a majority: "digital
+    logic design principles" should not need `principles`, which appears in no
+    CV ever written.
+    """
+    # Deduplicated. "digital logic design principles and RTL design concepts"
+    # names `design` twice, and counting it twice let one word clear a
+    # two-word threshold — the coincidence this function exists to reject,
+    # passing because the posting repeated itself.
+    words = sorted(set(subject.split()))
+    needed = min(2, len(words))
+
+    for haystack in _searchable_texts(snapshot):
+        if sum(1 for word in words if word in haystack) >= needed:
+            return True
+    return False
+
+
+def _searchable_texts(snapshot: ProfileSnapshot) -> list[str]:
+    """Every role and project as one lowercased blob each.
+
+    Per item rather than concatenated, so words from two unrelated projects
+    cannot combine into evidence for a subject neither of them is about.
+    """
+    texts = [
+        " ".join(part for part in (e.title, e.description) if part).casefold()
+        for e in snapshot.experiences
+    ]
+    texts += [
+        " ".join(part for part in (p.name, p.summary, p.description) if part).casefold()
+        for p in snapshot.projects
+    ]
+    return texts
+
+
+def _years_evidence(snapshot: ProfileSnapshot) -> list[EvidenceRef]:
+    """The roles the year count was actually summed from, newest first."""
+    dated = [experience for experience in snapshot.experiences if experience.months]
+    dated.sort(key=lambda e: (e.months, str(e.id)), reverse=True)
+    return [
+        EvidenceRef(
+            evidence_type=EvidenceType.EXPERIENCE,
+            entity_id=experience.id,
+            label=f"{experience.title} at {experience.company}",
+            detail=experience.description,
+            verification_status=experience.verification_status,
+            relevance=90,
+        )
+        for experience in dated
+    ]
+
+
+def _years_phrase(held_years: int, counted: list[EvidenceRef]) -> str:
+    """ "3 years" or "3 years, from Team Leader Technician at the IDF".
+
+    Naming the source is the whole of DEV-061 part 3. A reader who is told what
+    was counted can disagree with it in one glance; a bare number gives them
+    nothing to disagree with, which is how three years of radar work passed for
+    three years of software.
+    """
+    plural = "year" if held_years == 1 else "years"
+    if not counted:
+        return f"{held_years} {plural}"
+    if len(counted) == 1:
+        return f"{held_years} {plural}, from {counted[0].label}"
+    return f"{held_years} {plural}, from {counted[0].label} and {len(counted) - 1} more"
 
 
 def _experience_evidence(
@@ -542,6 +906,26 @@ def _experience_evidence(
 # --- education ----------------------------------------------------------------
 
 
+def _education_evidence(education: EducationEvidence, *, relevance: int = 90) -> EvidenceRef:
+    """One qualification, cited.
+
+    The label reads as the user wrote it — degree and field — because the point
+    of evidence is that they recognise it.
+    """
+    return EvidenceRef(
+        evidence_type=EvidenceType.EDUCATION,
+        entity_id=education.id,
+        label=" — ".join(
+            part
+            for part in (education.degree or education.institution, education.field_of_study)
+            if part
+        ),
+        detail=education.institution,
+        verification_status="USER_CONFIRMED",
+        relevance=relevance,
+    )
+
+
 def _match_education(
     requirement: MatchableRequirement, snapshot: ProfileSnapshot
 ) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
@@ -553,6 +937,49 @@ def _match_education(
             [],
         )
 
+    # DEV-066. A requirement typed EDUCATION that names neither a degree level
+    # nor a known field cannot be answered here at all — "Exceptional academic
+    # track record from high school and university" is the case that found this.
+    # It fell past the equivalence check, past the word comparison, and onto
+    # GAP: a claim about the candidate, where the truth is a claim about our
+    # data. The profile's `grade` column exists and is empty, and "exceptional"
+    # is not a judgement available from a field nobody filled in.
+    #
+    # This is the rule `_unassessable` already states — UNKNOWN is never GAP,
+    # because inferring one means inventing a shortfall from an absence. Every
+    # other unanswerable type routes there; EDUCATION did not.
+    if education_degree_level(requirement.normalized_text) is None and not education_fields_in(
+        requirement.normalized_text
+    ):
+        return _unassessable(RequirementType.EDUCATION)
+
+    # Equivalence first, words second. DEV-060: a B.Sc. in Software Engineering
+    # shares no word with "Bachelor's degree in Computer Science", so the word
+    # comparison below returned a GAP — and on a CORE requirement, which these
+    # usually are, a BLOCKER against a qualification the user holds.
+    for education in snapshot.education:
+        matched, via = education_answers(
+            requirement.normalized_text,
+            education.degree or "",
+            education.field_of_study or "",
+        )
+        if not matched:
+            continue
+
+        ref = _education_evidence(education)
+        if via is None:
+            return (MatchStatus.MATCH, 80, f"Your {ref.label} covers this.", [ref])
+        # Named on both sides rather than asserted. `docs/05` forbids reporting
+        # similarity as equivalence, and a reader who disagrees that these two
+        # fields answer each other can see exactly what was claimed.
+        return (
+            MatchStatus.MATCH,
+            70,
+            f"Your {ref.label} is in {via.title()}, not what the posting named, "
+            "but it is the same kind of degree.",
+            [ref],
+        )
+
     terms = _terms(requirement.normalized_text)
     best: tuple[int, EvidenceRef] | None = None
 
@@ -560,18 +987,7 @@ def _match_education(
         overlap = sum(1 for term in terms if term in education.searchable)
         if not overlap:
             continue
-        ref = EvidenceRef(
-            evidence_type=EvidenceType.EDUCATION,
-            entity_id=education.id,
-            label=" — ".join(
-                part
-                for part in (education.degree or education.institution, education.field_of_study)
-                if part
-            ),
-            detail=education.institution,
-            verification_status="USER_CONFIRMED",
-            relevance=min(50 + overlap * 20, 100),
-        )
+        ref = _education_evidence(education, relevance=min(50 + overlap * 20, 100))
         if best is None or overlap > best[0]:
             best = (overlap, ref)
 
@@ -590,6 +1006,195 @@ def _match_education(
         55,
         "Your education does not appear to cover this.",
         [],
+    )
+
+
+def _certification_evidence(
+    certification: CertificationEvidence, *, relevance: int = 90
+) -> EvidenceRef:
+    """One credential, cited as the user entered it."""
+    return EvidenceRef(
+        evidence_type=EvidenceType.CERTIFICATION,
+        entity_id=certification.id,
+        label=certification.name,
+        detail=certification.issuer,
+        verification_status=certification.verification_status,
+        relevance=relevance,
+    )
+
+
+# Words that appear in every certification requirement and identify none of
+# them. Left in, "certification required" matches the first credential the user
+# holds, whatever it is.
+#
+# "relevant", "appropriate" and "recognised" earn their place for the opposite
+# reason: they are the whole content of the requirements that name nothing, and
+# filtering them is what routes those to `_unassessable` instead of inventing a
+# gap from a vague sentence.
+_CERTIFICATION_NOISE = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "or",
+        "and",
+        "in",
+        "of",
+        "for",
+        "with",
+        "plus",
+        "certification",
+        "certifications",
+        "certificate",
+        "certificates",
+        "certified",
+        "credential",
+        "credentials",
+        "qualification",
+        "qualifications",
+        "license",
+        "licence",
+        "licensed",
+        "required",
+        "require",
+        "requires",
+        "must",
+        "have",
+        "hold",
+        "holding",
+        "holder",
+        "preferred",
+        "advantage",
+        "equivalent",
+        "similar",
+        "relevant",
+        "appropriate",
+        "recognised",
+        "recognized",
+        "industry",
+        "standard",
+        "valid",
+        "current",
+        "active",
+        "professional",
+        "level",
+        "associate",
+        "practitioner",
+        "specialty",
+        "exam",
+        "training",
+        "course",
+    }
+)
+
+
+def _certification_terms(text: str) -> set[str]:
+    """Words that identify a credential, keeping the short ones.
+
+    **`_terms` cannot be used here**, and the reason is specific rather than
+    stylistic: it drops every word of three characters or fewer, because "of"
+    and "in" appear in every description and would make any requirement look
+    evidenced. Certification names are mostly short acronyms — AWS, PMP, CCNA,
+    GCP, RHCE — so that filter removes exactly the word carrying the meaning.
+    "AWS certification required" tokenised to nothing at all.
+
+    Safe here because the boilerplate is filtered by name instead of by length,
+    which is the more precise instrument for a vocabulary this narrow.
+    """
+    return {
+        word
+        for word in _WORD.findall(text.casefold())
+        if len(word) > 1 and word not in _CERTIFICATION_NOISE
+    }
+
+
+def _match_certification(
+    requirement: MatchableRequirement, snapshot: ProfileSnapshot
+) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
+    """Whether the user holds the credential the posting asked for.
+
+    DEV-052. Before this branch existed there was no CERTIFICATION type at all:
+    the parser prompt filed credentials under EDUCATION, `_match_education`
+    searched degrees and fields of study for "AWS Solutions Architect", found
+    nothing in common, and returned *"Your education does not appear to cover
+    this."* — **to a user holding the certification.** At CORE that GAP became a
+    BLOCKER and capped the whole match at 45.
+
+    Substring over the user's own text rather than a catalogue lookup. A
+    certification name is a proper noun owned by its issuer, so there is nothing
+    canonical to resolve to; what makes that safe here is that the comparison
+    runs against text the user typed about themselves.
+    """
+    if not snapshot.certifications:
+        return (
+            MatchStatus.NO_EVIDENCE,
+            30,
+            "There are no certifications in your profile yet, so this could not be checked.",
+            [],
+        )
+
+    terms = _certification_terms(requirement.normalized_text)
+    if not terms:
+        # "Relevant certification preferred" names no credential. Nothing here
+        # can tell whether the user holds what was meant, and `_unassessable`
+        # is the rule for that: UNKNOWN is never a gap, because inferring one
+        # would invent a shortfall out of a vague sentence.
+        return _unassessable(RequirementType.CERTIFICATION)
+
+    best: tuple[int, CertificationEvidence] | None = None
+    for certification in snapshot.certifications:
+        overlap = sum(1 for term in terms if term in certification.searchable)
+        if overlap and (best is None or overlap > best[0]):
+            best = (overlap, certification)
+
+    if best is None:
+        # Held certifications, none of them this one. A real gap, and a harder
+        # one than the education equivalent: a posting naming a specific
+        # credential usually means it.
+        return (
+            MatchStatus.GAP,
+            70,
+            "You have not recorded this certification.",
+            [],
+        )
+
+    overlap, held = best
+
+    if not held.is_current:
+        # Expired, and said plainly rather than scored as if held. It is still
+        # evidence — the exam was passed and the knowledge is not gone — which
+        # is why this is PARTIAL rather than GAP, and why the sentence gives the
+        # date instead of a verdict about what the user should do.
+        ref = _certification_evidence(held, relevance=60)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            65,
+            f"You hold {held.name}, but it expired in {held.expires_on}, so it may need renewing.",
+            [ref],
+        )
+
+    if held.verification_status not in STRONG_VERIFICATION:
+        # The rule `test_matching_engine.py` lists second: inferred or
+        # unverified profile data is never strong evidence. Every certification
+        # today is USER_CONFIRMED, because the API is the only thing that writes
+        # one — but `EvidenceSource.RESUME` exists and an importer is the
+        # obvious next writer, and a guard added afterwards is a guard added
+        # after the first wrong answer.
+        ref = _certification_evidence(held, relevance=60)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            50,
+            f"{held.name} is in your profile but has not been confirmed, "
+            "so it counts as partial evidence.",
+            [ref],
+        )
+
+    ref = _certification_evidence(held, relevance=min(60 + overlap * 20, 100))
+    return (
+        MatchStatus.STRONG_MATCH,
+        90,
+        f"You hold {held.name} from {held.issuer}.",
+        [ref],
     )
 
 
@@ -672,6 +1277,10 @@ _UNASSESSABLE_REASONS = {
     ),
     RequirementType.LANGUAGE: (
         "Your profile does not record spoken languages, so this could not be checked."
+    ),
+    RequirementType.CERTIFICATION: (
+        "This names no particular certification, so it could not be checked "
+        "against the ones you hold."
     ),
     RequirementType.OTHER: "This requirement could not be checked automatically.",
 }

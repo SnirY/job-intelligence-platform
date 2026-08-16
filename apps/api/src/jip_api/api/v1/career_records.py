@@ -1,4 +1,4 @@
-"""Skills, experience, projects, and education endpoints.
+"""Skills, experience, projects, education, and certification endpoints.
 
 Routes follow ``docs/10-api-contracts.md``. Every one resolves the user from the
 token and scopes on it; an id in the path selects among the caller's own rows
@@ -12,7 +12,15 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Response, status
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy.orm import Session
 
 from jip_api.api.dependencies import CurrentUser
@@ -20,7 +28,7 @@ from jip_api.application.career import history as history_uc
 from jip_api.application.career import skills as skills_uc
 from jip_api.core.responses import DataResponse
 from jip_api.domain.career.history import EmploymentType, ProjectStatus, ProjectType
-from jip_api.domain.career.skills import Proficiency, SkillCategory
+from jip_api.domain.career.skills import EvidenceSource, Proficiency, SkillCategory
 from jip_api.infrastructure.db.session import get_session
 
 router = APIRouter(prefix="/career", tags=["career"])
@@ -219,6 +227,74 @@ def patch_skill(
 )
 def remove_skill(user: CurrentUser, session: SessionDep, skill_id: uuid.UUID) -> Response:
     skills_uc.remove_user_skill(session, user.id, skill_id)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class SkillEvidencePayload(BaseModel):
+    """One stated reason for a skill."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: EvidenceSource
+    note: str | None
+
+
+class SkillEvidenceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    """Why this is a skill you have.
+
+    Stripped before the length check, so a note of three spaces is rejected here
+    as a malformed request rather than reaching the use case and coming back as
+    a 500. Bounded because it is an explanation, not an essay, and the review
+    screen has to be able to show it whole.
+    """
+
+
+@router.get(
+    "/skills/{skill_id}/evidence",
+    response_model=DataResponse[list[SkillEvidencePayload]],
+    summary="List the stated reasons for a skill",
+)
+def list_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID
+) -> DataResponse[list[SkillEvidencePayload]]:
+    rows = skills_uc.list_skill_evidence(session, user.id, skill_id)
+    return DataResponse(data=[SkillEvidencePayload.model_validate(row) for row in rows])
+
+
+@router.post(
+    "/skills/{skill_id}/evidence",
+    response_model=DataResponse[SkillEvidencePayload],
+    status_code=status.HTTP_201_CREATED,
+    summary="Say why you have a skill",
+)
+def add_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID, body: SkillEvidenceCreateRequest
+) -> DataResponse[SkillEvidencePayload]:
+    """DEV-054. The half of the profile that could not be written down.
+
+    A skill learned outside employment had no way to be demonstrated, and the
+    matcher scores a demonstrated skill above a listed one — so the profile
+    penalised whoever's work is not on a payslip.
+    """
+    evidence = skills_uc.add_manual_evidence(session, user.id, skill_id, body.note)
+    session.commit()
+    return DataResponse(data=SkillEvidencePayload.model_validate(evidence))
+
+
+@router.delete(
+    "/skills/{skill_id}/evidence/{evidence_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a stated reason",
+)
+def remove_skill_evidence(
+    user: CurrentUser, session: SessionDep, skill_id: uuid.UUID, evidence_id: uuid.UUID
+) -> Response:
+    skills_uc.remove_skill_evidence(session, user.id, skill_id, evidence_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -499,6 +575,144 @@ def patch_project(
 )
 def remove_project(user: CurrentUser, session: SessionDep, record_id: uuid.UUID) -> Response:
     history_uc.delete_project(session, user.id, record_id)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- certifications -----------------------------------------------------------
+
+
+class CertificationPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    issuer: str
+    issued_on: dt.date | None
+    expires_on: dt.date | None
+    credential_id: str | None
+    credential_url: str | None
+    description: str | None
+    verification_status: str
+
+
+class _CredentialDatesMixin(BaseModel):
+    """An expiry before its issue date is nonsense, and the message says which.
+
+    Separate from `_DateRangeMixin` because these columns are `issued_on` and
+    `expires_on`: a credential is granted on a day rather than held over a
+    period, and reusing the start/end names would have made the model lie about
+    what it stores.
+    """
+
+    issued_on: dt.date | None = None
+    expires_on: dt.date | None = None
+
+    @model_validator(mode="after")
+    def _expiry_after_issue(self) -> _CredentialDatesMixin:
+        if self.issued_on and self.expires_on and self.expires_on < self.issued_on:
+            raise ValueError("A certification cannot expire before it was issued.")
+        return self
+
+
+class CertificationCreateRequest(_CredentialDatesMixin):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    issuer: str = Field(min_length=1, max_length=200)
+    credential_id: str | None = Field(default=None, max_length=200)
+    credential_url: AnyHttpUrl | None = None
+    description: str | None = Field(default=None, max_length=5000)
+
+
+class CertificationUpdateRequest(_CredentialDatesMixin):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    issuer: str | None = Field(default=None, min_length=1, max_length=200)
+    credential_id: str | None = Field(default=None, max_length=200)
+    credential_url: AnyHttpUrl | None = None
+    description: str | None = Field(default=None, max_length=5000)
+
+    def to_update(self, provided: set[str]) -> history_uc.CertificationUpdate:
+        update = history_uc.CertificationUpdate()
+        for name in ("name", "issuer", "issued_on", "expires_on"):
+            if name in provided:
+                setattr(update, name, getattr(self, name))
+        for name in ("credential_id", "description"):
+            if name in provided:
+                setattr(update, name, _blank_to_none(getattr(self, name)))
+        if "credential_url" in provided:
+            update.credential_url = str(self.credential_url) if self.credential_url else None
+        return update
+
+
+@router.get(
+    "/certifications",
+    response_model=DataResponse[list[CertificationPayload]],
+    summary="List certifications",
+)
+def read_certifications(
+    user: CurrentUser, session: SessionDep
+) -> DataResponse[list[CertificationPayload]]:
+    records = history_uc.list_certifications(session, user.id)
+    return DataResponse(data=[CertificationPayload.model_validate(r) for r in records])
+
+
+@router.post(
+    "/certifications",
+    response_model=DataResponse[CertificationPayload],
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a certification",
+)
+def post_certification(
+    user: CurrentUser, session: SessionDep, body: CertificationCreateRequest
+) -> DataResponse[CertificationPayload]:
+    """DEV-052. Specified in three documents and built in none of them.
+
+    Its absence was not only a missing collection: with no CERTIFICATION
+    requirement type, a posting demanding one was read as EDUCATION and a user
+    who held it was told their education did not cover it.
+    """
+    record = history_uc.create_certification(
+        session,
+        user.id,
+        history_uc.CertificationInput(
+            name=body.name.strip(),
+            issuer=body.issuer.strip(),
+            issued_on=body.issued_on,
+            expires_on=body.expires_on,
+            credential_id=_blank_to_none(body.credential_id),
+            credential_url=str(body.credential_url) if body.credential_url else None,
+            description=_blank_to_none(body.description),
+        ),
+    )
+    session.commit()
+    return DataResponse(data=CertificationPayload.model_validate(record))
+
+
+@router.patch(
+    "/certifications/{record_id}",
+    response_model=DataResponse[CertificationPayload],
+    summary="Update a certification",
+)
+def patch_certification(
+    user: CurrentUser, session: SessionDep, record_id: uuid.UUID, body: CertificationUpdateRequest
+) -> DataResponse[CertificationPayload]:
+    record = history_uc.update_certification(
+        session, user.id, record_id, body.to_update(body.model_fields_set)
+    )
+    session.commit()
+    return DataResponse(data=CertificationPayload.model_validate(record))
+
+
+@router.delete(
+    "/certifications/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a certification",
+)
+def remove_certification(user: CurrentUser, session: SessionDep, record_id: uuid.UUID) -> Response:
+    history_uc.delete_certification(session, user.id, record_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

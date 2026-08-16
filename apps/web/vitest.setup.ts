@@ -17,7 +17,15 @@ import { afterEach } from "vitest";
  * that care about a specific theme set it explicitly rather than relying on
  * this, so the value is a default and not an assumption.
  */
-if (!window.matchMedia) {
+/**
+ * The guard is for the files that opt out of jsdom with
+ * `// @vitest-environment node` (DEV-058): `setupFiles` runs for every test
+ * file regardless of its environment, so an unguarded `window` here is a
+ * ReferenceError that fails the whole file before a single test runs.
+ */
+const hasDom = typeof window !== "undefined";
+
+if (hasDom && !window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList =>
     ({
       matches: false,
@@ -32,5 +40,5 @@ if (!window.matchMedia) {
 }
 
 afterEach(() => {
-  cleanup();
+  if (hasDom) cleanup();
 });

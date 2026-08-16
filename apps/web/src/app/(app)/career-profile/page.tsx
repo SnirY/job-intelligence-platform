@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CertificationsSection } from "@/features/career/certifications-section";
 import { EducationSection } from "@/features/career/education-section";
 import { ExperienceSection } from "@/features/career/experience-section";
 import { ProfileBasicsForm } from "@/features/career/profile-basics-form";
@@ -46,6 +47,7 @@ export default function CareerProfilePage() {
       <ExperienceSection />
       <ProjectsSection />
       <EducationSection />
+      <CertificationsSection />
     </div>
   );
 }

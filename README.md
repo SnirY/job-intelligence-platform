@@ -5,7 +5,7 @@ verified career profile with traceable evidence, and writes a tailored résumé
 that cannot make a claim your profile does not support.**
 
 A personal full-stack project: FastAPI, Next.js, PostgreSQL, Redis, Docker.
-~46,000 lines, 86 REST endpoints, 1,655 automated tests in CI.
+~46,000 lines, 101 REST endpoints, 1,784 automated tests in CI.
 
 ---
 
@@ -55,7 +55,8 @@ are the files where the thinking is:
 
 | | |
 |---|---|
-| [`application/matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine. **Deterministic and versioned — no model call anywhere in it.** Eight verdicts, including `NO_EVIDENCE`, which is excluded from the average rather than scored zero: an incomplete profile must not quietly lower the number |
+| [`application/matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine. **Deterministic and versioned — no model call anywhere in it.** Eight verdicts, including `NO_EVIDENCE`, which is excluded from the average rather than scored zero: an incomplete profile must not quietly lower the number. At **5.0.0**: ten real postings were read against it over two days and moved it five majors, every one a defect rather than a rule |
+| [`dev-011-results.md`](docs/development/dev-011-results.md) | Those ten postings, scored by the engine and by a person, with the fifteen things that came out of the disagreement |
 | [`application/resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, and classifies risk |
 | [`packages/ai-core`](packages/ai-core) | The provider boundary: JSON-schema constrained decoding, schema validation, retry classified by failure type, and a trace per attempt with token cost |
 | [`docs/adr/`](docs/adr) | Six architecture decisions, each with the alternative that was rejected and why |
@@ -63,17 +64,17 @@ are the files where the thinking is:
 
 ## Engineering
 
-**Tests.** 1,655 across three layers, all run in CI:
+**Tests.** 1,784 across three layers, all run in CI:
 
 | | |
 |---|---|
-| Backend unit + offline AI evaluations | 870 |
-| Integration, against real PostgreSQL and Redis | 466 |
-| Frontend | 319 |
+| Backend unit + offline AI evaluations | 934 |
+| Integration, against real PostgreSQL and Redis | 512 |
+| Frontend | 338 |
 
 Plus a live-model evaluation suite that runs on request, because it costs money.
 
-**Checks.** `mypy --strict` over 245 files, TypeScript `strict` with
+**Checks.** `mypy --strict` over 260 files, TypeScript `strict` with
 `noUncheckedIndexedAccess`, ruff, eslint, prettier, an Alembic
 `upgrade head → downgrade base` round-trip, and a Docker Compose stack brought up
 from scratch. All on every pull request.

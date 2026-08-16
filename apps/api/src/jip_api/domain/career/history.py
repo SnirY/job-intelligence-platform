@@ -192,6 +192,61 @@ class ExperienceSkill(Base):
     )
 
 
+class Certification(TimestampMixin, UserOwnedMixin, Base):
+    """A credential awarded by an issuer, which may expire.
+
+    DEV-052. Named in `docs/01` beside the other profile collections, in
+    `docs/03` as one of the six evidence sources, and twice in `docs/06` as a
+    resume section — and built in none of them beyond a free-text box in the
+    resume editor.
+
+    **Not folded into `education`, which is the tempting shortcut.** A
+    certification expires and carries a credential id; a degree does neither.
+    Storing them in one table would leave "is this still valid?" unanswerable
+    for the rows where it is the whole question — and that question is the only
+    reason a matcher can treat a held certification differently from a lapsed
+    one.
+    """
+
+    __tablename__ = "certifications"
+
+    id: Mapped[uuid.UUID] = new_uuid_column()
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    """As the issuer writes it: "AWS Certified Solutions Architect - Associate".
+    Not normalised against a catalogue. Certification names are issuer-owned
+    proper nouns rather than a shared vocabulary, so there is nothing to
+    normalise *to* — which is why matching against them is substring work over
+    the user's own text rather than a lookup."""
+
+    issuer: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    issued_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    expires_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    """Null means it does not expire, which is common and must not be confused
+    with "expiry unknown". A user who cannot remember leaves the field empty and
+    the matcher treats the credential as current — the alternative is the
+    platform deciding a certification has lapsed on no evidence."""
+
+    credential_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    credential_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
+        CheckConstraint("length(trim(issuer)) > 0", name="issuer_not_blank"),
+        CheckConstraint(
+            "expires_on IS NULL OR issued_on IS NULL OR expires_on >= issued_on",
+            name="expiry_after_issue",
+        ),
+    )
+    """`_DATE_ORDER` is not reused: it names `start_date`/`end_date`, and these
+    columns are `issued_on`/`expires_on` because a credential is granted on a
+    day rather than held over a period."""
+
+
 class Education(TimestampMixin, UserOwnedMixin, Base):
     """A qualification or course of study."""
 
