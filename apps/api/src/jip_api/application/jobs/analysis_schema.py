@@ -31,6 +31,7 @@ RequirementTypeLiteral = Literal[
     "TECHNICAL_SKILL",
     "EXPERIENCE",
     "EDUCATION",
+    "CERTIFICATION",
     "LANGUAGE",
     "DOMAIN_KNOWLEDGE",
     "SOFT_SKILL",

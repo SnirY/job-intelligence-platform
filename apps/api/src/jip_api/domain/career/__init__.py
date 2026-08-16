@@ -9,6 +9,7 @@ global, shared by every user, and must never be scoped by ``user_id``.
 """
 
 from jip_api.domain.career.history import (
+    Certification,
     Education,
     EmploymentType,
     Experience,
@@ -32,6 +33,7 @@ from jip_api.domain.career.skills import (
 
 __all__ = [
     "CareerProfile",
+    "Certification",
     "Education",
     "EmploymentType",
     "Experience",

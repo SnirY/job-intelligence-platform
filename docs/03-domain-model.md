@@ -168,6 +168,25 @@ used in a role is a property of the role. Copying it here would give one fact
 two places to disagree, so the profile snapshot unions the two sources instead
 and `skill_evidence` holds only what those cannot express.
 
+### Certification
+
+Built 2026-08-16 (DEV-052), specified here from the start as an evidence source
+and never given an entity of its own. Holds:
+
+- name, as the issuer writes it
+- issuer
+- issue date and expiry date, both optional
+- credential id and verification URL
+
+**A null expiry means the credential does not expire**, never that expiry is
+unknown. Every layer reads it that way — matcher, API and profile screen —
+because the other reading has the platform decide a certification has lapsed on
+no evidence at all.
+
+Deliberately not folded into `Education`. A credential expires and carries an
+issuer reference; a degree does neither, and one table for both would leave "is
+this still valid?" unanswerable for the rows where it is the entire question.
+
 ### Experience
 
 Includes:
@@ -273,6 +292,7 @@ Types:
 TECHNICAL_SKILL
 EXPERIENCE
 EDUCATION
+CERTIFICATION
 LANGUAGE
 DOMAIN_KNOWLEDGE
 SOFT_SKILL
@@ -280,6 +300,13 @@ LOCATION
 WORK_AUTHORIZATION
 OTHER
 ```
+
+`CERTIFICATION` was added 2026-08-16 (DEV-052). This document listed nine types
+and, three sections above, named `certification` as an evidence source distinct
+from `education` — so the list was already inconsistent with itself. The parser
+prompt resolved the contradiction the wrong way, telling the model that
+EDUCATION covers "degrees, fields of study, certifications", and a user holding
+the credential a posting asked for was told their education did not cover it.
 
 Importance:
 

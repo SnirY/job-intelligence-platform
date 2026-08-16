@@ -18,12 +18,55 @@ from decimal import Decimal
 from jip_api.domain.jobs.analysis import RequirementImportance, RequirementType
 from jip_api.domain.matching.models import MatchCategory, MatchStatus, Recommendation
 
-MATCHING_ENGINE_VERSION = "5.1.0"
+MATCHING_ENGINE_VERSION = "6.0.0"
 """Bump on any change to the values or logic below.
 
 Major for a change that reorders which jobs look better than which; minor for a
 new rule that leaves existing verdicts alone; patch for a fix that could not
 change a score.
+
+**6.0.0 (2026-08-16) — DEV-052, certifications.** Major, and the first bump in
+this file that is major for the reason the rule describes rather than out of
+caution: it moves stored scores by up to 55 points and reorders jobs against
+each other.
+
+`RequirementType` gained a tenth member. It had nine, and the job parser prompt
+told the model in as many words that EDUCATION covers "degrees, fields of study,
+certifications" — so a posting demanding *AWS Certified Solutions Architect*
+arrived as EDUCATION, `_match_education` searched degree, institution and field
+of study, shared no term with it, and returned:
+
+    GAP, "Your education does not appear to cover this."
+
+**To a user holding the certification.** At CORE importance that GAP became a
+BLOCKER and capped the entire match at `BLOCKER_CAP`, 45. A job the candidate
+was qualified for presented as one they were shut out of.
+
+`_match_certification` compares the requirement against the credentials on the
+profile, after removing the words every such requirement contains —
+*certification*, *certified*, *valid*, *required* — because leaving them in
+makes "certification required" match the first credential the user holds,
+whatever it is. A requirement left with no distinguishing term routes to
+`_unassessable` rather than GAP: "relevant certification preferred" names
+nothing, and inferring a shortfall from a vague sentence is the mistake DEV-066
+fixed for EDUCATION.
+
+An expired credential returns PARTIAL_MATCH and names the date, rather than GAP.
+The exam was passed and the knowledge did not evaporate on the expiry date; what
+the user needs is the fact, not a verdict about what to do with it.
+
+**Expiry is resolved in the snapshot loader, never in the matcher.**
+`test_matching_engine.py` opens by stating the engine runs "without a database,
+a clock, or a model", and expiry is the one fact in a profile that changes with
+the calendar rather than with an edit. The loader already does I/O and is the
+honest place for the one date call; `CertificationEvidence.is_current` arrives
+pre-decided. `expires_on` is in the snapshot fingerprint so a lapsing credential
+invalidates a cached match instead of serving a verdict the calendar has since
+made wrong.
+
+Scored in `MatchCategory.EDUCATION` rather than a new category. The five
+categories are fixed by `docs/05` and rendered as a breakdown; a sixth would
+appear empty on almost every posting.
 
 **5.1.0 (2026-08-16) — DEV-054.** A skill can now be backed by a reason the
 user typed, from the `skill_evidence` table that `docs/03-domain-model.md`
@@ -205,6 +248,11 @@ TYPE_CATEGORIES: dict[RequirementType, MatchCategory] = {
     RequirementType.TECHNICAL_SKILL: MatchCategory.TECHNICAL,
     RequirementType.EXPERIENCE: MatchCategory.EXPERIENCE,
     RequirementType.EDUCATION: MatchCategory.EDUCATION,
+    # Scored with education rather than beside it. `MatchCategory` is a fixed
+    # set of five that `docs/05` fixes and the UI renders as a breakdown;
+    # inventing a sixth for one requirement type would change every score
+    # display to give a category that is empty on almost every posting.
+    RequirementType.CERTIFICATION: MatchCategory.EDUCATION,
     RequirementType.DOMAIN_KNOWLEDGE: MatchCategory.DOMAIN,
     RequirementType.LANGUAGE: MatchCategory.OTHER,
     RequirementType.SOFT_SKILL: MatchCategory.OTHER,

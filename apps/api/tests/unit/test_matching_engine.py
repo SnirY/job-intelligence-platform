@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 from jip_api.application.matching.evidence import (
+    CertificationEvidence,
     EducationEvidence,
     ExperienceEvidence,
     ProfileSnapshot,
@@ -1243,3 +1244,208 @@ def test_a_stated_reason_changes_the_fingerprint() -> None:
     with_reason = profile(skill("Rust", reasons=("Built a ray tracer.",)))
 
     assert without.fingerprint() != with_reason.fingerprint()
+
+
+# --- certifications (DEV-052) -------------------------------------------------
+#
+# The requirement type did not exist, so a posting demanding a credential
+# arrived as EDUCATION and `_match_education` searched degrees for it. These pin
+# the branch that replaced that, and the first one is the defect itself.
+
+
+def credential(
+    name: str = "AWS Certified Solutions Architect",
+    *,
+    issuer: str = "Amazon Web Services",
+    is_current: bool = True,
+    expires_on: dt.date | None = None,
+    verification: str = "USER_CONFIRMED",
+) -> CertificationEvidence:
+    return CertificationEvidence(
+        id=uuid.uuid4(),
+        name=name,
+        issuer=issuer,
+        issued_on=dt.date(2023, 1, 1),
+        expires_on=expires_on,
+        verification_status=verification,
+        searchable=f"{name} {issuer}".casefold(),
+        is_current=is_current,
+    )
+
+
+def test_a_held_certification_answers_the_requirement() -> None:
+    """The defect DEV-052 was filed for, stated as a passing test.
+
+    Before the CERTIFICATION type existed this requirement was classified
+    EDUCATION, matched against degree and field of study, shared no term, and
+    came back *"Your education does not appear to cover this."* — to someone
+    holding the certificate.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential())
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.STRONG_MATCH
+    assert not result.is_blocker
+    assert "AWS Certified Solutions Architect" in result.explanation
+    assert result.evidence[0].evidence_type is EvidenceType.CERTIFICATION
+
+
+def test_a_core_certification_no_longer_blocks_someone_who_holds_it() -> None:
+    """The expensive half. A GAP on a CORE requirement is a BLOCKER, and a
+    blocker caps the whole match at 45 — so this was not a missing credit, it
+    was a qualified candidate shown a job as closed to them."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential())
+
+    result = score_match(
+        match_requirements(
+            [requirement("AWS Certified Solutions Architect", "CERTIFICATION", "CORE")],
+            snapshot,
+        )
+    )
+
+    assert result.has_blockers is False
+    assert result.overall_score > BLOCKER_CAP
+
+
+def test_an_expired_certification_is_partial_and_says_when() -> None:
+    """Not a GAP. The exam was passed and the knowledge did not evaporate on the
+    expiry date; what the user needs is the date, not a verdict."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential(is_current=False, expires_on=dt.date(2024, 6, 30)))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "2024-06-30" in result.explanation
+
+
+def test_a_certification_the_user_does_not_hold_is_a_gap() -> None:
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_a_vague_certification_requirement_is_unassessable_not_a_gap() -> None:
+    """ "Relevant certification preferred" names no credential. Deciding it is a
+    gap invents a shortfall out of a vague sentence, which is the mistake
+    DEV-066 fixed for EDUCATION and this branch must not repeat."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("Relevant certification preferred", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.UNKNOWN
+    assert not result.is_blocker
+
+
+def test_the_boilerplate_does_not_match_the_first_credential_on_file() -> None:
+    """Every certification requirement contains the word "certification". Left
+    in the comparison, "AWS certification required" would match a CCNA."""
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("CCNA", issuer="Cisco"))
+
+    result = match_requirements(
+        [requirement("AWS certification required", "CERTIFICATION")],
+        snapshot,
+    )[0]
+
+    assert result.status is MatchStatus.GAP
+
+
+def test_no_certifications_on_file_is_not_a_gap() -> None:
+    """An empty collection is a fact about our data, not about the candidate."""
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")],
+        profile(skill("Python")),
+    )[0]
+
+    assert result.status is MatchStatus.NO_EVIDENCE
+    assert not result.is_blocker
+
+
+def test_a_certification_changes_the_fingerprint() -> None:
+    without = profile(skill("Python"))
+    with_credential = profile(skill("Python"))
+    with_credential.certifications.append(credential())
+
+    assert without.fingerprint() != with_credential.fingerprint()
+
+
+def test_expiry_is_in_the_fingerprint() -> None:
+    """Expiry is the one profile fact that changes with the calendar rather than
+    with an edit. Out of the fingerprint, a cached match would go on asserting a
+    credential the date has since invalidated."""
+    current = profile(skill("Python"))
+    current.certifications.append(credential(expires_on=dt.date(2030, 1, 1)))
+    lapsing = profile(skill("Python"))
+    lapsing.certifications.append(credential(expires_on=dt.date(2024, 1, 1)))
+
+    assert current.fingerprint() != lapsing.fingerprint()
+
+
+def test_a_three_letter_credential_is_not_filtered_away() -> None:
+    """The trap the shared tokenizer set.
+
+    `_terms` drops every word of three characters or fewer — correctly, for
+    prose, where "of" and "in" would make any requirement look evidenced. But
+    certification names are mostly short acronyms, so reusing it here removed
+    the only word that carried meaning: "AWS certification required" tokenised
+    to the empty set and every such requirement came back UNKNOWN.
+
+    UNKNOWN never blocks, so this would not have shown up as a wrong blocker.
+    It would have shown up as certifications quietly never mattering.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential("AWS Certified Developer", issuer="AWS"))
+
+    held = match_requirements(
+        [requirement("AWS certification required", "CERTIFICATION")], snapshot
+    )[0]
+
+    assert held.status is MatchStatus.STRONG_MATCH
+
+    other = profile(skill("Python"))
+    other.certifications.append(credential("PMP", issuer="PMI"))
+
+    assert (
+        match_requirements([requirement("PMP certification", "CERTIFICATION")], other)[0].status
+        is MatchStatus.STRONG_MATCH
+    )
+
+
+def test_an_unconfirmed_certification_is_not_strong_evidence() -> None:
+    """The rule that outranks the feature.
+
+    Nothing writes an AI_EXTRACTED certification today — the API is the only
+    writer and it stamps USER_CONFIRMED. But `EvidenceSource.RESUME` exists and
+    an importer is the obvious next writer, and "inferred or unverified profile
+    information is never strong evidence" is not a rule that should acquire an
+    exception the first time somebody adds a source.
+    """
+    snapshot = profile(skill("Python"))
+    snapshot.certifications.append(credential(verification="AI_EXTRACTED"))
+
+    result = match_requirements(
+        [requirement("AWS Certified Solutions Architect", "CERTIFICATION")], snapshot
+    )[0]
+
+    assert result.status is MatchStatus.PARTIAL_MATCH
+    assert "has not been confirmed" in result.explanation

@@ -18,6 +18,7 @@ from jip_api.application.career.records import (
     list_owned,
 )
 from jip_api.domain.career.history import (
+    Certification,
     Education,
     Experience,
     ExperienceAchievement,
@@ -317,6 +318,100 @@ def link_project_skill(session: Session, project: Project, skill_id: uuid.UUID) 
         .on_conflict_do_nothing(index_elements=[ProjectSkill.project_id, ProjectSkill.skill_id])
     )
     session.flush()
+
+
+# --- certifications -----------------------------------------------------------
+
+
+@dataclass(slots=True)
+class CertificationInput:
+    name: str
+    issuer: str
+    issued_on: Any = None
+    expires_on: Any = None
+    credential_id: str | None = None
+    credential_url: str | None = None
+    description: str | None = None
+
+
+@dataclass(slots=True)
+class CertificationUpdate:
+    name: Any = field(default=_UNSET)
+    issuer: Any = field(default=_UNSET)
+    issued_on: Any = field(default=_UNSET)
+    expires_on: Any = field(default=_UNSET)
+    credential_id: Any = field(default=_UNSET)
+    credential_url: Any = field(default=_UNSET)
+    description: Any = field(default=_UNSET)
+
+    def changes(self) -> dict[str, Any]:
+        return _changes(
+            (
+                ("name", self.name),
+                ("issuer", self.issuer),
+                ("issued_on", self.issued_on),
+                ("expires_on", self.expires_on),
+                ("credential_id", self.credential_id),
+                ("credential_url", self.credential_url),
+                ("description", self.description),
+            )
+        )
+
+
+def list_certifications(session: Session, user_id: uuid.UUID) -> list[Certification]:
+    """Credentials, the ones that never expire first, then latest expiry first.
+
+    `nullsfirst` is deliberate and the opposite of an accident: a null
+    `expires_on` means the credential does not expire, so those are the
+    strongest and belong at the top. Sorting them last would bury a permanent
+    credential under lapsed ones.
+    """
+    return list_owned(
+        session,
+        Certification,
+        user_id,
+        nullsfirst(desc(Certification.expires_on)),
+        desc(Certification.issued_on),
+    )
+
+
+def create_certification(
+    session: Session, user_id: uuid.UUID, data: CertificationInput
+) -> Certification:
+    return create_owned(
+        session,
+        Certification(
+            user_id=user_id,
+            name=data.name,
+            issuer=data.issuer,
+            issued_on=data.issued_on,
+            expires_on=data.expires_on,
+            credential_id=data.credential_id,
+            credential_url=data.credential_url,
+            description=data.description,
+            verification_status=VerificationStatus.USER_CONFIRMED,
+        ),
+        conflict_message="That certification conflicts with an existing one.",
+    )
+
+
+def update_certification(
+    session: Session, user_id: uuid.UUID, record_id: uuid.UUID, update: CertificationUpdate
+) -> Certification:
+    record = get_owned(
+        session, Certification, user_id, record_id, missing_message="Certification not found."
+    )
+    apply_changes(session, record, update.changes())
+    return record
+
+
+def delete_certification(session: Session, user_id: uuid.UUID, record_id: uuid.UUID) -> None:
+    delete_owned(
+        session,
+        get_owned(
+            session, Certification, user_id, record_id, missing_message="Certification not found."
+        ),
+    )
 
 
 # --- education ----------------------------------------------------------------

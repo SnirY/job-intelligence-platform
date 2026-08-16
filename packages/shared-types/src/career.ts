@@ -291,6 +291,36 @@ export interface EducationCreate {
   description?: string | null;
 }
 
+// --- certifications -----------------------------------------------------------
+
+export interface Certification {
+  id: string;
+  name: string;
+  issuer: string;
+  /** ISO date, or null when the user did not record one. */
+  issued_on: string | null;
+  /**
+   * ISO date, or null meaning **it does not expire** — never "expiry unknown".
+   * The matcher reads it that way too: deciding a credential had lapsed on no
+   * evidence would be the platform inventing a shortfall.
+   */
+  expires_on: string | null;
+  credential_id: string | null;
+  credential_url: string | null;
+  description: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface CertificationCreate {
+  name: string;
+  issuer: string;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  credential_id?: string | null;
+  credential_url?: string | null;
+  description?: string | null;
+}
+
 // --- preferences --------------------------------------------------------------
 
 /**

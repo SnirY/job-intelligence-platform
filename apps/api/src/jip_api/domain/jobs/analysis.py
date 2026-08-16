@@ -48,7 +48,7 @@ from jip_api.infrastructure.db.base import Base
 
 
 class RequirementType(enum.StrEnum):
-    """The nine types from ``docs/03-domain-model.md``.
+    """The nine types from ``docs/03-domain-model.md``, plus one it implied.
 
     Closed rather than free text because Phase 6 weights categories
     differently: a missing work authorization is a blocker, a missing soft
@@ -59,6 +59,18 @@ class RequirementType(enum.StrEnum):
     TECHNICAL_SKILL = "TECHNICAL_SKILL"
     EXPERIENCE = "EXPERIENCE"
     EDUCATION = "EDUCATION"
+    CERTIFICATION = "CERTIFICATION"
+    """DEV-052. The tenth, added 2026-08-16.
+
+    Not in `docs/03`'s list of nine, and required by the same document's
+    evidence sources — which name `certification` separately from `education`.
+    Without it the parser prompt folded the two together in as many words
+    ("EDUCATION — degrees, fields of study, certifications"), `_match_education`
+    searched degrees for a credential and found nothing, and a user holding the
+    certification was told their education did not cover it. At CORE that
+    capped the match at 45.
+    """
+
     LANGUAGE = "LANGUAGE"
     DOMAIN_KNOWLEDGE = "DOMAIN_KNOWLEDGE"
     SOFT_SKILL = "SOFT_SKILL"

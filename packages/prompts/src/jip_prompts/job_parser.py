@@ -88,7 +88,12 @@ them as though they were written down.
 `skill_name` to the technology alone ("PostgreSQL"), not the surrounding phrase.
 - `EXPERIENCE` — years, seniority of past work, or a kind of work done before. \
 Set `years_min` when a number is stated.
-- `EDUCATION` — degrees, fields of study, certifications.
+- `EDUCATION` — degrees and fields of study. A university qualification. \
+Not certifications, which are their own type.
+- `CERTIFICATION` — a named credential awarded by an issuer, usually with an \
+exam behind it: AWS Solutions Architect, CISSP, PMP, CCNA, Security+. The tell \
+is that it is granted by a body rather than earned by a course of study, and \
+that it can expire.
 - `LANGUAGE` — human languages. English, German, Hebrew. Not programming \
 languages, which are `TECHNICAL_SKILL`.
 - `DOMAIN_KNOWLEDGE` — an industry or problem area: fintech, medical imaging, \

@@ -28,6 +28,8 @@ from decimal import Decimal
 from typing import Protocol
 
 from jip_api.application.matching.evidence import (
+    STRONG_VERIFICATION,
+    CertificationEvidence,
     EducationEvidence,
     ProfileSnapshot,
     SkillEvidence,
@@ -198,6 +200,8 @@ def _evaluate(
         return _match_experience(requirement, snapshot)
     if requirement_type is RequirementType.EDUCATION:
         return _match_education(requirement, snapshot)
+    if requirement_type is RequirementType.CERTIFICATION:
+        return _match_certification(requirement, snapshot)
     if requirement_type in {RequirementType.DOMAIN_KNOWLEDGE, RequirementType.SOFT_SKILL}:
         return _match_by_text(requirement, requirement_type, snapshot)
     if requirement_type in {
@@ -1005,6 +1009,195 @@ def _match_education(
     )
 
 
+def _certification_evidence(
+    certification: CertificationEvidence, *, relevance: int = 90
+) -> EvidenceRef:
+    """One credential, cited as the user entered it."""
+    return EvidenceRef(
+        evidence_type=EvidenceType.CERTIFICATION,
+        entity_id=certification.id,
+        label=certification.name,
+        detail=certification.issuer,
+        verification_status=certification.verification_status,
+        relevance=relevance,
+    )
+
+
+# Words that appear in every certification requirement and identify none of
+# them. Left in, "certification required" matches the first credential the user
+# holds, whatever it is.
+#
+# "relevant", "appropriate" and "recognised" earn their place for the opposite
+# reason: they are the whole content of the requirements that name nothing, and
+# filtering them is what routes those to `_unassessable` instead of inventing a
+# gap from a vague sentence.
+_CERTIFICATION_NOISE = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "or",
+        "and",
+        "in",
+        "of",
+        "for",
+        "with",
+        "plus",
+        "certification",
+        "certifications",
+        "certificate",
+        "certificates",
+        "certified",
+        "credential",
+        "credentials",
+        "qualification",
+        "qualifications",
+        "license",
+        "licence",
+        "licensed",
+        "required",
+        "require",
+        "requires",
+        "must",
+        "have",
+        "hold",
+        "holding",
+        "holder",
+        "preferred",
+        "advantage",
+        "equivalent",
+        "similar",
+        "relevant",
+        "appropriate",
+        "recognised",
+        "recognized",
+        "industry",
+        "standard",
+        "valid",
+        "current",
+        "active",
+        "professional",
+        "level",
+        "associate",
+        "practitioner",
+        "specialty",
+        "exam",
+        "training",
+        "course",
+    }
+)
+
+
+def _certification_terms(text: str) -> set[str]:
+    """Words that identify a credential, keeping the short ones.
+
+    **`_terms` cannot be used here**, and the reason is specific rather than
+    stylistic: it drops every word of three characters or fewer, because "of"
+    and "in" appear in every description and would make any requirement look
+    evidenced. Certification names are mostly short acronyms — AWS, PMP, CCNA,
+    GCP, RHCE — so that filter removes exactly the word carrying the meaning.
+    "AWS certification required" tokenised to nothing at all.
+
+    Safe here because the boilerplate is filtered by name instead of by length,
+    which is the more precise instrument for a vocabulary this narrow.
+    """
+    return {
+        word
+        for word in _WORD.findall(text.casefold())
+        if len(word) > 1 and word not in _CERTIFICATION_NOISE
+    }
+
+
+def _match_certification(
+    requirement: MatchableRequirement, snapshot: ProfileSnapshot
+) -> tuple[MatchStatus, int, str, list[EvidenceRef]]:
+    """Whether the user holds the credential the posting asked for.
+
+    DEV-052. Before this branch existed there was no CERTIFICATION type at all:
+    the parser prompt filed credentials under EDUCATION, `_match_education`
+    searched degrees and fields of study for "AWS Solutions Architect", found
+    nothing in common, and returned *"Your education does not appear to cover
+    this."* — **to a user holding the certification.** At CORE that GAP became a
+    BLOCKER and capped the whole match at 45.
+
+    Substring over the user's own text rather than a catalogue lookup. A
+    certification name is a proper noun owned by its issuer, so there is nothing
+    canonical to resolve to; what makes that safe here is that the comparison
+    runs against text the user typed about themselves.
+    """
+    if not snapshot.certifications:
+        return (
+            MatchStatus.NO_EVIDENCE,
+            30,
+            "There are no certifications in your profile yet, so this could not be checked.",
+            [],
+        )
+
+    terms = _certification_terms(requirement.normalized_text)
+    if not terms:
+        # "Relevant certification preferred" names no credential. Nothing here
+        # can tell whether the user holds what was meant, and `_unassessable`
+        # is the rule for that: UNKNOWN is never a gap, because inferring one
+        # would invent a shortfall out of a vague sentence.
+        return _unassessable(RequirementType.CERTIFICATION)
+
+    best: tuple[int, CertificationEvidence] | None = None
+    for certification in snapshot.certifications:
+        overlap = sum(1 for term in terms if term in certification.searchable)
+        if overlap and (best is None or overlap > best[0]):
+            best = (overlap, certification)
+
+    if best is None:
+        # Held certifications, none of them this one. A real gap, and a harder
+        # one than the education equivalent: a posting naming a specific
+        # credential usually means it.
+        return (
+            MatchStatus.GAP,
+            70,
+            "You have not recorded this certification.",
+            [],
+        )
+
+    overlap, held = best
+
+    if not held.is_current:
+        # Expired, and said plainly rather than scored as if held. It is still
+        # evidence — the exam was passed and the knowledge is not gone — which
+        # is why this is PARTIAL rather than GAP, and why the sentence gives the
+        # date instead of a verdict about what the user should do.
+        ref = _certification_evidence(held, relevance=60)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            65,
+            f"You hold {held.name}, but it expired in {held.expires_on}, so it may need renewing.",
+            [ref],
+        )
+
+    if held.verification_status not in STRONG_VERIFICATION:
+        # The rule `test_matching_engine.py` lists second: inferred or
+        # unverified profile data is never strong evidence. Every certification
+        # today is USER_CONFIRMED, because the API is the only thing that writes
+        # one — but `EvidenceSource.RESUME` exists and an importer is the
+        # obvious next writer, and a guard added afterwards is a guard added
+        # after the first wrong answer.
+        ref = _certification_evidence(held, relevance=60)
+        return (
+            MatchStatus.PARTIAL_MATCH,
+            50,
+            f"{held.name} is in your profile but has not been confirmed, "
+            "so it counts as partial evidence.",
+            [ref],
+        )
+
+    ref = _certification_evidence(held, relevance=min(60 + overlap * 20, 100))
+    return (
+        MatchStatus.STRONG_MATCH,
+        90,
+        f"You hold {held.name} from {held.issuer}.",
+        [ref],
+    )
+
+
 # --- text-matched types -------------------------------------------------------
 
 
@@ -1084,6 +1277,10 @@ _UNASSESSABLE_REASONS = {
     ),
     RequirementType.LANGUAGE: (
         "Your profile does not record spoken languages, so this could not be checked."
+    ),
+    RequirementType.CERTIFICATION: (
+        "This names no particular certification, so it could not be checked "
+        "against the ones you hold."
     ),
     RequirementType.OTHER: "This requirement could not be checked automatically.",
 }

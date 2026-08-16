@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from jip_api.application.ownership import owned
 from jip_api.domain.career.history import (
+    Certification,
     Education,
     Experience,
     ExperienceAchievement,
@@ -155,6 +156,40 @@ class ExperienceEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class CertificationEvidence:
+    """A credential the user holds, and whether it is still in date."""
+
+    id: uuid.UUID
+    name: str
+    issuer: str
+    issued_on: dt.date | None
+    expires_on: dt.date | None
+    verification_status: str
+    searchable: str
+    """Name and issuer, casefolded and joined. Certification names are proper
+    nouns owned by their issuer rather than entries in a shared vocabulary, so
+    there is no catalogue to resolve against and matching is substring work over
+    the user's own text."""
+
+    is_current: bool = True
+    """Whether the credential is still in date.
+
+    **Decided here, at load time, and never in the matcher.** Expiry is the one
+    fact in the profile that changes with the calendar rather than with an edit,
+    so answering it needs a clock — and `test_matching_engine.py` opens by
+    stating that the engine runs "without a database, a clock, or a model".
+    Reading the date in `_match_certification` would break that for the one
+    requirement type that needed it. The loader already does I/O; it is the
+    honest place for the one call.
+
+    A null `expires_on` sets this True: it means the credential does not expire,
+    **not** that expiry is unknown. The other reading would have the platform
+    decide a certification had lapsed on no evidence, which is the fabrication
+    the rest of the engine exists to refuse.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectEvidence:
     """Something the user built."""
 
@@ -221,6 +256,7 @@ class ProfileSnapshot:
     experiences: list[ExperienceEvidence] = field(default_factory=list)
     projects: list[ProjectEvidence] = field(default_factory=list)
     education: list[EducationEvidence] = field(default_factory=list)
+    certifications: list[CertificationEvidence] = field(default_factory=list)
 
     skills_by_id: dict[uuid.UUID, SkillEvidence] = field(default_factory=dict)
     skills_by_normalized: dict[str, SkillEvidence] = field(default_factory=dict)
@@ -236,7 +272,13 @@ class ProfileSnapshot:
         Drives NO_EVIDENCE rather than GAP: with nothing on file, every absence
         is a fact about our data rather than about the candidate.
         """
-        return not (self.skills or self.experiences or self.projects or self.education)
+        return not (
+            self.skills
+            or self.experiences
+            or self.projects
+            or self.education
+            or self.certifications
+        )
 
     @property
     def total_months(self) -> int:
@@ -329,6 +371,15 @@ class ProfileSnapshot:
         for education in sorted(self.education, key=lambda e: str(e.id)):
             parts.append(f"e:{education.id}:{education.searchable}:{education.end_date}")
 
+        # Expiry is in the fingerprint because it is the one field that can
+        # change a verdict without anyone editing the profile: a credential
+        # that lapses turns a MATCH into a PARTIAL. Leaving it out would serve
+        # a cached match that the calendar has since made wrong.
+        for certification in sorted(self.certifications, key=lambda c: str(c.id)):
+            parts.append(
+                f"c:{certification.id}:{certification.searchable}:{certification.expires_on}"
+            )
+
         parts.append(f"y:{self.stated_years}")
         parts.append(f"l:{self.profile.current_location if self.profile else None}")
 
@@ -347,6 +398,7 @@ def load_profile_snapshot(session: Session, user_id: uuid.UUID) -> ProfileSnapsh
     _load_experiences(session, user_id, snapshot)
     _load_projects(session, user_id, snapshot)
     _load_education(session, user_id, snapshot)
+    _load_certifications(session, user_id, snapshot)
 
     return snapshot
 
@@ -470,6 +522,24 @@ def _load_projects(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapsh
                 has_repository=bool(project.repository_url),
                 verification_status=str(project.verification_status),
                 skill_ids=frozenset(skills.get(project.id, set())),
+            )
+        )
+
+
+def _load_certifications(session: Session, user_id: uuid.UUID, snapshot: ProfileSnapshot) -> None:
+    """Load credentials, resolving expiry against today while a clock is allowed."""
+    today = dt.date.today()
+    for certification in session.execute(owned(Certification, user_id)).scalars():
+        snapshot.certifications.append(
+            CertificationEvidence(
+                id=certification.id,
+                name=certification.name,
+                issuer=certification.issuer,
+                issued_on=certification.issued_on,
+                expires_on=certification.expires_on,
+                verification_status=certification.verification_status,
+                searchable=f"{certification.name} {certification.issuer}".casefold(),
+                is_current=(certification.expires_on is None or certification.expires_on >= today),
             )
         )
 

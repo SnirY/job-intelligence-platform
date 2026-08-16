@@ -133,8 +133,14 @@ class Recommendation(enum.StrEnum):
 class EvidenceType(enum.StrEnum):
     """Which part of the career profile a piece of evidence came from.
 
-    The five the goal permits. Nothing else may be cited: an inference is not
-    evidence, and neither is anything the user has not put in their profile.
+    Nothing outside this set may be cited: an inference is not evidence, and
+    neither is anything the user has not put in their profile. That rule is the
+    point; the length of the list is not.
+
+    CERTIFICATION was added 2026-08-16 (DEV-052) once certifications became a
+    profile collection. It satisfies the rule exactly — a credential the user
+    entered about themselves — and until it existed a held certification could
+    not be cited even when it answered the requirement outright.
     """
 
     SKILL = "SKILL"
@@ -142,6 +148,7 @@ class EvidenceType(enum.StrEnum):
     ACHIEVEMENT = "ACHIEVEMENT"
     PROJECT = "PROJECT"
     EDUCATION = "EDUCATION"
+    CERTIFICATION = "CERTIFICATION"
 
 
 class JobMatch(TimestampMixin, UserOwnedMixin, Base):
