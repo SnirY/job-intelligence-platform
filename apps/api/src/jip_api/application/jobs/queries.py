@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.expression import ScalarSelect
 
 from jip_api.application.errors import ResourceNotFoundError
 from jip_api.application.matching.queries import assess_staleness_many
@@ -38,6 +39,16 @@ class JobSort(enum.StrEnum):
     OLDEST = "OLDEST"
     TITLE = "TITLE"
     COMPANY = "COMPANY"
+
+    BEST_ALIGNED = "BEST_ALIGNED"
+    """Highest alignment first, unscored jobs last.
+
+    Offered, never the default. ``docs/05-ai-and-matching.md`` forbids reading
+    the score as a chance of being hired, and a list that arrives already
+    ordered by our number asserts a ranking of the user's opportunities before
+    they asked for one. As something they switch to, it is a tool; as the
+    default, it is a claim.
+    """
 
 
 class ArchivedFilter(enum.StrEnum):
@@ -130,7 +141,9 @@ def list_jobs(session: Session, user_id: uuid.UUID, filters: JobFilters) -> JobP
 
     total = session.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
-    statement = _apply_sort(base, filters.sort).limit(page_size).offset((page - 1) * page_size)
+    statement = (
+        _apply_sort(base, filters.sort, user_id).limit(page_size).offset((page - 1) * page_size)
+    )
     jobs = list(session.execute(statement).scalars())
 
     return JobPage(
@@ -225,7 +238,9 @@ def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select
     return statement
 
 
-def _apply_sort(statement: Select[tuple[Job]], sort: JobSort) -> Select[tuple[Job]]:
+def _apply_sort(
+    statement: Select[tuple[Job]], sort: JobSort, user_id: uuid.UUID
+) -> Select[tuple[Job]]:
     """Order the results.
 
     Every ordering ends with a tie-break on `id`. Without one, two jobs added
@@ -244,6 +259,42 @@ def _apply_sort(statement: Select[tuple[Job]], sort: JobSort) -> Select[tuple[Jo
             return statement.order_by(
                 Job.company.is_(None), Job.company.asc(), Job.normalized_title.asc(), Job.id.asc()
             )
+        case JobSort.BEST_ALIGNED:
+            score = _latest_score(user_id)
+            # Unscored last, and the `is_(None)` term rather than a bare DESC
+            # because PostgreSQL sorts nulls first under DESC — which would open
+            # the list with every job that has never been measured.
+            #
+            # They sort last but they are not ranked last: the screen has to
+            # separate them and say so. An unmeasured job placed at the bottom
+            # of a ranking, unlabelled, reads as the worst one, and that is
+            # DEV-027 arriving through the sort order instead of through a
+            # badge.
+            return statement.order_by(
+                score.is_(None), score.desc(), Job.created_at.desc(), Job.id.desc()
+            )
+
+
+def _latest_score(user_id: uuid.UUID) -> ScalarSelect[int | None]:
+    """The newest match's score for whichever job is being ordered.
+
+    Correlated rather than joined, because a join to `job_matches` multiplies
+    the rows by the number of recalculations and the page would then need a
+    DISTINCT that fights its own ORDER BY.
+
+    Scoped by user as well as by job. The correlation alone would be safe today,
+    since the outer query is already scoped and a match points at one job, but
+    `owned()` exists precisely so that reasoning does not have to be redone at
+    each call site.
+    """
+    return (
+        select(JobMatch.overall_score)
+        .where(JobMatch.job_id == Job.id, JobMatch.user_id == user_id)
+        .order_by(JobMatch.version.desc())
+        .limit(1)
+        .correlate(Job)
+        .scalar_subquery()
+    )
 
 
 def get_job(session: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> Job:

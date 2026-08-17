@@ -167,15 +167,30 @@ def auth(factory: TokenFactory, subject: str = ALICE) -> dict[str, str]:
     return {"Authorization": f"Bearer {factory.token(subject=subject)}"}
 
 
-def analysed_job(client: TestClient, factory: TokenFactory, subject: str = ALICE) -> str:
-    """A job with a completed analysis, ready to match against."""
+def analysed_job(
+    client: TestClient,
+    factory: TokenFactory,
+    subject: str = ALICE,
+    *,
+    title: str = "Senior Backend Engineer",
+    allow_duplicate: bool = False,
+) -> str:
+    """A job with a completed analysis, ready to match against.
+
+    Every job here carries the same ``POSTING``, because the analysis fixtures
+    are written against it. A test that needs two of them has to say so:
+    duplicate detection is on content, so the second is a 409 unless the
+    create-anyway path is taken deliberately — which is the same thing a user
+    does when the product asks.
+    """
     created = client.post(
         JOBS,
         headers=auth(factory, subject),
         json={
             "import_method": "PASTED_DESCRIPTION",
-            "title": "Senior Backend Engineer",
+            "title": title,
             "description": POSTING,
+            "allow_duplicate": allow_duplicate,
         },
     )
     assert created.status_code == 201, created.text
@@ -600,6 +615,57 @@ def test_the_list_carries_enough_to_draw_a_coverage_summary(
     assert row["total_requirements"] == computed["total_requirements"]
     assert row["total_requirements"] > 0
     assert sum(row["status_counts"].values()) <= row["total_requirements"]
+
+
+def test_sorting_by_alignment_ranks_scored_jobs_and_puts_unscored_last(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Highest first, and the unmeasured ones after all of them.
+
+    PostgreSQL sorts nulls first under DESC, so without an explicit term the
+    list would open with every job that has never been compared — the exact
+    opposite of what the ordering is for.
+    """
+    add_skill(client, factory, "Python")
+
+    strong = analysed_job(client, factory, title="Scored role")
+    match(client, factory, strong)
+
+    unscored = analysed_job(client, factory, title="Never compared", allow_duplicate=True)
+
+    response = client.get(JOBS, headers=auth(factory), params={"sort": "BEST_ALIGNED"})
+    assert response.status_code == 200, response.text
+    rows = response.json()["data"]
+
+    ids = [row["id"] for row in rows]
+    scores = [row["score"] for row in rows]
+
+    assert ids.index(strong) < ids.index(unscored), "a scored job must precede an unscored one"
+
+    # Every score that exists comes before every score that does not, and the
+    # scored run is descending.
+    present = [s for s in scores if s is not None]
+    assert scores[: len(present)] == present, "unscored rows are interleaved among scored ones"
+    assert present == sorted(present, reverse=True)
+
+
+def test_alignment_is_never_the_default_order(client: TestClient, factory: TokenFactory) -> None:
+    """`docs/05-ai-and-matching.md` forbids reading the score as a chance of
+    being hired, and a list that arrives already ranked by our number asserts a
+    verdict on the user's opportunities before they asked for one.
+
+    Newest-first is what an unparameterised request gets.
+    """
+    add_skill(client, factory, "Python")
+
+    older = analysed_job(client, factory, title="Saved first, and scored")
+    match(client, factory, older)
+    newer = analysed_job(client, factory, title="Saved second", allow_duplicate=True)
+
+    rows = client.get(JOBS, headers=auth(factory)).json()["data"]
+    ids = [row["id"] for row in rows]
+
+    assert ids.index(newer) < ids.index(older), "the default order is not newest-first"
 
 
 def test_the_list_reports_a_score_that_has_fallen_out_of_date(

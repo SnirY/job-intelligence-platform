@@ -209,14 +209,27 @@ export function isDuplicateDetails(value: unknown): value is DuplicateDetails {
 }
 
 /** Orderings the list offers. */
-export type JobSort = "NEWEST" | "OLDEST" | "TITLE" | "COMPANY";
+export type JobSort = "NEWEST" | "OLDEST" | "TITLE" | "COMPANY" | "BEST_ALIGNED";
 
 export const JOB_SORT_LABELS: Record<JobSort, string> = {
   NEWEST: "Newest first",
   OLDEST: "Oldest first",
   TITLE: "Title A–Z",
   COMPANY: "Company A–Z",
+  BEST_ALIGNED: "Best aligned first",
 };
+
+/**
+ * Orderings that move scored jobs above unscored ones.
+ *
+ * A screen sorting by one of these has to say what happened to the rest: they
+ * come last, and last in a ranking reads as worst unless the list separates
+ * them and names the rule. Never a default — see `JobSort.BEST_ALIGNED` in
+ * `application/jobs/queries.py` for why.
+ */
+export function sortsUnscoredLast(sort: JobSort): boolean {
+  return sort === "BEST_ALIGNED";
+}
 
 /** Which side of the archive to show. */
 export type ArchivedFilter = "ACTIVE" | "ARCHIVED" | "ALL";
