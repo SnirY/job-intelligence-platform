@@ -131,6 +131,12 @@ class JobSummaryPayload(BaseModel):
     alignment_label: str | None = None
     is_stale: bool = False
 
+    # Enough to draw a coverage summary per row without asking for the items.
+    # Keys are `MatchStatus` values; absent keys mean zero, so a caller must not
+    # read the length of this as the number of requirement categories.
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    total_requirements: int = 0
+
 
 class JobImportPayload(BaseModel):
     """One import attempt, exactly as it happened."""
@@ -494,6 +500,8 @@ def read_jobs(
                     "score": item.score,
                     "alignment_label": item.alignment_label,
                     "is_stale": item.is_stale,
+                    "status_counts": item.status_counts,
+                    "total_requirements": item.total_requirements,
                 }
             )
             for item in result.items

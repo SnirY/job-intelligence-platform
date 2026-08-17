@@ -574,6 +574,32 @@ def test_an_unmatched_job_lists_a_null_score_and_never_a_zero(
     assert row["score"] is None
     assert row["alignment_label"] is None
     assert row["is_stale"] is False
+    assert row["status_counts"] == {}
+    assert row["total_requirements"] == 0
+
+
+def test_the_list_carries_enough_to_draw_a_coverage_summary(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The counts and their denominator, without fetching the requirements.
+
+    ``status_counts`` exists on the match for exactly this: a summary drawn per
+    row would otherwise cost one query per row to rebuild from items.
+
+    The denominator travels with the counts. A coverage figure without one is a
+    percentage in disguise, and `docs/07` is explicit that a bare percentage is
+    what this product does not ship.
+    """
+    job_id = analysed_job(client, factory)
+    add_skill(client, factory, "Python")
+    computed = match(client, factory, job_id)["match"]
+
+    row = listed(client, factory, job_id)
+
+    assert row["status_counts"] == computed["status_counts"]
+    assert row["total_requirements"] == computed["total_requirements"]
+    assert row["total_requirements"] > 0
+    assert sum(row["status_counts"].values()) <= row["total_requirements"]
 
 
 def test_the_list_reports_a_score_that_has_fallen_out_of_date(
