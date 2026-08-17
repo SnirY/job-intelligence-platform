@@ -21,7 +21,15 @@ import { JobFilters } from "@/features/jobs/job-filters";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
 import { ApiError } from "@/lib/api";
 
-const INITIAL: JobListQuery = { page: 1, page_size: 20, sort: "NEWEST", archived: "ACTIVE" };
+/** Matches `DEFAULT_PAGE_SIZE` in `application/jobs/queries.py`. */
+const DEFAULT_PAGE_SIZE = 20;
+
+const INITIAL: JobListQuery = {
+  page: 1,
+  page_size: DEFAULT_PAGE_SIZE,
+  sort: "NEWEST",
+  archived: "ACTIVE",
+};
 
 export function JobsList() {
   const [query, setQuery] = useState<JobListQuery>(INITIAL);
@@ -69,7 +77,7 @@ function JobResults({
   onPage: (page: number) => void;
 }) {
   if (jobs.isPending) {
-    return <JobRowsSkeleton />;
+    return <JobRowsSkeleton rows={query.page_size ?? DEFAULT_PAGE_SIZE} />;
   }
 
   if (jobs.isError) {
@@ -135,17 +143,21 @@ function JobResults({
  * The list while it is still arriving, in the shape it will arrive in.
  *
  * A card reading "Loading your jobs…" is one line tall and the list is not, so
- * the page moved under the reader every time it finished loading. Five rows is
- * the page size, so the reserved height is the height that is coming.
+ * the page moved under the reader every time it finished loading.
+ *
+ * The row count comes from the page size rather than from a number that looked
+ * about right. It was five against a page size of twenty, which reserved a
+ * quarter of the height that was coming and left the jump it existed to
+ * prevent. Deriving it means the two cannot drift apart again.
  *
  * The announcement is separate because the rows are `aria-hidden` — a skeleton
  * describes nothing, and without the label the loading state would be silent
  * for the readers who cannot see it.
  */
-function JobRowsSkeleton() {
+function JobRowsSkeleton({ rows }: { rows: number }) {
   return (
     <SkeletonRegion label="Loading your jobs…" className="space-y-3">
-      {Array.from({ length: 5 }, (_, i) => (
+      {Array.from({ length: rows }, (_, i) => (
         <Card key={i}>
           <CardContent className="flex flex-wrap items-start gap-3 p-4">
             <div className="min-w-0 flex-1 space-y-2">
