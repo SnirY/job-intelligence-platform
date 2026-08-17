@@ -41,13 +41,45 @@ afterEach(() => vi.unstubAllGlobals());
 // --- an account with nothing in it --------------------------------------------
 
 describe("a new account", () => {
+  it("is not welcomed back somewhere it has never been", async () => {
+    /* "Welcome back, Maya" was unconditional, which made it the first sentence
+       a brand-new account ever read. Whether someone is returning is a question
+       about their data, so the screen that holds the data answers it. */
+    vi.stubGlobal("fetch", serving(dashboard()));
+
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
+
+    expect(await screen.findByText("Welcome, Maya")).toBeInTheDocument();
+    expect(screen.queryByText("Welcome back, Maya")).not.toBeInTheDocument();
+  });
+
+  it("is told to add a job rather than congratulated for finishing none", async () => {
+    /* Every rule but BUILD_PROFILE needs a saved job to fire against, so an
+       account that completes its profile and saves nothing drops to zero
+       actions — and read "every job you have saved has been read, compared,
+       and is either applied to or set aside", which is vacuously true and
+       lands as "you are all caught up" on the one reader who has not started.
+
+       This card is the onboarding, so the empty state is the import step. */
+    vi.stubGlobal(
+      "fetch",
+      serving(dashboard({ state: { ...dashboard().state, profile_skills: 4 } })),
+    );
+
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
+
+    expect(await screen.findByText(/Add a job, and this fills in/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is waiting on you/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Add a job/ })).toHaveAttribute("href", "/jobs/new");
+  });
+
   it("reads as unstarted rather than broken", async () => {
     /* An empty dashboard is the state a real new user is in. Rendering it as a
        grid of zeros would be indistinguishable from a dashboard that failed to
        load its numbers. */
     vi.stubGlobal("fetch", serving(dashboard()));
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText(/Nothing here yet/)).toBeInTheDocument();
     expect(screen.queryByText("Jobs saved")).not.toBeInTheDocument();
@@ -78,7 +110,7 @@ describe("a new account", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     const intro = await screen.findByText(/Nothing here yet/);
     expect(intro.textContent).not.toMatch(/\b(one|two|three|\d+)\b/i);
@@ -88,7 +120,7 @@ describe("a new account", () => {
   it("surfaces a load failure without claiming data is gone", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText(/Could not load your dashboard/)).toBeInTheDocument();
     expect(screen.getByText(/data is unaffected/)).toBeInTheDocument();
@@ -120,7 +152,7 @@ describe("next actions", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(
       await screen.findByText("Saved, and not yet read into requirements."),
@@ -147,7 +179,7 @@ describe("next actions", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     const link = await screen.findByRole("link", { name: /Compare it to your profile/ });
     expect(link).toHaveAttribute("href", "/jobs/job-9");
@@ -161,7 +193,7 @@ describe("next actions", () => {
       serving(dashboard({ state: { ...dashboard().state, jobs_saved: 3, profile_skills: 9 } })),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText(/Nothing is waiting on you/)).toBeInTheDocument();
   });
@@ -192,7 +224,7 @@ describe("opportunities", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(
       await screen.findByText(/Not a prediction about interviews or offers/),
@@ -214,7 +246,7 @@ describe("opportunities", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText("—")).toBeInTheDocument();
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
@@ -231,7 +263,7 @@ describe("opportunities", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText("Out of date")).toBeInTheDocument();
   });
@@ -254,7 +286,7 @@ describe("pipeline", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText("Preparing")).toBeInTheDocument();
     expect(screen.getByText("Applied")).toBeInTheDocument();
@@ -276,7 +308,7 @@ describe("skill gaps", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText("Kubernetes")).toBeInTheDocument();
     expect(screen.getByText("4 jobs")).toBeInTheDocument();
@@ -294,7 +326,7 @@ describe("skill gaps", () => {
       ),
     );
 
-    renderWithQuery(<DashboardScreen greeting="Welcome back" />);
+    renderWithQuery(<DashboardScreen firstName="Maya" />);
 
     expect(await screen.findByText("1 job")).toBeInTheDocument();
   });

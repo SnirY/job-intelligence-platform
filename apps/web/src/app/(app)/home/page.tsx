@@ -16,7 +16,8 @@ import { DashboardScreen } from "@/features/dashboard/dashboard";
  */
 export default async function HomePage() {
   const user = await currentUser();
-  const greeting = user?.firstName ? `Welcome back, ${user.firstName}` : "Welcome back";
 
-  return <DashboardScreen greeting={greeting} />;
+  // The name only. Whether the reader is returning is a question about their
+  // data, and the dashboard is what holds it — see `greet` there.
+  return <DashboardScreen firstName={user?.firstName ?? null} />;
 }
