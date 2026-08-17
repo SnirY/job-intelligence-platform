@@ -110,6 +110,19 @@ export interface JobSummary {
 
   /** The score was computed against inputs that have since moved. */
   is_stale: boolean;
+
+  /**
+   * How many requirements landed in each `MatchStatus`, for drawing a coverage
+   * summary without fetching the requirements themselves.
+   *
+   * A missing key means zero, so the number of entries here is not the number
+   * of categories. Empty when there is no match — a row with no score has no
+   * counts that are missing, and the dash already says that.
+   */
+  status_counts: Record<string, number>;
+
+  /** The denominator. A count without one is a percentage in disguise. */
+  total_requirements: number;
 }
 
 /** One import attempt, exactly as it happened. */

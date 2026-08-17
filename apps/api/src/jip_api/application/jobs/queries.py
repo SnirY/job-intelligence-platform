@@ -85,6 +85,16 @@ class JobListItem:
     alignment_label: str | None = None
     is_stale: bool = False
 
+    # What the coverage strip renders. `status_counts` is stored on the match
+    # precisely so a summary can be drawn without loading every item, which is
+    # the difference between one query for a page and one query per row.
+    #
+    # Empty and zero rather than null, because they only ever travel with a
+    # score: a row with no match has no counts to be missing, and the dash is
+    # already carrying that statement.
+    status_counts: dict[str, int] = field(default_factory=dict)
+    total_requirements: int = 0
+
 
 @dataclass(slots=True)
 class JobPage:
@@ -158,15 +168,25 @@ def _with_scores(session: Session, user_id: uuid.UUID, jobs: list[Job]) -> list[
         session, user_id, latest, current_analysis_versions=analysis_versions
     )
 
-    return [
-        JobListItem(
-            job=job,
-            score=latest[job.id].overall_score if job.id in latest else None,
-            alignment_label=latest[job.id].alignment_label if job.id in latest else None,
-            is_stale=staleness[job.id].is_stale if job.id in staleness else False,
+    items: list[JobListItem] = []
+    for job in jobs:
+        match = latest.get(job.id)
+        if match is None:
+            items.append(JobListItem(job=job))
+            continue
+
+        items.append(
+            JobListItem(
+                job=job,
+                score=match.overall_score,
+                alignment_label=match.alignment_label,
+                is_stale=staleness[job.id].is_stale,
+                status_counts={str(k): int(v) for k, v in match.status_counts.items()},
+                total_requirements=match.total_requirements,
+            )
         )
-        for job in jobs
-    ]
+
+    return items
 
 
 def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select[tuple[Job]]:
