@@ -50,6 +50,14 @@ from jip_config import get_settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
+MAX_BULK_ARCHIVE = queries_uc.MAX_PAGE_SIZE
+"""A selection cannot exceed what one page can show.
+
+Tied to the page size rather than picked, because the only way to select rows is
+to see them. A larger bound would only be reachable by a caller building the
+list by hand, which is not a case worth carrying an unbounded `IN` clause for.
+"""
+
 SessionDep = Annotated[Session, Depends(get_session)]
 
 PLACEHOLDER_TITLE = "Untitled job"
@@ -607,6 +615,46 @@ def post_description(
     job = updates_uc.supply_description(session, user.id, job_id, body.description)
     session.commit()
     return DataResponse(data=JobPayload.model_validate(job))
+
+
+class BulkArchiveRequest(BaseModel):
+    """The rows a reader selected."""
+
+    job_ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=MAX_BULK_ARCHIVE)]
+
+
+class BulkArchivePayload(BaseModel):
+    """What happened to each id, rather than whether it all worked.
+
+    Two lists, because a screen has to be able to name what it could not do.
+    "27 of 29 archived" with no way to see which two makes someone reselect
+    thirty rows to find out.
+    """
+
+    archived: list[uuid.UUID]
+    missing: list[uuid.UUID]
+
+
+@router.post(
+    "/archive",
+    response_model=DataResponse[BulkArchivePayload],
+    summary="Archive several jobs",
+)
+def post_bulk_archive(
+    user: CurrentUser, session: SessionDep, body: BulkArchiveRequest
+) -> DataResponse[BulkArchivePayload]:
+    """Archive a selection, and report on every id in it.
+
+    Declared before `/{job_id}/archive` for readability only — the two paths
+    have different segment counts and cannot collide.
+
+    Partial success is the success case. An id that is missing or belongs to
+    someone else does not undo the ones that worked: archiving is reversible and
+    the user asked for the rest. The response is what the screen says.
+    """
+    result = updates_uc.archive_jobs(session, user.id, body.job_ids)
+    session.commit()
+    return DataResponse(data=BulkArchivePayload(archived=result.archived, missing=result.missing))
 
 
 @router.post("/{job_id}/archive", response_model=DataResponse[JobPayload], summary="Archive a job")

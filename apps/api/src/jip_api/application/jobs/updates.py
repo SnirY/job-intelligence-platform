@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from jip_api.application.jobs.creation import content_hash
 from jip_api.application.jobs.queries import get_job
+from jip_api.application.ownership import owned
 from jip_api.domain.jobs.models import Job, JobProcessingStatus, normalize_title
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,66 @@ def unarchive_job(session: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> Jo
     job.archived_at = None
     session.flush()
     return job
+
+
+@dataclass(frozen=True, slots=True)
+class BulkArchiveResult:
+    """What happened to each id the caller sent.
+
+    Both lists rather than a count, because the screen has to name what it could
+    not do. "27 of 29 archived" with no way to see which two is a sentence that
+    makes someone re-select thirty rows to find out.
+    """
+
+    archived: list[uuid.UUID]
+    missing: list[uuid.UUID]
+    """Not found, or owned by someone else. Deliberately one outcome: telling a
+    caller which of another user's ids exist is the leak `owned()` prevents."""
+
+
+def archive_jobs(
+    session: Session, user_id: uuid.UUID, job_ids: Sequence[uuid.UUID]
+) -> BulkArchiveResult:
+    """Archive many jobs, and report on each.
+
+    **Not atomic, on purpose.** Rolling back twenty-seven archives the user asked
+    for, because two ids turned out to be unreachable, destroys work to punish a
+    mismatch — the inverse of what `GOAL.md` asks of a failure. Archiving is
+    reversible and idempotent, so the partial outcome is both safe and the one
+    the user wanted.
+
+    One query rather than one per id: the ownership filter is the same for all of
+    them, and a loop would re-ask the same question twenty-nine times.
+
+    Duplicate ids collapse. Order of the result follows the ids as given, so a
+    screen can line the outcome up against the rows the reader selected.
+    """
+    wanted = list(dict.fromkeys(job_ids))
+    if not wanted:
+        return BulkArchiveResult(archived=[], missing=[])
+
+    found = {
+        job.id: job for job in session.scalars(owned(Job, user_id).where(Job.id.in_(wanted))).all()
+    }
+
+    moment = dt.datetime.now(tz=dt.UTC)
+    for job in found.values():
+        # Idempotent, as the single-job path is: the first timestamp is the one
+        # that says when the decision was actually made.
+        if job.archived_at is None:
+            job.archived_at = moment
+
+    session.flush()
+
+    result = BulkArchiveResult(
+        archived=[job_id for job_id in wanted if job_id in found],
+        missing=[job_id for job_id in wanted if job_id not in found],
+    )
+    logger.info(
+        "Jobs archived in bulk",
+        extra={"archived": len(result.archived), "missing": len(result.missing)},
+    )
+    return result
 
 
 def delete_job(session: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> None:

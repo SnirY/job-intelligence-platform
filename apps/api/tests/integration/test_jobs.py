@@ -24,6 +24,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 
 from jip_api.api.dependencies import get_dispatcher
+from jip_api.application.jobs import queries as queries_uc
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import reset_engine_cache
 from jip_api.infrastructure.tasks.dispatcher import reset_task_caches
@@ -591,6 +592,90 @@ def test_archiving_twice_keeps_the_first_timestamp(
     second = client.post(f"{BASE}/{job['id']}/archive", headers=auth(factory)).json()["data"]
 
     assert first["archived_at"] == second["archived_at"]
+
+
+# --- archiving a selection ----------------------------------------------------
+
+
+def test_a_selection_is_archived_in_one_call(client: TestClient, factory: TokenFactory) -> None:
+    jobs = seed(client, factory, 3)
+    ids = [job["id"] for job in jobs]
+
+    response = client.post(f"{BASE}/archive", headers=auth(factory), json={"job_ids": ids})
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["archived"] == ids
+    assert data["missing"] == []
+
+    assert client.get(BASE, headers=auth(factory)).json()["meta"]["total"] == 0
+    everything = client.get(BASE, headers=auth(factory), params={"archived": "ARCHIVED"})
+    assert everything.json()["meta"]["total"] == 3
+
+
+def test_one_unreachable_id_does_not_undo_the_rest(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The decision this endpoint exists to encode.
+
+    Rolling back the archives the user asked for, to punish an id that was not
+    theirs, would destroy work over a mismatch. Archiving is reversible, so the
+    partial outcome is both safe and the one they wanted — and the response
+    names what did not happen rather than reporting a bare count.
+    """
+    mine = [job["id"] for job in seed(client, factory, 2)]
+    theirs = create(client, factory, {"import_method": "MANUAL", "title": "Bob's"}, subject=BOB)
+    stranger = str(uuid.uuid4())
+
+    response = client.post(
+        f"{BASE}/archive",
+        headers=auth(factory),
+        json={"job_ids": [mine[0], theirs["id"], mine[1], stranger]},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+
+    assert data["archived"] == mine
+    assert data["missing"] == [theirs["id"], stranger]
+
+    # Another user's job is untouched, and is reported the same way as one that
+    # does not exist — which of their ids are real is not ours to disclose.
+    assert client.get(BASE, headers=auth(factory, BOB)).json()["meta"]["total"] == 1
+
+
+def test_archiving_a_selection_twice_keeps_the_first_timestamp(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Idempotent, as the single-job path is."""
+    job = create(client, factory, {"import_method": "MANUAL", "title": "Engineer"})
+
+    client.post(f"{BASE}/archive", headers=auth(factory), json={"job_ids": [job["id"]]})
+    first = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()["data"]["archived_at"]
+
+    client.post(f"{BASE}/archive", headers=auth(factory), json={"job_ids": [job["id"]]})
+    second = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()["data"]["archived_at"]
+
+    assert first == second
+
+
+def test_a_selection_larger_than_a_page_is_refused(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The only way to select rows is to see them, so the bound is the page
+    size. Refused rather than truncated: silently archiving the first hundred of
+    a hundred and one is the kind of partial the user did not ask for."""
+    too_many = [str(uuid.uuid4()) for _ in range(queries_uc.MAX_PAGE_SIZE + 1)]
+
+    response = client.post(f"{BASE}/archive", headers=auth(factory), json={"job_ids": too_many})
+
+    assert response.status_code == 422, response.text
+
+
+def test_an_empty_selection_is_refused(client: TestClient, factory: TokenFactory) -> None:
+    response = client.post(f"{BASE}/archive", headers=auth(factory), json={"job_ids": []})
+
+    assert response.status_code == 422, response.text
 
 
 def test_timestamps_are_serialised_as_utc(client: TestClient, factory: TokenFactory) -> None:
