@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { StateCard } from "@/components/ui/state-card";
 import {
   useDeleteJob,
   useJob,
@@ -47,15 +48,15 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const job = useJob(jobId);
 
   if (job.isPending) {
-    return <Notice>Loading this job…</Notice>;
+    return <StateCard>Loading this job…</StateCard>;
   }
 
   if (job.isError || !job.data) {
     const missing = job.error instanceof ApiError && job.error.status === 404;
     return (
-      <Notice tone="error">
+      <StateCard tone="error">
         {missing ? "That job does not exist, or is not yours." : "Could not load this job."}
-      </Notice>
+      </StateCard>
     );
   }
 
@@ -363,20 +364,4 @@ function formatTimestamp(value: string | null): string {
   if (!value) return "—";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString();
-}
-
-function Notice({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
-  );
 }

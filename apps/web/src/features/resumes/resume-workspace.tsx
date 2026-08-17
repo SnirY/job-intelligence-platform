@@ -9,7 +9,7 @@ import {
   type ResumeVersionDetail,
   type ResumeVersionStatus,
 } from "@jip/shared-types";
-import { FileText, Loader2, Lock, Plus, Printer } from "lucide-react";
+import { Lock, Plus, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { StateCard } from "@/components/ui/state-card";
 import {
   useCreateResume,
   useCreateVersion,
@@ -57,8 +58,8 @@ export function ResumeWorkspace() {
 
   const current = selectedResume ?? resumes.data?.[0]?.id ?? null;
 
-  if (resumes.isPending) return <Panel>Loading your resumes…</Panel>;
-  if (resumes.isError) return <Panel tone="error">Could not load your resumes.</Panel>;
+  if (resumes.isPending) return <StateCard>Loading your resumes…</StateCard>;
+  if (resumes.isError) return <StateCard tone="error">Could not load your resumes.</StateCard>;
 
   return (
     <div className="space-y-6">
@@ -172,9 +173,9 @@ function ResumeEditor({ resume }: { resume: Resume }) {
   const currentId = selected ?? versions.data?.[0]?.id ?? null;
   const version = useVersion(currentId);
 
-  if (versions.isPending) return <Panel>Loading versions…</Panel>;
+  if (versions.isPending) return <StateCard>Loading versions…</StateCard>;
   if (versions.isError || !versions.data) {
-    return <Panel tone="error">Could not load the versions of this resume.</Panel>;
+    return <StateCard tone="error">Could not load the versions of this resume.</StateCard>;
   }
 
   if (versions.data.length === 0) {
@@ -228,7 +229,7 @@ function ResumeEditor({ resume }: { resume: Resume }) {
         </Button>
       </div>
 
-      {version.isPending && <Panel>Loading…</Panel>}
+      {version.isPending && <StateCard>Loading…</StateCard>}
       {version.data && <VersionEditor version={version.data} />}
     </div>
   );
@@ -514,22 +515,4 @@ function fromDraft(draft: Record<string, string>) {
   });
 
   return { sections: sections.filter((section) => section.items.length > 0) };
-}
-
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-2 p-6">
-        {tone !== "error" && <Loader2 aria-hidden className="size-4 animate-spin" />}
-        {tone === "error" && <FileText aria-hidden className="size-4" />}
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
-  );
 }

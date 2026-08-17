@@ -14,6 +14,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { StateCard } from "@/components/ui/state-card";
 import { useCompanies, useJobs } from "@/features/jobs/api";
 import { JobFilters } from "@/features/jobs/job-filters";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
@@ -67,16 +69,16 @@ function JobResults({
   onPage: (page: number) => void;
 }) {
   if (jobs.isPending) {
-    return <Message>Loading your jobs…</Message>;
+    return <JobRowsSkeleton />;
   }
 
   if (jobs.isError) {
     return (
-      <Message tone="error">
+      <StateCard tone="error">
         {jobs.error instanceof ApiError && jobs.error.isUnauthenticated
           ? "Your session was not accepted. Try signing out and back in."
           : "Could not load your jobs."}
-      </Message>
+      </StateCard>
     );
   }
 
@@ -129,6 +131,38 @@ function JobResults({
   );
 }
 
+/**
+ * The list while it is still arriving, in the shape it will arrive in.
+ *
+ * A card reading "Loading your jobs…" is one line tall and the list is not, so
+ * the page moved under the reader every time it finished loading. Five rows is
+ * the page size, so the reserved height is the height that is coming.
+ *
+ * The announcement is separate because the rows are `aria-hidden` — a skeleton
+ * describes nothing, and without the label the loading state would be silent
+ * for the readers who cannot see it.
+ */
+function JobRowsSkeleton() {
+  return (
+    <SkeletonRegion label="Loading your jobs…" className="space-y-3">
+      {Array.from({ length: 5 }, (_, i) => (
+        <Card key={i}>
+          <CardContent className="flex flex-wrap items-start gap-3 p-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="h-5 w-16" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </SkeletonRegion>
+  );
+}
+
 function JobRow({ job }: { job: JobSummary }) {
   const facts = [
     job.company,
@@ -175,7 +209,7 @@ function EmptyState({ filtered }: { filtered: boolean }) {
   // distinguish them: nothing saved yet, versus nothing matching. Telling a
   // user with forty jobs that they have none would read as data loss.
   if (filtered) {
-    return <Message>No jobs match those filters. Try widening them.</Message>;
+    return <StateCard>No jobs match those filters. Try widening them.</StateCard>;
   }
 
   return (
@@ -192,22 +226,6 @@ function EmptyState({ filtered }: { filtered: boolean }) {
             Add a job
           </Link>
         </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Message({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
       </CardContent>
     </Card>
   );

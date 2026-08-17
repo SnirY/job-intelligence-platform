@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { StateCard } from "@/components/ui/state-card";
 import {
   useAddNote,
   useApplications,
@@ -46,9 +47,9 @@ export function ApplicationTracker() {
 
   const applications = useApplications(showArchived);
 
-  if (applications.isPending) return <Panel>Loading your applications…</Panel>;
+  if (applications.isPending) return <StateCard>Loading your applications…</StateCard>;
   if (applications.isError || !applications.data) {
-    return <Panel tone="error">Could not load your applications.</Panel>;
+    return <StateCard tone="error">Could not load your applications.</StateCard>;
   }
 
   const rows = applications.data;
@@ -417,20 +418,4 @@ function formatDate(value: string | null): string {
   if (!value) return "—";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleDateString();
-}
-
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
-  );
 }

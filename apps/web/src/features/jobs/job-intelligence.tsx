@@ -24,6 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StateCard } from "@/components/ui/state-card";
+import { Callout } from "@/components/ui/callout";
 import { useAnalyzeJob, useJobAnalysis } from "@/features/jobs/api";
 
 /**
@@ -49,11 +51,11 @@ export function JobIntelligence({ job }: { job: Job }) {
   const analyze = useAnalyzeJob(job.id);
 
   if (query.isPending) {
-    return <Panel>Loading the analysis…</Panel>;
+    return <StateCard>Loading the analysis…</StateCard>;
   }
 
   if (query.isError || !query.data) {
-    return <Panel tone="error">Could not load the analysis for this job.</Panel>;
+    return <StateCard tone="error">Could not load the analysis for this job.</StateCard>;
   }
 
   const view = query.data;
@@ -144,10 +146,10 @@ function AnalysisFeedback({
 
   if (rejected) {
     return (
-      <Notice tone="warning">
+      <Callout tone="caution">
         That could not be started. If an analysis is already running, wait for it to finish and try
         again.
-      </Notice>
+      </Callout>
     );
   }
 
@@ -179,14 +181,14 @@ function AnalysisView({
   return (
     <div className="space-y-4">
       {view.is_stale && isLatest && (
-        <Notice tone="warning">
+        <Callout tone="caution">
           The description has been edited since this was read, so parts of it may no longer match.
           Analysing again will read the current text.
-        </Notice>
+        </Callout>
       )}
 
       {!isLatest && (
-        <Notice>
+        <Callout>
           You are reading version {analysis.version} of {Math.max(...view.available_versions)}.{" "}
           <button
             type="button"
@@ -195,7 +197,7 @@ function AnalysisView({
           >
             Show the latest
           </button>
-        </Notice>
+        </Callout>
       )}
 
       <Overview analysis={analysis} />
@@ -642,36 +644,6 @@ function EmptyState({
         </p>
       </CardContent>
     </Card>
-  );
-}
-
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Notice({ children, tone }: { children: React.ReactNode; tone?: "warning" }) {
-  return (
-    <div
-      className={
-        tone === "warning"
-          ? "rounded-md border border-notice/40 bg-notice/5 p-3 text-sm"
-          : "rounded-md border p-3 text-sm text-muted-foreground"
-      }
-    >
-      {children}
-    </div>
   );
 }
 

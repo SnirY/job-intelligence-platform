@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { StateCard } from "@/components/ui/state-card";
 import {
   useCreateStrategy,
   useCreateSuggestions,
@@ -42,9 +43,9 @@ export function JobTailoringPanel({ job }: { job: Job }) {
   const query = useStrategy(job.id);
   const create = useCreateStrategy(job.id);
 
-  if (query.isPending) return <Panel>Loading the tailoring plan…</Panel>;
+  if (query.isPending) return <StateCard>Loading the tailoring plan…</StateCard>;
   if (query.isError || !query.data) {
-    return <Panel tone="error">Could not load the tailoring plan.</Panel>;
+    return <StateCard tone="error">Could not load the tailoring plan.</StateCard>;
   }
 
   const view = query.data;
@@ -401,21 +402,5 @@ function List({
         ))}
       </ul>
     </div>
-  );
-}
-
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
   );
 }
