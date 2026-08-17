@@ -205,7 +205,18 @@
   --accent-foreground: oklch(0.955 0.004 265.522);
 
   --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
+  /*
+   * Dark ink, not near-white. The inherited near-white label measured 3.45
+   * against this fill where text needs 4.5 — the one label-on-surface pair in
+   * the file that failed, and it survived the palette work because that pass
+   * checked each token against the page and the card without ever checking a
+   * label against the thing it is written on.
+   *
+   * Same shape as `--primary-foreground` here, and for the same reason: a fill
+   * light enough to read against a dark page is too light to carry white text.
+   * Destructive is the last place to accept an unreadable label.
+   */
+  --destructive-foreground: oklch(0.145 0.013 258.357);
   --success: oklch(0.765 0.177 163.223);
   --success-foreground: oklch(0.145 0.013 258.357);
 
