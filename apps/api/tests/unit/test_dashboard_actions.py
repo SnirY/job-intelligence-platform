@@ -82,6 +82,57 @@ def test_the_list_is_capped() -> None:
     assert len(ranked) == MAX_ACTIONS
 
 
+def test_the_only_work_that_is_not_repair_keeps_a_slot() -> None:
+    """`PREPARE_APPLICATION` ranks last on merit and was therefore cut on every
+    account with five other things pending — so the busier someone got, the more
+    certain it became that the product only ever offered maintenance.
+
+    Six rules firing, and the reserved kind is the one that survives the cap.
+    """
+    ranked = rank(
+        [
+            action(ActionKind.RETRY_ANALYSIS),
+            action(ActionKind.ANALYSE_JOB),
+            action(ActionKind.MATCH_JOB),
+            action(ActionKind.REFRESH_MATCH),
+            action(ActionKind.FOLLOW_UP),
+            action(ActionKind.PREPARE_APPLICATION, "Senior Backend Engineer"),
+        ]
+    )
+
+    assert len(ranked) == MAX_ACTIONS
+    assert ranked[-1].kind is ActionKind.PREPARE_APPLICATION
+    assert ranked[-1].subject == "Senior Backend Engineer"
+
+
+def test_reserving_a_slot_never_overtakes_a_blocker() -> None:
+    """A reservation, not a promotion. It costs the sixth item — which by
+    construction is the least urgent thing that would have been shown — and
+    never the first, which is the most blocking.
+    """
+    ranked = rank(
+        [
+            action(ActionKind.BUILD_PROFILE),
+            action(ActionKind.RETRY_ANALYSIS),
+            action(ActionKind.ANALYSE_JOB),
+            action(ActionKind.MATCH_JOB),
+            action(ActionKind.REFRESH_MATCH),
+            action(ActionKind.PREPARE_APPLICATION),
+        ]
+    )
+
+    assert ranked[0].kind is ActionKind.BUILD_PROFILE
+    assert [item.kind for item in ranked[:4]] == list(ACTION_ORDER[:4])
+
+
+def test_nothing_is_reserved_when_there_is_nothing_to_reserve() -> None:
+    """The cap is unchanged for an account with no application to prepare."""
+    ranked = rank([action(ActionKind.ANALYSE_JOB, f"Job {i}") for i in range(12)])
+
+    assert len(ranked) == MAX_ACTIONS
+    assert all(item.kind is ActionKind.ANALYSE_JOB for item in ranked)
+
+
 def test_order_within_a_kind_is_preserved() -> None:
     """The caller sorts jobs newest first; ranking must not shuffle them."""
     ranked = rank([action(ActionKind.ANALYSE_JOB, name) for name in ("first", "second", "third")])
