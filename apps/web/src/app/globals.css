@@ -8,30 +8,93 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Palette values come from the D10 "Porcelain" direction, converted from its
+ * hex to oklch. Only the *values* are new — every name below already existed
+ * and every component already reads it, which is the whole point of the
+ * indirection this file's opening comment describes. A direction that needed
+ * new names would be a rewrite of the UI layer rather than a repaint.
+ *
+ * Three names were added, and each is a thing D10 uses that the token set had
+ * no word for: `--foreground-faint`, `--primary-hover`, `--surface-raised`.
+ */
 :root {
+  /*
+   * Unchanged. D10 draws badges at 6px, buttons and nav items at 8–9px, and
+   * cards at 12–14px, which is what this scale already produces: sm 6, md 8,
+   * lg 10, xl 14.
+   */
   --radius: 0.625rem;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  /*
+   * Two greys, not one. D10 puts the app on near-white and lifts cards to pure
+   * white — the separation between a surface and its page is the mechanic the
+   * whole direction leans on, and it collapses if both are `#FFFFFF`.
+   */
+  --background: oklch(0.985 0.001 286.376);
+  --foreground: oklch(0.176 0.014 258.357);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
+  --card-foreground: oklch(0.176 0.014 258.357);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
+  --popover-foreground: oklch(0.176 0.014 258.357);
+
+  /*
+   * Primary is the ink blue, where it used to be near-black.
+   *
+   * D10 runs two action colours — blue for the decision the screen exists to
+   * support ("Start application"), near-black for everything else ("Add job").
+   * Blue takes `--primary` because it is the higher-emphasis of the two and
+   * because links need a token; near-black remains available as `--foreground`.
+   */
+  --primary: oklch(0.492 0.24 266.434);
+  --primary-foreground: oklch(1 0 0);
+  --primary-hover: oklch(0.375 0.181 265.479);
+
+  --secondary: oklch(0.961 0.004 271.369);
+  --secondary-foreground: oklch(0.176 0.014 258.357);
+  --muted: oklch(0.961 0.004 271.369);
+  --muted-foreground: oklch(0.495 0.027 264.284);
+
+  /* Note that `--accent` is shadcn's *hover surface*, not a brand colour. */
+  --accent: oklch(0.97 0.003 264.542);
+  --accent-foreground: oklch(0.176 0.014 258.357);
+
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --success: oklch(0.596 0.145 163.225);
+  --success: oklch(0.439 0.08 163.779);
   --success-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+
+  --border: oklch(0.94 0.005 274.963);
+  --input: oklch(0.925 0.007 268.545);
+
+  /*
+   * The focus ring, which D9–D14 never drew — every mockup shows the resting
+   * state only. It is the brand blue rather than a neutral: `outline-none` is
+   * paired with a replacement ring on every interactive component in this
+   * codebase, so this value is the entire keyboard affordance of the product,
+   * and a grey ring on a near-white surface is the version people miss.
+   */
+  --ring: oklch(0.492 0.24 266.434);
+
+  /*
+   * A third text tier. D10 uses three — body, secondary, and the small
+   * uppercase labels that name a region ("MATCH SCORE", "NEXT MOVE", "SAVED
+   * VIEWS"). Written as `--muted-foreground` those labels compete with the
+   * sentences beside them; the hierarchy the direction is built on needs the
+   * step.
+   *
+   * Deliberately still above the 4.5:1 contrast floor on `--card`: faint is a
+   * rank, not permission to become unreadable.
+   */
+  --foreground-faint: oklch(0.654 0.025 269.307);
+
+  /*
+   * The surface that sits above a card — the dark "what this job taught us"
+   * panel in D10, and the shell chrome. Named for its position rather than its
+   * colour so it inverts with everything else.
+   */
+  --surface-raised: oklch(0.176 0.014 258.357);
+  --surface-raised-foreground: oklch(0.879 0.011 265.522);
 
   /*
    * Verdict colours. DEV-057.
@@ -46,10 +109,10 @@
    * Named for what they mean, not what they look like. A redesign changes the
    * value; it should never have to find out which hue meant "transferable".
    */
-  --verdict-strong: oklch(0.596 0.145 163.225);
+  --verdict-strong: oklch(0.439 0.08 163.779);
   --verdict-partial: oklch(0.6 0.118 184.704);
-  --verdict-transfer: oklch(0.558 0.288 302.321);
-  --verdict-gap: oklch(0.666 0.179 58.318);
+  --verdict-transfer: oklch(0.53 0.23 300);
+  --verdict-gap: oklch(0.591 0.122 72.689);
   --verdict-blocked: var(--destructive);
 
   /*
@@ -61,39 +124,121 @@
    * the caveat is strength, not absence. Rendering it as amber told the reader
    * "problem" where the engine had said "this counts, less than fully", and
    * overstating a shortfall is the same class of error as overstating a match.
+   *
+   * D10 supplies three of the five and reuses one hue across two meanings —
+   * amber for both "not confirmed by you yet" and "no evidence" — which is
+   * exactly the collision above, arriving a second time through the mockup.
+   * Strong and gap take D10's values; partial keeps the teal.
+   *
+   * `--verdict-transfer` deviates from D10 on purpose. The mockup paints it
+   * `#2447E6`, the same blue it uses for links and the primary button, so on a
+   * screen of 22 requirement rows a verdict and a control would be one colour.
+   * Held at blue-violet: near enough to read as the same family, far enough
+   * (34° of hue) not to be mistaken for something clickable.
    */
 
   /* A caution surface: bordered panels that qualify what is above them. */
-  --notice: oklch(0.769 0.188 70.08);
+  --notice: oklch(0.747 0.13 78.764);
 }
 
+/*
+ * The dark column, which D10 does not contain — D9–D14 are light-only, and the
+ * theme control has been three-state since 2026-08-15 with "system" as its
+ * default. Some share of users would never have seen the direction at all.
+ *
+ * Derived rather than designed, and that is possible only because D10 separates
+ * with lines and contrast: invert the greyscale, keep the hue, keep the
+ * relationships. The one relationship that has to survive is that a card sits
+ * *above* its page — so `--card` stays lighter than `--background` here, where
+ * in light mode it was whiter. Accent colours rise in lightness and drop in
+ * chroma, because saturated ink on a dark ground vibrates.
+ *
+ * Worth recording that this is where D12 would have cost real design time
+ * instead: three light colour fields under a translucent white fill do not
+ * invert, they have to be re-decided.
+ *
+ * Derivation is not enough on its own, though, and the first pass proved it:
+ * three tokens looked right and measured wrong, `--muted-foreground` worst at
+ * 2.90 where it needed 4.5. Contrast does not survive an inversion, because
+ * lightness distances that are generous above a white page are cramped below a
+ * dark one. Every value here is measured against `--card`, the lighter of the
+ * two dark surfaces and therefore the harder test.
+ */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
+  --background: oklch(0.145 0.013 258.357);
+  --foreground: oklch(0.955 0.004 265.522);
+  --card: oklch(0.196 0.014 258.357);
+  --card-foreground: oklch(0.955 0.004 265.522);
+  --popover: oklch(0.196 0.014 258.357);
+  --popover-foreground: oklch(0.955 0.004 265.522);
+
+  /*
+   * Still blue — shadcn's dark default turns primary into near-white, which
+   * would cost the direction its only brand colour on every install set to
+   * dark. But lighter than the first attempt, and with a dark label rather than
+   * a white one, because this token has two jobs and they pull apart.
+   *
+   * `--primary` fills a button *and* colours a link. A fill needs 3:1 against
+   * the page; a link needs 4.5:1 against the card it sits on; and whatever
+   * label sits on the fill needs 4.5:1 against the fill. Measured against this
+   * palette there is no value that clears all three with a white label — at
+   * L 0.68 the link reads 3.39, and by the time the link clears 4.5 the white
+   * label has fallen to 4.34. Inverting the label resolves it: at L 0.760 the
+   * link reads 4.78 on card, the fill 4.81 against the page, and the dark label
+   * 4.81 against the fill.
+   *
+   * Chroma drops to 0.120 because 0.19 is outside sRGB at this lightness and
+   * the browser would clamp it anyway. Better to write what will be rendered.
+   */
+  --primary: oklch(0.76 0.12 266.434);
+  --primary-foreground: oklch(0.145 0.013 258.357);
+  --primary-hover: oklch(0.83 0.08 266.434);
+
+  --secondary: oklch(0.262 0.017 260.031);
+  --secondary-foreground: oklch(0.955 0.004 265.522);
+  --muted: oklch(0.262 0.017 260.031);
+  /* 4.5:1 on `--card`, which is the harder of the two dark surfaces because it
+     is the lighter one. The first pass sat at L 0.70 and measured 2.90 — and
+     this is the most-used token in the product, 194 call sites. */
+  --muted-foreground: oklch(0.8 0.022 266);
+  --accent: oklch(0.262 0.017 260.031);
+  --accent-foreground: oklch(0.955 0.004 265.522);
+
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --success: oklch(0.696 0.17 162.48);
-  --success-foreground: oklch(0.129 0.042 264.695);
+  --success: oklch(0.765 0.177 163.223);
+  --success-foreground: oklch(0.145 0.013 258.357);
+
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+
+  /* D10's own on-dark link colour, `#A9BCFF`. The ring has to be brighter than
+     the primary it outlines, or it disappears into the button it is marking. */
+  --ring: oklch(0.805 0.098 271.868);
+
+  /*
+   * The third text tier nearly collapses here, and that is a real property of
+   * dark rather than a compromise. These labels are 11–12px, so they need the
+   * full 4.5:1 like any other text, and the floor sits at L 0.772 — barely
+   * below `--muted-foreground`. In light there are three distinguishable
+   * lightnesses under the floor; in dark there are not.
+   *
+   * So on dark the tier is carried by case, size and tracking, which it already
+   * was, and lightness only confirms it. Do not push this darker to "restore"
+   * the step: the first pass tried L 0.58 and measured 1.62.
+   */
+  --foreground-faint: oklch(0.772 0.02 267);
+
+  /* Inverts: above a dark card is a *lighter* panel, not a darker one. */
+  --surface-raised: oklch(0.262 0.017 260.031);
+  --surface-raised-foreground: oklch(0.879 0.011 265.522);
 
   /* Lighter, because these sit on a dark surface. Same meanings. */
   --verdict-strong: oklch(0.765 0.177 163.223);
   --verdict-partial: oklch(0.777 0.152 181.912);
-  --verdict-transfer: oklch(0.714 0.203 305.504);
+  /* Raised from L 0.75, which measured 4.39 — under the floor by a hair, and a
+     verdict is read as text as often as it is seen as a colour. */
+  --verdict-transfer: oklch(0.757 0.145 300);
   --verdict-gap: oklch(0.828 0.189 84.429);
   --verdict-blocked: var(--destructive);
 
@@ -101,6 +246,15 @@
 }
 
 @theme inline {
+  /*
+   * Order is load-bearing and is not alphabetical, not by importance, and not
+   * reorderable: Manrope first so it claims the punctuation every subset
+   * shares, latin-ext last because it is the only face carrying fallbacks.
+   * `@/app/fonts` has the measurements behind both halves.
+   */
+  --font-sans: var(--font-manrope), var(--font-heebo), var(--font-manrope-ext);
+  --font-mono: var(--font-plex-mono);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -109,6 +263,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -125,6 +280,9 @@
   --color-verdict-gap: var(--verdict-gap);
   --color-verdict-blocked: var(--verdict-blocked);
   --color-notice: var(--notice);
+  --color-foreground-faint: var(--foreground-faint);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-foreground: var(--surface-raised-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
