@@ -119,6 +119,18 @@ class JobSummaryPayload(BaseModel):
     created_at: dt.datetime
     has_description: bool
 
+    # How the job scored, which the list could not say until now. `docs/05`
+    # requires the number to travel with the word "alignment" wherever it is
+    # shown, so the label ships with it rather than being reconstructed by
+    # whichever screen happens to render the figure.
+    #
+    # Null means no match has been computed. That is a statement about our data
+    # and not about the candidate, so it must reach the screen as a dash rather
+    # than a zero — see the note on `overall_score` in the matching models.
+    score: int | None = None
+    alignment_label: str | None = None
+    is_stale: bool = False
+
 
 class JobImportPayload(BaseModel):
     """One import attempt, exactly as it happened."""
@@ -473,7 +485,19 @@ def read_jobs(
     )
 
     return CollectionResponse(
-        data=[JobSummaryPayload.model_validate(job) for job in result.items],
+        data=[
+            # The job's own columns come from the ORM object; the three match
+            # fields live beside it rather than on it, so they are layered on
+            # after validation.
+            JobSummaryPayload.model_validate(item.job).model_copy(
+                update={
+                    "score": item.score,
+                    "alignment_label": item.alignment_label,
+                    "is_stale": item.is_stale,
+                }
+            )
+            for item in result.items
+        ],
         meta=PaginationMeta(
             page=result.page,
             page_size=result.page_size,

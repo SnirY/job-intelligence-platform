@@ -10,6 +10,7 @@ module compares rather than guesses, and can say *which* one moved.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from sqlalchemy import desc, select
@@ -125,6 +126,57 @@ def assess_staleness(
     if match is None:
         return Staleness(is_stale=False, reasons=[])
 
+    return _assess(
+        match,
+        profile_fingerprint=load_profile_snapshot(session, user_id).fingerprint(),
+        current_analysis_version=current_analysis_version,
+    )
+
+
+def assess_staleness_many(
+    session: Session,
+    user_id: uuid.UUID,
+    matches: Mapping[uuid.UUID, JobMatch],
+    *,
+    current_analysis_versions: Mapping[uuid.UUID, int | None],
+) -> dict[uuid.UUID, Staleness]:
+    """The same assessment for a page of matches, keyed by job.
+
+    The fingerprint is the expensive half — ``load_profile_snapshot`` runs six
+    queries and the answer is identical for every match belonging to one user,
+    so calling ``assess_staleness`` in a loop costs seven queries per row and
+    returns the same fingerprint each time. A list of twenty jobs made that a
+    hundred and forty queries to answer one question.
+
+    Skipped entirely when there is nothing to assess, so a page of unmatched
+    jobs does not read a profile it has no use for.
+    """
+    if not matches:
+        return {}
+
+    fingerprint = load_profile_snapshot(session, user_id).fingerprint()
+
+    return {
+        job_id: _assess(
+            match,
+            profile_fingerprint=fingerprint,
+            current_analysis_version=current_analysis_versions.get(job_id),
+        )
+        for job_id, match in matches.items()
+    }
+
+
+def _assess(
+    match: JobMatch,
+    *,
+    profile_fingerprint: str,
+    current_analysis_version: int | None,
+) -> Staleness:
+    """The three independent ways a match can fall out of date.
+
+    One implementation, because the reasons are user-visible sentences and two
+    copies would be two sentences that have to agree.
+    """
     reasons: list[str] = []
 
     if current_analysis_version is not None and current_analysis_version != match.analysis_version:
@@ -133,8 +185,7 @@ def assess_staleness(
             f"(analysis v{match.analysis_version} → v{current_analysis_version})."
         )
 
-    snapshot = load_profile_snapshot(session, user_id)
-    if snapshot.fingerprint() != match.profile_fingerprint:
+    if profile_fingerprint != match.profile_fingerprint:
         reasons.append("Your career profile has changed since this match.")
 
     if match.engine_version != MATCHING_ENGINE_VERSION:
