@@ -11,11 +11,13 @@ import {
   type PipelineStage,
   type SkillGap,
 } from "@jip/shared-types";
-import { ArrowRight, CircleAlert, Sparkles, Target } from "lucide-react";
+import { ArrowRight, CircleAlert, Plus, Sparkles, Target } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StateCard } from "@/components/ui/state-card";
 import { useDashboard } from "@/features/dashboard/api";
 
 /**
@@ -34,16 +36,16 @@ import { useDashboard } from "@/features/dashboard/api";
  * look at, and every claim links to the screen it was read from. The same rule
  * that keeps a match honest keeps a dashboard from becoming a horoscope.
  */
-export function DashboardScreen({ greeting }: { greeting: string }) {
+export function DashboardScreen({ firstName }: { firstName: string | null }) {
   const query = useDashboard();
 
   if (query.isPending) {
-    return <Shell greeting={greeting}>Loading where things stand…</Shell>;
+    return <Shell greeting={greet(firstName, false)}>Loading where things stand…</Shell>;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Shell greeting={greeting} tone="error">
+      <Shell greeting={greet(firstName, false)} tone="error">
         Could not load your dashboard. Your data is unaffected — try reloading.
       </Shell>
     );
@@ -51,6 +53,7 @@ export function DashboardScreen({ greeting }: { greeting: string }) {
 
   const data = query.data;
   const started = data.state.jobs_saved > 0 || data.state.profile_skills > 0;
+  const greeting = greet(firstName, started);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -69,7 +72,7 @@ export function DashboardScreen({ greeting }: { greeting: string }) {
 
       {started && <CurrentState data={data} />}
 
-      <NextActions actions={data.actions} />
+      <NextActions actions={data.actions} hasJobs={data.state.jobs_saved > 0} />
 
       {data.opportunities.length > 0 && <Opportunities items={data.opportunities} />}
       {data.pipeline.length > 0 && <Pipeline stages={data.pipeline} />}
@@ -118,8 +121,42 @@ function CurrentState({ data }: { data: Dashboard }) {
  * that gets ignored, and the items past the fold are by construction the least
  * urgent.
  */
-function NextActions({ actions }: { actions: NextAction[] }) {
+function NextActions({ actions, hasJobs }: { actions: NextAction[]; hasJobs: boolean }) {
   if (actions.length === 0) {
+    /*
+      Two different silences, and one sentence used to cover both.
+
+      Every rule except `BUILD_PROFILE` needs a saved job to fire against, so an
+      account that finishes its profile without saving anything drops to zero
+      actions — and was then told "every job you have saved has been read,
+      compared, and is either applied to or set aside", which congratulates
+      someone for completing no work. True, vacuously, and read as "you are all
+      caught up" by the one reader who has not started.
+
+      This card is the onboarding: `docs/02` Flow 1 has an import step and there
+      is no wizard, so outside the sidebar this is the only place a first-run
+      reader is told that step exists.
+    */
+    if (!hasJobs) {
+      return (
+        <Card>
+          <CardContent className="space-y-3 p-6">
+            <p className="text-sm font-medium">Add a job, and this fills in.</p>
+            <p className="text-sm text-muted-foreground">
+              Everything suggested here is read from a posting you saved — what it asks for, and how
+              much of it your profile already answers.
+            </p>
+            <Button asChild>
+              <Link href="/jobs/new">
+                <Plus aria-hidden className="size-4" />
+                Add a job
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card>
         <CardContent className="flex items-center gap-3 p-6">
@@ -296,6 +333,23 @@ function Activity({ entries }: { entries: ActivityEntry[] }) {
   );
 }
 
+/**
+ * "Welcome back" only once there is something to come back to.
+ *
+ * It was unconditional, which made it the first sentence a brand-new account
+ * ever read — the product greeting the return of someone who had never been.
+ * `/home` is the only screen that says it.
+ *
+ * Unknown resolves to "Welcome" rather than "Welcome back", because the loading
+ * state is what a first-time reader sees first and the two errors are not
+ * symmetric: "Welcome" is merely less warm to a returning user, while "Welcome
+ * back" is untrue to a new one.
+ */
+function greet(firstName: string | null, returning: boolean): string {
+  const opener = returning ? "Welcome back" : "Welcome";
+  return firstName ? `${opener}, ${firstName}` : opener;
+}
+
 function Shell({
   greeting,
   children,
@@ -308,17 +362,12 @@ function Shell({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">{greeting}</h1>
-      <Card>
-        <CardContent className="p-6">
-          <p
-            className={
-              tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-            }
-          >
-            {children}
-          </p>
-        </CardContent>
-      </Card>
+      {/* The greeting stays and only the panel below it changes: a failure that
+          swallows the whole screen tells a reader their account is gone.
+          `StateCard` carries the icon and border that make a failure look like
+          one — this was the last copy of the panel it replaced, and the only
+          one still saying "error" in colour alone. */}
+      <StateCard tone={tone === "error" ? "error" : "loading"}>{children}</StateCard>
     </div>
   );
 }
