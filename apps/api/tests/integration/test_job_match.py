@@ -525,6 +525,77 @@ def test_changing_the_profile_makes_the_match_stale(
     assert any("profile has changed" in reason for reason in data["stale_reasons"])
 
 
+# --- the score, as the list sees it -------------------------------------------
+
+
+def listed(client: TestClient, factory: TokenFactory, job_id: str) -> dict[str, Any]:
+    """One job, read back from the list rather than from its own screen."""
+    response = client.get(JOBS, headers=auth(factory))
+    assert response.status_code == 200, response.text
+    rows = [row for row in response.json()["data"] if row["id"] == job_id]
+    assert len(rows) == 1, f"expected {job_id} in the list once, got {len(rows)}"
+    return dict(rows[0])
+
+
+def test_the_list_carries_the_score_and_the_word_that_goes_with_it(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The figure has to reach the screen a user scans, not only the one they open.
+
+    ``docs/05-ai-and-matching.md`` requires the number to travel beside the word
+    *alignment*, so the label ships with it rather than being reassembled by
+    whichever screen renders the figure.
+    """
+    job_id = analysed_job(client, factory)
+    add_skill(client, factory, "Python")
+    computed = match(client, factory, job_id)["match"]
+
+    row = listed(client, factory, job_id)
+
+    assert row["score"] == computed["overall_score"]
+    assert row["alignment_label"] == computed["alignment_label"]
+    assert row["is_stale"] is False
+
+
+def test_an_unmatched_job_lists_a_null_score_and_never_a_zero(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Invariant 2, at list scale.
+
+    Zero is a claim about the candidate; null is a claim about our data. A job
+    nobody has matched has not scored badly, and the list is exactly where that
+    distinction is cheapest to lose — twenty rows of ``0`` would read as twenty
+    verdicts.
+    """
+    job_id = analysed_job(client, factory)
+
+    row = listed(client, factory, job_id)
+
+    assert row["score"] is None
+    assert row["alignment_label"] is None
+    assert row["is_stale"] is False
+
+
+def test_the_list_reports_a_score_that_has_fallen_out_of_date(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """A stale score is still shown, and still says it is stale.
+
+    Withholding it would be worse: the number was true of the inputs it was
+    computed from, and the screen's job is to say so rather than to hide it.
+    """
+    job_id = analysed_job(client, factory)
+    add_skill(client, factory, "Python")
+    match(client, factory, job_id)
+
+    add_skill(client, factory, "Rust")
+
+    row = listed(client, factory, job_id)
+
+    assert row["score"] is not None
+    assert row["is_stale"] is True
+
+
 def test_reanalysing_the_job_makes_the_match_stale(
     client: TestClient, factory: TokenFactory
 ) -> None:

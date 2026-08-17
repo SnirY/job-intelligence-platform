@@ -2,9 +2,13 @@
 
 ``docs/10-api-contracts.md`` sets the pagination shape (``page``/``page_size``,
 default 20, maximum 100) and ``docs/08-ui-ux.md`` lists the filters worth
-having. The ones that depend on match scores or application status are absent —
-neither exists yet, and a filter that silently matches nothing is worse than no
-filter.
+having.
+
+The filters that depend on application status are still absent, because that
+still does not exist here. The ones that depend on match scores no longer have
+that excuse: the list now carries a score per row, so a score range and a
+"no blockers" preset became possible on the day this landed rather than
+remaining permanently deferred behind a comment that had stopped being true.
 """
 
 from __future__ import annotations
@@ -17,8 +21,11 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from jip_api.application.errors import ResourceNotFoundError
+from jip_api.application.matching.queries import assess_staleness_many
 from jip_api.application.ownership import owned
+from jip_api.domain.jobs.analysis import JobAnalysis
 from jip_api.domain.jobs.models import Job, JobProcessingStatus
+from jip_api.domain.matching.models import JobMatch
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
@@ -63,10 +70,27 @@ class JobFilters:
 
 
 @dataclass(slots=True)
+class JobListItem:
+    """A job as the list needs it: the row, and how it scored.
+
+    The score is carried beside the job rather than on it because it does not
+    belong to the job — it belongs to a versioned comparison between that job
+    and a profile that both keep changing. ``None`` means no match has been
+    computed, which is a different statement from a low score and has to stay
+    tellable apart all the way to the screen.
+    """
+
+    job: Job
+    score: int | None = None
+    alignment_label: str | None = None
+    is_stale: bool = False
+
+
+@dataclass(slots=True)
 class JobPage:
     """One page of results, plus what the caller needs to page through them."""
 
-    items: list[Job] = field(default_factory=list)
+    items: list[JobListItem] = field(default_factory=list)
     total: int = 0
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
@@ -79,10 +103,15 @@ class JobPage:
 
 
 def list_jobs(session: Session, user_id: uuid.UUID, filters: JobFilters) -> JobPage:
-    """Return a filtered, sorted page of the user's jobs.
+    """Return a filtered, sorted page of the user's jobs, with their scores.
 
     The count runs against the same filters as the page. Counting an unfiltered
     set would give a pager that promises results a filtered query cannot show.
+
+    Scores are fetched for the page rather than for the account. The dashboard
+    reads every match a user has because it ranks across all of them; a list
+    page needs twenty, and loading the rest to discard them would make the query
+    grow with the archive rather than with the page.
     """
     page = max(1, filters.page)
     page_size = min(max(1, filters.page_size), MAX_PAGE_SIZE)
@@ -92,9 +121,52 @@ def list_jobs(session: Session, user_id: uuid.UUID, filters: JobFilters) -> JobP
     total = session.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
     statement = _apply_sort(base, filters.sort).limit(page_size).offset((page - 1) * page_size)
-    items = list(session.execute(statement).scalars())
+    jobs = list(session.execute(statement).scalars())
 
-    return JobPage(items=items, total=int(total), page=page, page_size=page_size)
+    return JobPage(
+        items=_with_scores(session, user_id, jobs),
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _with_scores(session: Session, user_id: uuid.UUID, jobs: list[Job]) -> list[JobListItem]:
+    """Pair each job on the page with its latest match, if it has one."""
+    if not jobs:
+        return []
+
+    job_ids = [job.id for job in jobs]
+
+    # Recalculation appends versions, so the newest wins. Ordering by version
+    # and overwriting is the same shape the dashboard uses.
+    latest: dict[uuid.UUID, JobMatch] = {}
+    for match in session.scalars(
+        owned(JobMatch, user_id).where(JobMatch.job_id.in_(job_ids)).order_by(JobMatch.version)
+    ):
+        latest[match.job_id] = match
+
+    analysis_versions: dict[uuid.UUID, int | None] = {}
+    for job_id, version in session.execute(
+        select(JobAnalysis.job_id, func.max(JobAnalysis.version))
+        .where(JobAnalysis.job_id.in_(job_ids))
+        .group_by(JobAnalysis.job_id)
+    ):
+        analysis_versions[job_id] = version
+
+    staleness = assess_staleness_many(
+        session, user_id, latest, current_analysis_versions=analysis_versions
+    )
+
+    return [
+        JobListItem(
+            job=job,
+            score=latest[job.id].overall_score if job.id in latest else None,
+            alignment_label=latest[job.id].alignment_label if job.id in latest else None,
+            is_stale=staleness[job.id].is_stale if job.id in staleness else False,
+        )
+        for job in jobs
+    ]
 
 
 def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select[tuple[Job]]:

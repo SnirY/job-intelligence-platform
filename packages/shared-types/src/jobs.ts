@@ -90,6 +90,26 @@ export interface JobSummary {
   archived_at: string | null;
   created_at: string;
   has_description: boolean;
+
+  /**
+   * How the job scored, or null when no match has been computed.
+   *
+   * Null is not zero. Zero would be a claim about the candidate; null is a
+   * statement about our data, and the screen renders it as a dash. See
+   * `docs/05-ai-and-matching.md`.
+   */
+  score: number | null;
+
+  /**
+   * The words that travel with the score. Never rebuilt from the number by a
+   * screen — the figure has to appear beside the word "alignment", and a label
+   * assembled at the call site is a label that can drift into "match" or
+   * "chance".
+   */
+  alignment_label: string | null;
+
+  /** The score was computed against inputs that have since moved. */
+  is_stale: boolean;
 }
 
 /** One import attempt, exactly as it happened. */

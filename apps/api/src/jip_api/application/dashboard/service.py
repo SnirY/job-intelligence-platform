@@ -33,7 +33,7 @@ from jip_api.application.dashboard.actions import (
     is_stale_application,
     rank,
 )
-from jip_api.application.matching.queries import assess_staleness
+from jip_api.application.matching.queries import assess_staleness_many
 from jip_api.application.ownership import owned
 from jip_api.domain.applications.models import Application, ApplicationEvent, ApplicationStatus
 from jip_api.domain.career.skills import Skill, UserSkill
@@ -244,18 +244,20 @@ def _opportunities(
     applied_to = {application.job_id for application in applications}
     by_id = {job.id: job for job in jobs}
 
+    # One assessment for the whole set. The profile fingerprint is the same for
+    # every match a user owns and costs six queries to compute, so asking per
+    # opportunity multiplied the read by the number of scored jobs.
+    staleness_by_job = assess_staleness_many(
+        session, user_id, matches, current_analysis_versions=analysis_versions
+    )
+
     scored: list[tuple[int, Opportunity]] = []
     for job_id, match in matches.items():
         job = by_id.get(job_id)
         if job is None or match.overall_score is None:
             continue
 
-        staleness = assess_staleness(
-            session,
-            user_id,
-            match,
-            current_analysis_version=analysis_versions.get(job.id),
-        )
+        staleness = staleness_by_job[job_id]
         scored.append(
             (
                 match.overall_score,
@@ -307,6 +309,12 @@ def _actions(
 
     applied_to = {application.job_id: application for application in applications}
 
+    # Assessed once for the same reason as in `_opportunities`: the expensive
+    # half of the answer does not vary by job.
+    staleness_by_job = assess_staleness_many(
+        session, user_id, matches, current_analysis_versions=analysis_versions
+    )
+
     for job in jobs:
         if job.status is JobProcessingStatus.ANALYSIS_FAILED:
             found.append(
@@ -345,9 +353,7 @@ def _actions(
             )
             continue
 
-        staleness = assess_staleness(
-            session, user_id, match, current_analysis_version=analysis_versions.get(job.id)
-        )
+        staleness = staleness_by_job[job.id]
         if staleness.is_stale:
             found.append(
                 NextAction(
