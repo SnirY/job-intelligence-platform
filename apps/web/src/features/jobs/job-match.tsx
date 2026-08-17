@@ -32,6 +32,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StateCard } from "@/components/ui/state-card";
+import { Callout } from "@/components/ui/callout";
 import { useJobMatch, useMatchJob } from "@/features/jobs/api";
 
 /**
@@ -53,9 +55,9 @@ export function JobMatchPanel({ job }: { job: Job }) {
   const query = useJobMatch(job.id, version);
   const compute = useMatchJob(job.id);
 
-  if (query.isPending) return <Panel>Loading the match…</Panel>;
+  if (query.isPending) return <StateCard>Loading the match…</StateCard>;
   if (query.isError || !query.data) {
-    return <Panel tone="error">Could not load the match for this job.</Panel>;
+    return <StateCard tone="error">Could not load the match for this job.</StateCard>;
   }
 
   const view = query.data;
@@ -122,18 +124,18 @@ function MatchView({
   return (
     <div className="space-y-4">
       {view.is_stale && isLatest && (
-        <Notice tone="warning">
+        <Callout tone="caution">
           <p className="font-medium">This match is out of date.</p>
           <ul className="mt-1 space-y-0.5">
             {view.stale_reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
-        </Notice>
+        </Callout>
       )}
 
       {!isLatest && (
-        <Notice>
+        <Callout>
           You are reading version {match.version} of {latest}.{" "}
           <button
             type="button"
@@ -142,7 +144,7 @@ function MatchView({
           >
             Show the latest
           </button>
-        </Notice>
+        </Callout>
       )}
 
       <Overview match={match} />
@@ -197,9 +199,9 @@ function MatchView({
       <Card>
         <CardContent className="space-y-4 pt-6">
           {failed && (
-            <Notice tone="warning">
+            <Callout tone="caution">
               That could not be recalculated. Your existing match is unchanged — try again.
-            </Notice>
+            </Callout>
           )}
 
           <div className="flex flex-wrap items-center gap-3">
@@ -597,35 +599,5 @@ function EmptyState({
         </p>
       </CardContent>
     </Card>
-  );
-}
-
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <p
-          className={
-            tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-          }
-        >
-          {children}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Notice({ children, tone }: { children: React.ReactNode; tone?: "warning" }) {
-  return (
-    <div
-      className={
-        tone === "warning"
-          ? "rounded-md border border-notice/40 bg-notice/5 p-3 text-sm"
-          : "rounded-md border p-3 text-sm text-muted-foreground"
-      }
-    >
-      {children}
-    </div>
   );
 }

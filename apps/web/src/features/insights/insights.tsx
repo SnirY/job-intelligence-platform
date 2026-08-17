@@ -16,6 +16,7 @@ import { Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StateCard } from "@/components/ui/state-card";
 import {
   useFunnel,
   useResumePerformance,
@@ -394,17 +395,7 @@ function Panel({ children, tone }: { children: React.ReactNode; tone?: "error" }
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Insights</h1>
-      <Card>
-        <CardContent className="p-6">
-          <p
-            className={
-              tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-            }
-          >
-            {children}
-          </p>
-        </CardContent>
-      </Card>
+      <StateCard tone={tone === "error" ? "error" : "loading"}>{children}</StateCard>
     </div>
   );
 }
