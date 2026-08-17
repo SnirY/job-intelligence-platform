@@ -156,6 +156,13 @@
  * Worth recording that this is where D12 would have cost real design time
  * instead: three light colour fields under a translucent white fill do not
  * invert, they have to be re-decided.
+ *
+ * Derivation is not enough on its own, though, and the first pass proved it:
+ * three tokens looked right and measured wrong, `--muted-foreground` worst at
+ * 2.90 where it needed 4.5. Contrast does not survive an inversion, because
+ * lightness distances that are generous above a white page are cramped below a
+ * dark one. Every value here is measured against `--card`, the lighter of the
+ * two dark surfaces and therefore the harder test.
  */
 .dark {
   --background: oklch(0.145 0.013 258.357);
@@ -165,16 +172,35 @@
   --popover: oklch(0.196 0.014 258.357);
   --popover-foreground: oklch(0.955 0.004 265.522);
 
-  /* Still blue. shadcn's dark default turns primary into near-white, which
-     would have cost the direction its only brand colour on half the installs. */
-  --primary: oklch(0.62 0.19 266.434);
-  --primary-foreground: oklch(1 0 0);
-  --primary-hover: oklch(0.7 0.15 267);
+  /*
+   * Still blue — shadcn's dark default turns primary into near-white, which
+   * would cost the direction its only brand colour on every install set to
+   * dark. But lighter than the first attempt, and with a dark label rather than
+   * a white one, because this token has two jobs and they pull apart.
+   *
+   * `--primary` fills a button *and* colours a link. A fill needs 3:1 against
+   * the page; a link needs 4.5:1 against the card it sits on; and whatever
+   * label sits on the fill needs 4.5:1 against the fill. Measured against this
+   * palette there is no value that clears all three with a white label — at
+   * L 0.68 the link reads 3.39, and by the time the link clears 4.5 the white
+   * label has fallen to 4.34. Inverting the label resolves it: at L 0.760 the
+   * link reads 4.78 on card, the fill 4.81 against the page, and the dark label
+   * 4.81 against the fill.
+   *
+   * Chroma drops to 0.120 because 0.19 is outside sRGB at this lightness and
+   * the browser would clamp it anyway. Better to write what will be rendered.
+   */
+  --primary: oklch(0.76 0.12 266.434);
+  --primary-foreground: oklch(0.145 0.013 258.357);
+  --primary-hover: oklch(0.83 0.08 266.434);
 
   --secondary: oklch(0.262 0.017 260.031);
   --secondary-foreground: oklch(0.955 0.004 265.522);
   --muted: oklch(0.262 0.017 260.031);
-  --muted-foreground: oklch(0.7 0.022 266);
+  /* 4.5:1 on `--card`, which is the harder of the two dark surfaces because it
+     is the lighter one. The first pass sat at L 0.70 and measured 2.90 — and
+     this is the most-used token in the product, 194 call sites. */
+  --muted-foreground: oklch(0.8 0.022 266);
   --accent: oklch(0.262 0.017 260.031);
   --accent-foreground: oklch(0.955 0.004 265.522);
 
@@ -190,7 +216,18 @@
      the primary it outlines, or it disappears into the button it is marking. */
   --ring: oklch(0.805 0.098 271.868);
 
-  --foreground-faint: oklch(0.58 0.02 267);
+  /*
+   * The third text tier nearly collapses here, and that is a real property of
+   * dark rather than a compromise. These labels are 11–12px, so they need the
+   * full 4.5:1 like any other text, and the floor sits at L 0.772 — barely
+   * below `--muted-foreground`. In light there are three distinguishable
+   * lightnesses under the floor; in dark there are not.
+   *
+   * So on dark the tier is carried by case, size and tracking, which it already
+   * was, and lightness only confirms it. Do not push this darker to "restore"
+   * the step: the first pass tried L 0.58 and measured 1.62.
+   */
+  --foreground-faint: oklch(0.772 0.02 267);
 
   /* Inverts: above a dark card is a *lighter* panel, not a darker one. */
   --surface-raised: oklch(0.262 0.017 260.031);
@@ -199,7 +236,9 @@
   /* Lighter, because these sit on a dark surface. Same meanings. */
   --verdict-strong: oklch(0.765 0.177 163.223);
   --verdict-partial: oklch(0.777 0.152 181.912);
-  --verdict-transfer: oklch(0.75 0.16 300);
+  /* Raised from L 0.75, which measured 4.39 — under the floor by a hair, and a
+     verdict is read as text as often as it is seen as a colour. */
+  --verdict-transfer: oklch(0.757 0.145 300);
   --verdict-gap: oklch(0.828 0.189 84.429);
   --verdict-blocked: var(--destructive);
 
