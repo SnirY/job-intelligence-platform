@@ -164,10 +164,10 @@ def _with_scores(session: Session, user_id: uuid.UUID, jobs: list[Job]) -> list[
     # Recalculation appends versions, so the newest wins. Ordering by version
     # and overwriting is the same shape the dashboard uses.
     latest: dict[uuid.UUID, JobMatch] = {}
-    for match in session.scalars(
+    for row in session.scalars(
         owned(JobMatch, user_id).where(JobMatch.job_id.in_(job_ids)).order_by(JobMatch.version)
     ):
-        latest[match.job_id] = match
+        latest[row.job_id] = row
 
     analysis_versions: dict[uuid.UUID, int | None] = {}
     for job_id, version in session.execute(
