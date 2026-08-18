@@ -9,6 +9,9 @@ A personal full-stack project: FastAPI, Next.js, PostgreSQL, Redis, Docker.
 
 ---
 
+> **Working on this with an AI agent?** Start at [`AGENTS.md`](AGENTS.md) —
+> what to read, how to verify, and the four things that will catch you out.
+
 ## The idea
 
 Most job tools score a résumé against a posting and hand back a number. This one
