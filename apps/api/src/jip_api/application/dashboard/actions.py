@@ -80,6 +80,18 @@ list that gets ignored, and the ones past the fold are by construction the
 least urgent.
 """
 
+RESERVED_KIND = ActionKind.PREPARE_APPLICATION
+"""The one kind that keeps a slot when the cap would have cut it.
+
+It is last in ``ACTION_ORDER`` on merit — the largest piece of work, and the
+only item that is not repairing something — and that ranking plus the cap
+produced a rule nobody wrote: on any account with five other things pending,
+the product never offers the work, only the maintenance.
+
+Reserving a slot rather than reordering, so a blocker is still never overtaken.
+See :func:`rank`.
+"""
+
 FOLLOW_UP_AFTER_DAYS = 14
 """How long a sent application may sit before it is worth chasing.
 
@@ -117,9 +129,31 @@ def rank(actions: list[NextAction]) -> list[NextAction]:
 
     Stable within a kind, so the caller's own ordering — newest job, oldest
     application — survives.
+
+    One slot is held for :data:`RESERVED_KIND`. Priority and the cap together
+    had an outcome nobody chose: ``PREPARE_APPLICATION`` sits last in
+    ``ACTION_ORDER`` because it is the largest piece of work and the only item
+    that is not repairing something, and once five other rules fire it is cut
+    every time. The busier the account, the more certain it is that the only
+    thing the product never offers is the work itself. A list that can only
+    ever say "fix this" is a maintenance queue.
+
+    The reservation is one slot, not a promotion: it still sorts last among
+    what is shown, so nothing overtakes a blocker. It costs the *sixth* item,
+    which by construction is the least urgent thing that would have appeared.
     """
     order = {kind: index for index, kind in enumerate(ACTION_ORDER)}
-    return sorted(actions, key=lambda action: order[action.kind])[:MAX_ACTIONS]
+    ranked = sorted(actions, key=lambda action: order[action.kind])
+
+    head = ranked[:MAX_ACTIONS]
+    if any(action.kind is RESERVED_KIND for action in head):
+        return head
+
+    reserved = next((action for action in ranked if action.kind is RESERVED_KIND), None)
+    if reserved is None:
+        return head
+
+    return [*head[: MAX_ACTIONS - 1], reserved]
 
 
 def is_stale_application(applied_at: dt.datetime | None, now: dt.datetime) -> bool:
