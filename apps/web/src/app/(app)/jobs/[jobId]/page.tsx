@@ -8,7 +8,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   const { jobId } = await params;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    /* Wider than the rest of the app, because one panel on this page is a
+       three-pane workspace and the others are prose. `JobDetail` keeps the
+       prose at a reading measure itself; the page only has to stop being the
+       thing that caps it. */
+    <div className="mx-auto max-w-[1600px]">
       <JobDetail jobId={jobId} />
     </div>
   );

@@ -10,7 +10,7 @@ import {
 import { Archive, ArchiveRestore, ExternalLink, Loader2, RotateCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,149 +77,168 @@ function JobView({ job }: { job: Job }) {
     ["Salary", job.salary_text ?? "—"],
   ];
 
+  const read = job.status !== "FETCHING" && job.status !== "FAILED";
+
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <Link
-          href="/jobs"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          ← Jobs
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
-            {job.company && <p className="text-muted-foreground">{job.company}</p>}
+      <Reading>
+        <header className="space-y-3">
+          <Link
+            href="/jobs"
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          >
+            ← Jobs
+          </Link>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
+              {job.company && <p className="text-muted-foreground">{job.company}</p>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <JobStatusBadge status={job.status} />
+              {job.archived_at && <Badge variant="outline">Archived</Badge>}
+              <ImportMethodBadge method={job.import_method} />
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <JobStatusBadge status={job.status} />
-            {job.archived_at && <Badge variant="outline">Archived</Badge>}
-            <ImportMethodBadge method={job.import_method} />
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {job.status === "FETCHING" && <FetchingNotice />}
-      {job.status === "FAILED" && <FailedNotice job={job} />}
+        {job.status === "FETCHING" && <FetchingNotice />}
+        {job.status === "FAILED" && <FailedNotice job={job} />}
 
-      {/* The analysis sits above the raw details on purpose: once a posting has
-          been read, the structured version is what someone deciding about the
-          job actually wants, and the description below is what they check it
-          against. */}
-      {job.status !== "FETCHING" && job.status !== "FAILED" && (
-        <>
-          <JobIntelligence job={job} />
-          {/* Below the analysis, because a match only means something once
-              the posting has been read into requirements. */}
-          <JobMatchPanel job={job} />
-          {/* Last, and in that order deliberately: the resume strategy is
-              built from the match, so seeing it above the score would invite
-              tailoring towards a job before knowing whether it fits. */}
-          <JobTailoringPanel job={job} />
-          {/* Last: tracking is what happens once the preparation above is
-              done, and it is the only panel here that outlives the job. */}
-          <JobApplicationPanel job={job} />
-        </>
-      )}
+        {/* The analysis sits above the raw details on purpose: once a posting
+            has been read, the structured version is what someone deciding
+            about the job actually wants, and the description below is what
+            they check it against. */}
+        {read && <JobIntelligence job={job} />}
+      </Reading>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
-          <CardDescription>What you entered, or what the posting said.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            {facts.map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="text-sm">{value}</dd>
-              </div>
-            ))}
-          </dl>
+      {/* Outside the reading column, and the only panel that is. It lays
+          twenty-odd requirements on two axes beside the evidence for the one
+          you picked, which does not fit a measure chosen for prose. Below the
+          analysis, because a match only means something once the posting has
+          been read into requirements. */}
+      {read && <JobMatchPanel job={job} />}
 
-          {job.source_url && (
-            <p className="mt-4 text-sm">
-              <a
-                href={job.source_url}
-                target="_blank"
-                // noreferrer as well as noopener: the target is a URL the user
-                // supplied, and there is no reason to hand it our page address.
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 underline underline-offset-4"
-              >
-                Open the original posting
-                <ExternalLink aria-hidden className="size-3.5" />
-              </a>
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <Reading>
+        {/* In that order deliberately: the resume strategy is built from the
+            match, so seeing it above the score would invite tailoring towards
+            a job before knowing whether it fits. */}
+        {read && <JobTailoringPanel job={job} />}
+        {/* Then tracking, which is what happens once the preparation above is
+            done, and the only panel here that outlives the job. */}
+        {read && <JobApplicationPanel job={job} />}
 
-      {job.description && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Description</CardTitle>
+            <CardTitle className="text-base">Details</CardTitle>
+            <CardDescription>What you entered, or what the posting said.</CardDescription>
           </CardHeader>
           <CardContent>
-            {/* whitespace-pre-wrap, not a markdown renderer: this is text from
+            <dl className="grid gap-4 sm:grid-cols-2">
+              {facts.map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="text-sm">{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {job.source_url && (
+              <p className="mt-4 text-sm">
+                <a
+                  href={job.source_url}
+                  target="_blank"
+                  // noreferrer as well as noopener: the target is a URL the user
+                  // supplied, and there is no reason to hand it our page address.
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 underline underline-offset-4"
+                >
+                  Open the original posting
+                  <ExternalLink aria-hidden className="size-3.5" />
+                </a>
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {job.description && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Description</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* whitespace-pre-wrap, not a markdown renderer: this is text from
                 an untrusted page, and rendering it as markup would be handing
                 a job posting a script tag on our origin. */}
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{job.description}</p>
-          </CardContent>
-        </Card>
-      )}
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{job.description}</p>
+            </CardContent>
+          </Card>
+        )}
 
-      {job.notes && (
+        {job.notes && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Your notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{job.notes}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <SourcePanel jobId={job.id} />
+
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Your notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{job.notes}</p>
+          <CardContent className="flex flex-wrap items-center gap-3 pt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={archive.isPending}
+              onClick={() => archive.mutate()}
+            >
+              {job.archived_at ? (
+                <>
+                  <ArchiveRestore aria-hidden className="size-4" />
+                  Bring back
+                </>
+              ) : (
+                <>
+                  <Archive aria-hidden className="size-4" />
+                  Archive
+                </>
+              )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate(job.id, { onSuccess: () => router.push("/jobs") })}
+            >
+              <Trash2 aria-hidden className="size-4" />
+              Delete permanently
+            </Button>
+
+            <p className="text-xs text-muted-foreground">
+              Archiving keeps the job and its posting. Deleting does not.
+            </p>
           </CardContent>
         </Card>
-      )}
-
-      <SourcePanel jobId={job.id} />
-
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 pt-6">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={archive.isPending}
-            onClick={() => archive.mutate()}
-          >
-            {job.archived_at ? (
-              <>
-                <ArchiveRestore aria-hidden className="size-4" />
-                Bring back
-              </>
-            ) : (
-              <>
-                <Archive aria-hidden className="size-4" />
-                Archive
-              </>
-            )}
-          </Button>
-
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={remove.isPending}
-            onClick={() => remove.mutate(job.id, { onSuccess: () => router.push("/jobs") })}
-          >
-            <Trash2 aria-hidden className="size-4" />
-            Delete permanently
-          </Button>
-
-          <p className="text-xs text-muted-foreground">
-            Archiving keeps the job and its posting. Deleting does not.
-          </p>
-        </CardContent>
-      </Card>
+      </Reading>
     </div>
   );
+}
+
+/**
+ * A column at a reading measure, inside a page that is wider than one.
+ *
+ * The page had to grow for the match panel, and prose does not want the width:
+ * a description set across 1600px is a line nobody can track back from. So the
+ * page stops capping and each panel says what it needs, which is one measure
+ * for everything except the workspace.
+ */
+function Reading({ children }: { children: ReactNode }) {
+  return <div className="mx-auto w-full max-w-4xl space-y-6">{children}</div>;
 }
 
 function FetchingNotice() {
