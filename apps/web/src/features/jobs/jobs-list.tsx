@@ -7,6 +7,7 @@ import {
   type JobListQuery,
   type JobSummary,
   type MatchStatus,
+  type AlignmentDistribution,
 } from "@jip/shared-types";
 import { AlertTriangle, Archive, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
@@ -17,7 +18,7 @@ import { Callout } from "@/components/ui/callout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { StateCard } from "@/components/ui/state-card";
-import { useBulkArchive, useCompanies, useJobs } from "@/features/jobs/api";
+import { useBulkArchive, useCompanies, useJobDistribution, useJobs } from "@/features/jobs/api";
 import { JobFilters } from "@/features/jobs/job-filters";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export function JobsList() {
   const [query, setQuery] = useState<JobListQuery>(INITIAL);
   const jobs = useJobs(query);
   const companies = useCompanies();
+  const distribution = useJobDistribution(query);
 
   const update = (next: Partial<JobListQuery>) => setQuery((current) => ({ ...current, ...next }));
 
@@ -62,6 +64,16 @@ export function JobsList() {
         onChange={update}
         onReset={() => setQuery(INITIAL)}
       />
+
+      {distribution.data && (
+        <Distribution
+          data={distribution.data}
+          active={{ min: query.min_score, max: query.max_score }}
+          // Back to page one: a band is a different set, and staying on page
+          // three of the old one lands the reader somewhere empty.
+          onSelectBand={(band) => update({ ...band, page: 1 })}
+        />
+      )}
 
       <JobResults query={query} jobs={jobs} onPage={(page) => update({ page })} />
     </div>
@@ -182,13 +194,6 @@ function JobResults({
   );
 }
 
-/**
- * The grid the rows share.
- *
- * Declared once and used by the header, every row and the skeleton, because
- * three copies of a column list is three chances for the header to stop naming
- * the column beneath it.
- */
 /*
  * A pair, and they are only correct together.
  *
@@ -203,21 +208,107 @@ function JobResults({
 const ROW_OUTER = "grid grid-cols-[24px_1fr] items-center gap-3.5 px-3.5";
 const ROW_INNER = "grid grid-cols-[1fr_180px_92px_150px_52px] items-center gap-3.5";
 
-/**
- * The list as a table rather than a stack of cards.
- *
- * A card per row cost about 76px and put every row's contents in a
- * `flex-wrap`, so nothing lined up between rows: the badges were conditional,
- * which meant a figure sat in a different place depending on whether the job
- * above it happened to be archived. A column of numbers that does not align is
- * a column nobody can scan, and scanning is the entire purpose of this screen —
- * `docs/08-ui-ux.md` asks it to answer "which of these do I open".
- *
- * Still a list of links semantically. Each row is one `<a>`, so the whole 44px
- * band is the target rather than the 14px title inside it, and the reading order
- * stays what it was.
- */
 type BulkArchiveOutcome = { archived: number; missing: string[] };
+
+/**
+ * The shape of the whole set, and the way into a part of it.
+ *
+ * At twenty-four jobs a reader can scan the list. At two hundred they cannot,
+ * and the useful question stops being "what is on this page" and becomes "how
+ * many are worth opening at all" — which no amount of paging answers. So the
+ * figure is a distribution across everything the filters match, and each band
+ * is a control that narrows to it.
+ *
+ * Unscored jobs sit apart from the bands, for the reason the API keeps them
+ * apart: a job nobody matched has not scored badly, and a bar that swept it
+ * into the lowest band would be a verdict on work that was never done.
+ *
+ * The counts are the label rather than a tooltip. A bar whose value only
+ * appears on hover has no value on a touch screen, and `docs/08-ui-ux.md` wants
+ * a chart readable without a pointer.
+ */
+function Distribution({
+  data,
+  active,
+  onSelectBand,
+}: {
+  data: AlignmentDistribution;
+  active: { min?: number; max?: number };
+  onSelectBand: (band: { min_score?: number; max_score?: number }) => void;
+}) {
+  if (data.total === 0) return null;
+
+  const widest = Math.max(...data.buckets.map((b) => b.count), data.unscored, 1);
+
+  return (
+    <div className="space-y-2 rounded-xl border p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-medium">How these {data.total} jobs line up</h2>
+        {(active.min !== undefined || active.max !== undefined) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onSelectBand({ min_score: undefined, max_score: undefined })}
+          >
+            Show every band
+          </Button>
+        )}
+      </div>
+
+      <ul className="space-y-1">
+        {data.buckets.map((bucket, index) => {
+          // Bands are ordered high to low and are closed ranges, so a band's
+          // ceiling is one below the floor of the band above it.
+          const above = data.buckets[index - 1];
+          const ceiling = above === undefined ? 100 : above.floor - 1;
+          const selected = active.min === bucket.floor && active.max === ceiling;
+
+          return (
+            <li key={bucket.floor}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                disabled={bucket.count === 0}
+                onClick={() =>
+                  onSelectBand(
+                    selected
+                      ? { min_score: undefined, max_score: undefined }
+                      : { min_score: bucket.floor, max_score: ceiling },
+                  )
+                }
+                className={cn(
+                  "grid w-full grid-cols-[136px_1fr_2.5rem] items-center gap-3 rounded px-2 py-1 text-left text-xs",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  bucket.count === 0
+                    ? "cursor-default text-muted-foreground/60"
+                    : "hover:bg-muted/60",
+                  selected && "bg-muted",
+                )}
+              >
+                <span className="truncate">{bucket.label}</span>
+                <span aria-hidden className="flex h-2 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className={cn("rounded-full", selected ? "bg-primary" : "bg-primary/50")}
+                    style={{ width: `${(bucket.count / widest) * 100}%` }}
+                  />
+                </span>
+                <span className="text-right font-mono tabular-nums">{bucket.count}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {data.unscored > 0 && (
+        <p className="border-t pt-2 text-xs text-muted-foreground">
+          <span className="font-mono tabular-nums text-foreground">{data.unscored}</span> not
+          compared against your profile yet, so they have no figure — not a low one.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** What is selected, and the one thing that can be done with it. */
 function SelectionBar({
@@ -574,6 +665,7 @@ function hasFilters(query: JobListQuery): boolean {
     query.work_mode ||
     query.employment_type ||
     query.seniority ||
+    query.min_score !== undefined ||
     (query.archived && query.archived !== "ACTIVE"),
   );
 }

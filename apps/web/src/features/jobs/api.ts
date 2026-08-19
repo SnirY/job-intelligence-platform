@@ -11,6 +11,7 @@ import {
   type JobMatchView,
   type JobSource,
   type JobSummary,
+  type AlignmentDistribution,
   type BulkArchiveRequest,
   type BulkArchiveResult,
   type JobUpdate,
@@ -18,7 +19,7 @@ import {
 } from "@jip/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiFetchPage } from "@/lib/api";
+import { apiFetch, apiFetchPage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { useAuth } from "@clerk/nextjs";
 
@@ -88,6 +89,37 @@ export function useJobSource(id: string, enabled: boolean) {
     // page is large and almost never looked at.
     enabled,
     queryFn: () => api<JobSource>(`${API_ROUTES.jobs}/${id}/source`),
+  });
+}
+
+/**
+ * The shape of the filtered set.
+ *
+ * Keyed on the filters but not on paging or the band, so switching page keeps
+ * the figure still, and choosing a band does not collapse the chart that
+ * offered it — a histogram that redraws itself as one bar the moment you click
+ * it cannot be used to change your mind.
+ */
+export function useJobDistribution(query: JobListQuery) {
+  const { getToken } = useAuth();
+
+  // Everything that narrows the set, and nothing that pages or picks a band.
+  const filters: JobListQuery = {
+    search: query.search,
+    company: query.company,
+    work_mode: query.work_mode,
+    employment_type: query.employment_type,
+    seniority: query.seniority,
+    status: query.status,
+    archived: query.archived,
+  };
+
+  return useQuery({
+    queryKey: [...jobsKey, "distribution", filters] as const,
+    queryFn: () =>
+      apiFetch<AlignmentDistribution>(`${API_ROUTES.jobs}/distribution${toSearchParams(filters)}`, {
+        getToken: () => getToken(),
+      }),
   });
 }
 

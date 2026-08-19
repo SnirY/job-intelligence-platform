@@ -210,6 +210,31 @@ export function isDuplicateDetails(value: unknown): value is DuplicateDetails {
 
 /** Body of `POST /api/v1/jobs/archive`. Bounded by one page: the only way to
  * select rows is to see them. */
+/** One band of the alignment distribution. */
+export interface AlignmentBucket {
+  floor: number;
+  label: string;
+  count: number;
+}
+
+/**
+ * The shape of the filtered set, from `GET /api/v1/jobs/distribution`.
+ *
+ * Across everything the filters match, not the page — the figure exists so a
+ * reader can reach a subset without walking ten pages of rows.
+ *
+ * `unscored` stands apart from the bands rather than joining the lowest one. A
+ * job nobody matched has not scored badly, and counting it as "Little
+ * alignment" would make the histogram claim something about jobs no one
+ * measured.
+ */
+export interface AlignmentDistribution {
+  buckets: AlignmentBucket[];
+  unscored: number;
+  total: number;
+}
+
+/** Body of `POST /api/v1/jobs/archive`. */
 export interface BulkArchiveRequest {
   job_ids: string[];
 }
@@ -265,6 +290,14 @@ export interface JobListQuery {
   seniority?: Seniority | "";
   status?: JobStatus | "";
   archived?: ArchivedFilter;
+  /**
+   * An alignment band, as a closed range.
+   *
+   * Excludes unscored jobs rather than reading a missing score as zero — a band
+   * is a question about jobs that were measured.
+   */
+  min_score?: number;
+  max_score?: number;
   sort?: JobSort;
   page?: number;
   page_size?: number;
