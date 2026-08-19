@@ -26,6 +26,7 @@ from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher
 from jip_api.application.jobs.analysis_pipeline import run_analysis
 from jip_api.domain.matching.models import JobMatch, JobMatchEvidence, JobMatchItem
+from jip_api.domain.matching.rules import ALIGNMENT_BANDS
 from jip_api.domain.processing.models import ProcessingJob
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import new_session, reset_engine_cache
@@ -666,6 +667,79 @@ def test_alignment_is_never_the_default_order(client: TestClient, factory: Token
     ids = [row["id"] for row in rows]
 
     assert ids.index(newer) < ids.index(older), "the default order is not newest-first"
+
+
+def distribution(client: TestClient, factory: TokenFactory, **params: Any) -> dict[str, Any]:
+    response = client.get(f"{JOBS}/distribution", headers=auth(factory), params=params or None)
+    assert response.status_code == 200, response.text
+    data: dict[str, Any] = response.json()["data"]
+    return data
+
+
+def test_an_unscored_job_is_counted_apart_from_the_lowest_band(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The whole reason `unscored` is its own figure.
+
+    A job nobody matched has not scored badly. Folding it into "Little
+    alignment" would make the histogram assert something about jobs no one
+    measured, which is DEV-027 arriving through a chart.
+    """
+    add_skill(client, factory, "Python")
+    scored = analysed_job(client, factory, title="Measured")
+    match(client, factory, scored)
+    analysed_job(client, factory, title="Never measured", allow_duplicate=True)
+
+    data = distribution(client, factory)
+
+    assert data["unscored"] == 1
+    assert data["total"] == 2
+    assert sum(b["count"] for b in data["buckets"]) == 1
+
+    lowest = data["buckets"][-1]
+    assert lowest["floor"] == 0
+    assert lowest["count"] == 0, "an unmeasured job was counted as the worst band"
+
+
+def test_the_bands_are_the_ones_the_rest_of_the_product_uses(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Bucketed on `ALIGNMENT_BANDS` rather than on thresholds restated here, so
+    a bar cannot disagree with the label on the row beside it."""
+    data = distribution(client, factory)
+
+    assert [(b["floor"], b["label"]) for b in data["buckets"]] == [
+        (floor, label) for floor, label in ALIGNMENT_BANDS
+    ]
+
+
+def test_the_distribution_counts_the_whole_filtered_set_not_a_page(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """It exists to reach a subset without walking pages, so a page size must
+    not change it."""
+    for index in range(3):
+        analysed_job(client, factory, title=f"Role {index}", allow_duplicate=index > 0)
+
+    assert distribution(client, factory)["total"] == 3
+
+    paged = client.get(JOBS, headers=auth(factory), params={"page_size": 1})
+    assert len(paged.json()["data"]) == 1
+
+
+def test_the_distribution_obeys_the_same_filters_as_the_list(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Two views of one set. If they filtered differently the figure would
+    describe rows the list does not show."""
+    first = analysed_job(client, factory, title="Kept")
+    analysed_job(client, factory, title="Put away", allow_duplicate=True)
+
+    client.post(f"{JOBS}/{first}/archive", headers=auth(factory))
+
+    assert distribution(client, factory)["total"] == 1
+    assert distribution(client, factory, archived="ARCHIVED")["total"] == 1
+    assert distribution(client, factory, archived="ALL")["total"] == 2
 
 
 def test_the_list_reports_a_score_that_has_fallen_out_of_date(

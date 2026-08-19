@@ -459,6 +459,77 @@ def post_job(
     return DataResponse(data=JobPayload.model_validate(job))
 
 
+class AlignmentBucketPayload(BaseModel):
+    """One band, with the words the rest of the product uses for it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    floor: int
+    label: str
+    count: int
+
+
+class AlignmentDistributionPayload(BaseModel):
+    """The shape of the filtered set.
+
+    `unscored` stands apart from the bands rather than joining the lowest one. A
+    job nobody matched has not scored badly, and counting it as "Little
+    alignment" would make the histogram assert something about jobs no one
+    measured.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    buckets: list[AlignmentBucketPayload]
+    unscored: int
+    total: int
+
+
+@router.get(
+    "/distribution",
+    response_model=DataResponse[AlignmentDistributionPayload],
+    summary="How the filtered jobs spread across the alignment bands",
+)
+def read_distribution(
+    user: CurrentUser,
+    session: SessionDep,
+    search: Annotated[str | None, Query(max_length=200)] = None,
+    company: Annotated[str | None, Query(max_length=200)] = None,
+    work_mode: WorkMode | None = None,
+    employment_type: EmploymentType | None = None,
+    seniority: Seniority | None = None,
+    job_status: Annotated[JobProcessingStatus | None, Query(alias="status")] = None,
+    archived: queries_uc.ArchivedFilter = queries_uc.ArchivedFilter.ACTIVE,
+) -> DataResponse[AlignmentDistributionPayload]:
+    """Across the whole filtered set, not the page.
+
+    Takes the list's filters and none of its paging, because the figure exists
+    to reach a subset without walking the pages — a distribution of the twenty
+    rows already on screen would answer a question nobody asked.
+    """
+    result = queries_uc.alignment_distribution(
+        session,
+        user.id,
+        queries_uc.JobFilters(
+            search=search,
+            company=company,
+            work_mode=work_mode,
+            employment_type=employment_type,
+            seniority=seniority,
+            status=job_status,
+            archived=archived,
+        ),
+    )
+
+    return DataResponse(
+        data=AlignmentDistributionPayload(
+            buckets=[AlignmentBucketPayload.model_validate(b) for b in result.buckets],
+            unscored=result.unscored,
+            total=result.total,
+        )
+    )
+
+
 @router.get(
     "",
     response_model=CollectionResponse[JobSummaryPayload],
