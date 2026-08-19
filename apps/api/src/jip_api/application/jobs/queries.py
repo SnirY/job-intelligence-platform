@@ -371,9 +371,7 @@ def _apply_sort(
             )
 
 
-def _latest_score(
-    user_id: uuid.UUID, job_column: Any = None
-) -> ScalarSelect[int | None]:
+def _latest_score(user_id: uuid.UUID, job_column: Any = None) -> ScalarSelect[int | None]:
     """The newest match's score for whichever job is being ordered.
 
     Correlated rather than joined, because a join to `job_matches` multiplies
