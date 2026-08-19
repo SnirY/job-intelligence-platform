@@ -5,6 +5,7 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
+import { CommandPalette } from "@/features/navigation/command-palette";
 import { SidebarNav } from "@/features/navigation/sidebar-nav";
 import { ThemeToggle } from "@/features/navigation/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main id="main-content" className="px-4 py-8 sm:px-6 lg:px-8">
           {children}
         </main>
+
+        {/* Mounted at the shell so the binding exists on every screen. A
+            palette that only works on the screen you already reached is not
+            worth the key. */}
+        <CommandPalette />
       </div>
     </div>
   );
