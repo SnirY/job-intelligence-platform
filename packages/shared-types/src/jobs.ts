@@ -208,6 +208,28 @@ export function isDuplicateDetails(value: unknown): value is DuplicateDetails {
   );
 }
 
+/** Body of `POST /api/v1/jobs/archive`. Bounded by one page: the only way to
+ * select rows is to see them. */
+export interface BulkArchiveRequest {
+  job_ids: string[];
+}
+
+/**
+ * What happened to each id, rather than whether it all worked.
+ *
+ * Two lists because a screen has to name what it could not do. The call is not
+ * atomic on purpose — reversing archives the user asked for, to punish an id
+ * that was not theirs, would destroy work over a mismatch — so a partial result
+ * is the ordinary outcome and not an error.
+ *
+ * `missing` covers both "no such job" and "not yours". Reporting them apart
+ * would tell a caller which of another user's ids exist.
+ */
+export interface BulkArchiveResult {
+  archived: string[];
+  missing: string[];
+}
+
 /** Orderings the list offers. */
 export type JobSort = "NEWEST" | "OLDEST" | "TITLE" | "COMPANY" | "BEST_ALIGNED";
 
