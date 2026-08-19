@@ -16,6 +16,7 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ from jip_api.application.ownership import owned
 from jip_api.domain.jobs.analysis import JobAnalysis
 from jip_api.domain.jobs.models import Job, JobProcessingStatus
 from jip_api.domain.matching.models import JobMatch
+from jip_api.domain.matching.rules import ALIGNMENT_BANDS
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
@@ -202,6 +204,78 @@ def _with_scores(session: Session, user_id: uuid.UUID, jobs: list[Job]) -> list[
     return items
 
 
+@dataclass(frozen=True, slots=True)
+class AlignmentBucket:
+    """One band of the distribution, with the words that name it."""
+
+    floor: int
+    label: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlignmentDistribution:
+    """The shape of a filtered set, so a reader can reach a subset without
+    walking pages of rows.
+
+    ``unscored`` is its own figure rather than a sixth band. A job nobody has
+    matched has not scored badly, and folding it into the lowest band would make
+    "Little alignment" a claim about jobs no one measured — the same error
+    DEV-027 was, arriving through a histogram.
+    """
+
+    buckets: list[AlignmentBucket]
+    unscored: int
+
+    @property
+    def total(self) -> int:
+        return sum(bucket.count for bucket in self.buckets) + self.unscored
+
+
+def alignment_distribution(
+    session: Session, user_id: uuid.UUID, filters: JobFilters
+) -> AlignmentDistribution:
+    """How the filtered jobs spread across the alignment bands.
+
+    Across the whole filtered set rather than the page. The point of the figure
+    is to reach eighteen jobs without paging through ten screens, and a
+    distribution of the twenty rows already visible would answer a question
+    nobody asked.
+
+    Bands come from ``ALIGNMENT_BANDS`` rather than being restated here. They are
+    the words the product uses for a score everywhere else, and a histogram
+    bucketed on its own thresholds would eventually disagree with the label on
+    the row beside it.
+
+    Filtered through the same ``_apply_filters`` as the list, so the two cannot
+    describe different sets.
+    """
+    base = _apply_filters(owned(Job, user_id), filters).subquery()
+    score = _latest_score(user_id, job_column=base.c.id)
+
+    rows = session.execute(select(base.c.id, score.label("score"))).all()
+
+    floors = [floor for floor, _ in ALIGNMENT_BANDS]
+    counts = dict.fromkeys(floors, 0)
+    unscored = 0
+
+    for _, value in rows:
+        if value is None:
+            unscored += 1
+            continue
+        # `ALIGNMENT_BANDS` is ordered high to low, so the first floor the score
+        # clears is its band — the same walk `alignment_label` does.
+        counts[next(floor for floor in floors if value >= floor)] += 1
+
+    return AlignmentDistribution(
+        buckets=[
+            AlignmentBucket(floor=floor, label=label, count=counts[floor])
+            for floor, label in ALIGNMENT_BANDS
+        ],
+        unscored=unscored,
+    )
+
+
 def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select[tuple[Job]]:
     if filters.archived is ArchivedFilter.ACTIVE:
         statement = statement.where(Job.archived_at.is_(None))
@@ -275,7 +349,9 @@ def _apply_sort(
             )
 
 
-def _latest_score(user_id: uuid.UUID) -> ScalarSelect[int | None]:
+def _latest_score(
+    user_id: uuid.UUID, job_column: Any = None
+) -> ScalarSelect[int | None]:
     """The newest match's score for whichever job is being ordered.
 
     Correlated rather than joined, because a join to `job_matches` multiplies
@@ -287,14 +363,18 @@ def _latest_score(user_id: uuid.UUID) -> ScalarSelect[int | None]:
     `owned()` exists precisely so that reasoning does not have to be redone at
     each call site.
     """
-    return (
+    target = Job.id if job_column is None else job_column
+    statement = (
         select(JobMatch.overall_score)
-        .where(JobMatch.job_id == Job.id, JobMatch.user_id == user_id)
+        .where(JobMatch.job_id == target, JobMatch.user_id == user_id)
         .order_by(JobMatch.version.desc())
         .limit(1)
-        .correlate(Job)
-        .scalar_subquery()
     )
+    # Correlating on `Job` is only right when the outer query selects it; the
+    # distribution correlates against its own filtered subquery instead.
+    if job_column is None:
+        statement = statement.correlate(Job)
+    return statement.scalar_subquery()
 
 
 def get_job(session: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> Job:
