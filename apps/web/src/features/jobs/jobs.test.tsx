@@ -97,6 +97,8 @@ function routes(handlers: Record<string, unknown>) {
     // crashing on it says more about this mock than about the component.
     if (url.includes("/applications")) return ok(handlers.applications ?? []);
     if (url.includes("/resume")) return ok(handlers.resumes ?? []);
+    if (url.includes("/jobs/archive"))
+      return ok(handlers.bulkArchive ?? { archived: [], missing: [] });
     // The list is the only call with a query string or a bare /jobs path.
     if (/\/jobs(\?|$)/.test(url)) return handlers.list ?? page([]);
     return ok(handlers.job);
@@ -133,6 +135,91 @@ describe("jobs list", () => {
     renderWithQuery(<JobsList />);
 
     expect(await screen.findByText(/Could not load your jobs/)).toBeInTheDocument();
+  });
+
+  it("offers one action for a selection, naming how many", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routes({ list: page([summary(), summary({ id: "job-2", title: "Platform Engineer" })]) }),
+    );
+
+    renderWithQuery(<JobsList />);
+
+    const first = await screen.findByRole("checkbox", { name: /Select Senior Backend Engineer/ });
+    await userEvent.click(first);
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Archive 1/ })).toBeInTheDocument();
+  });
+
+  it("archives the selection in one call rather than one call per row", async () => {
+    /* Twenty-nine rows must not be twenty-nine round trips asking the same
+       ownership question. */
+    const fetchMock = routes({
+      list: page([summary(), summary({ id: "job-2", title: "Platform Engineer" })]),
+      bulkArchive: { archived: ["job-1", "job-2"], missing: [] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithQuery(<JobsList />);
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /Select Senior Backend Engineer/ }),
+    );
+    await userEvent.click(screen.getByRole("checkbox", { name: /Select Platform Engineer/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Archive 2/ }));
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/jobs/archive"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ job_ids: ["job-1", "job-2"] });
+  });
+
+  it("names what it could not archive instead of reporting a bare count", async () => {
+    /* The call is not atomic on purpose, so a partial result is the ordinary
+       outcome. "1 archived" with no way to see which one failed would send
+       someone back to reselect the rows to find out. */
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        list: page([summary(), summary({ id: "job-2", title: "Platform Engineer" })]),
+        bulkArchive: { archived: ["job-1"], missing: ["job-2"] },
+      }),
+    );
+
+    renderWithQuery(<JobsList />);
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /Select Senior Backend Engineer/ }),
+    );
+    await userEvent.click(screen.getByRole("checkbox", { name: /Select Platform Engineer/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Archive 2/ }));
+
+    expect(await screen.findByText(/1 job archived/)).toBeInTheDocument();
+    // Scoped to the outcome: the title is also on the row it failed to archive,
+    // which is the point — that row is still in the list.
+    expect(screen.getByText(/could not be archived/)).toHaveTextContent("Platform Engineer");
+  });
+
+  it("keeps the outcome on screen until it is dismissed", async () => {
+    /* Not a toast: the result of an action on a page of rows is not something
+       a reader should have five seconds to catch. */
+    vi.stubGlobal(
+      "fetch",
+      routes({ list: page([summary()]), bulkArchive: { archived: ["job-1"], missing: [] } }),
+    );
+
+    renderWithQuery(<JobsList />);
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /Select Senior Backend Engineer/ }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Archive 1/ }));
+
+    const outcome = await screen.findByText(/1 job archived/);
+    expect(outcome).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/1 job archived/)).not.toBeInTheDocument();
   });
 
   it("lists jobs with their facts", async () => {

@@ -11,6 +11,8 @@ import {
   type JobMatchView,
   type JobSource,
   type JobSummary,
+  type BulkArchiveRequest,
+  type BulkArchiveResult,
   type JobUpdate,
   type StartedAnalysis,
 } from "@jip/shared-types";
@@ -151,6 +153,29 @@ export function useJobAction(id: string, action: "archive" | "unarchive" | "retr
 
   return useMutation({
     mutationFn: () => api<Job>(`${API_ROUTES.jobs}/${id}/${action}`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: jobsKey }),
+  });
+}
+
+/**
+ * Archive a selection in one call.
+ *
+ * Deliberately not a loop over `useJobAction`: twenty-nine rows would be
+ * twenty-nine round trips asking the same ownership question, and a failure
+ * partway would leave the reader guessing which half happened. The endpoint
+ * reports per id, and that result is what the screen says.
+ */
+export function useBulkArchive() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (jobIds: string[]) =>
+      api<BulkArchiveResult>(`${API_ROUTES.jobs}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_ids: jobIds } satisfies BulkArchiveRequest),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: jobsKey }),
   });
 }

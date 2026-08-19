@@ -8,15 +8,16 @@ import {
   type JobSummary,
   type MatchStatus,
 } from "@jip/shared-types";
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Archive, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { StateCard } from "@/components/ui/state-card";
-import { useCompanies, useJobs } from "@/features/jobs/api";
+import { useBulkArchive, useCompanies, useJobs } from "@/features/jobs/api";
 import { JobFilters } from "@/features/jobs/job-filters";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,25 @@ function JobResults({
   jobs: ReturnType<typeof useJobs>;
   onPage: (page: number) => void;
 }) {
+  // Cleared whenever the visible set changes: a selection is a statement about
+  // rows on screen, and carrying it across a filter or a page would archive
+  // something the reader can no longer see.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [result, setResult] = useState<BulkArchiveOutcome | null>(null);
+  const archive = useBulkArchive();
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [query]);
+
+  const select = (id: string, next: boolean) =>
+    setSelected((current) => {
+      const updated = new Set(current);
+      if (next) updated.add(id);
+      else updated.delete(id);
+      return updated;
+    });
+
   if (jobs.isPending) {
     return <JobRowsSkeleton rows={query.page_size ?? DEFAULT_PAGE_SIZE} />;
   }
@@ -96,9 +116,36 @@ function JobResults({
     return <EmptyState filtered={hasFilters(query)} />;
   }
 
+  const chosen = rows.filter((job) => selected.has(job.id));
+
+  const runArchive = () => {
+    const ids = chosen.map((job) => job.id);
+    const titles = new Map(chosen.map((job) => [job.id, job.title]));
+    archive.mutate(ids, {
+      onSuccess: (outcome) => {
+        setResult({
+          archived: outcome.archived.length,
+          missing: outcome.missing.map((id) => titles.get(id) ?? "a job that is no longer there"),
+        });
+        setSelected(new Set());
+      },
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <JobRows rows={rows} />
+      {chosen.length > 0 && (
+        <SelectionBar
+          count={chosen.length}
+          pending={archive.isPending}
+          onArchive={runArchive}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
+      {result && <ArchiveOutcome result={result} onDismiss={() => setResult(null)} />}
+
+      <JobRows rows={rows} selected={selected} onSelect={select} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -142,7 +189,19 @@ function JobResults({
  * three copies of a column list is three chances for the header to stop naming
  * the column beneath it.
  */
-const ROW_GRID = "grid grid-cols-[1fr_180px_92px_150px_52px] items-center gap-3.5 px-3.5";
+/*
+ * A pair, and they are only correct together.
+ *
+ * The checkbox cannot sit inside the link — a control nested in an anchor is
+ * both invalid and unusable, since every click would navigate. So the row is an
+ * outer grid holding the checkbox and the link, and the link is an inner grid
+ * holding the five columns. Two constants rather than one because there are two
+ * grids; declared adjacent because the header, the rows and the skeleton all
+ * use both, and a header that stops naming the column beneath it is the defect
+ * this guards against.
+ */
+const ROW_OUTER = "grid grid-cols-[24px_1fr] items-center gap-3.5 px-3.5";
+const ROW_INNER = "grid grid-cols-[1fr_180px_92px_150px_52px] items-center gap-3.5";
 
 /**
  * The list as a table rather than a stack of cards.
@@ -158,7 +217,96 @@ const ROW_GRID = "grid grid-cols-[1fr_180px_92px_150px_52px] items-center gap-3.
  * band is the target rather than the 14px title inside it, and the reading order
  * stays what it was.
  */
-function JobRows({ rows }: { rows: JobSummary[] }) {
+type BulkArchiveOutcome = { archived: number; missing: string[] };
+
+/** What is selected, and the one thing that can be done with it. */
+function SelectionBar({
+  count,
+  pending,
+  onArchive,
+  onClear,
+}: {
+  count: number;
+  pending: boolean;
+  onArchive: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-2.5">
+      <p className="text-sm font-medium" aria-live="polite">
+        {count} selected
+      </p>
+      <div className="ml-auto flex items-center gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+          Clear
+        </Button>
+        <Button type="button" size="sm" disabled={pending} onClick={onArchive}>
+          <Archive aria-hidden className="size-4" />
+          {pending ? "Archiving…" : `Archive ${count}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What happened, and it stays until dismissed.
+ *
+ * Not a toast. The outcome of an action on twenty-nine rows is not something a
+ * reader should have five seconds to catch, and a message that disappears on
+ * its own is one they can miss entirely. It also has to be able to name what it
+ * could not do: the call is not atomic, so a partial result is the ordinary
+ * outcome rather than an error, and "27 archived" with no way to see which two
+ * failed would send someone back to reselect thirty rows.
+ *
+ * No undo, because none is needed — archiving is reversible through the
+ * Archived view, unlike deleting.
+ */
+function ArchiveOutcome({
+  result,
+  onDismiss,
+}: {
+  result: BulkArchiveOutcome;
+  onDismiss: () => void;
+}) {
+  return (
+    <Callout tone={result.missing.length > 0 ? "caution" : "note"} role="status">
+      <div className="flex items-start gap-3">
+        <div className="space-y-1">
+          <p className="font-medium text-foreground">
+            {result.archived} {result.archived === 1 ? "job" : "jobs"} archived. They are still in
+            your list under Archived.
+          </p>
+          {result.missing.length > 0 && (
+            <p>
+              {result.missing.length} could not be archived and{" "}
+              {result.missing.length === 1 ? "is" : "are"} still here: {result.missing.join(", ")}.
+            </p>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </Button>
+      </div>
+    </Callout>
+  );
+}
+
+function JobRows({
+  rows,
+  selected,
+  onSelect,
+}: {
+  rows: JobSummary[];
+  selected: Set<string>;
+  onSelect: (id: string, next: boolean) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-xl border">
       {/* Visual only: every column's content is inside the link's own text, so
@@ -166,20 +314,23 @@ function JobRows({ rows }: { rows: JobSummary[] }) {
       <div
         aria-hidden
         className={cn(
-          ROW_GRID,
+          ROW_OUTER,
           "h-9 border-b bg-muted/40 text-xs font-medium uppercase tracking-wider text-muted-foreground",
         )}
       >
-        <span>Role</span>
-        <span>Company and place</span>
-        <span>Coverage</span>
-        <span>Alignment</span>
-        <span className="text-right">Figure</span>
+        <span />
+        <span className={ROW_INNER}>
+          <span>Role</span>
+          <span>Company and place</span>
+          <span>Coverage</span>
+          <span>Alignment</span>
+          <span className="text-right">Figure</span>
+        </span>
       </div>
 
       <ul>
         {rows.map((job) => (
-          <JobRow key={job.id} job={job} />
+          <JobRow key={job.id} job={job} selected={selected.has(job.id)} onSelect={onSelect} />
         ))}
       </ul>
     </div>
@@ -191,12 +342,15 @@ function JobRowsSkeleton({ rows }: { rows: number }) {
     <SkeletonRegion label="Loading your jobs…">
       <div className="overflow-hidden rounded-xl border">
         {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className={cn(ROW_GRID, "h-11 border-b last:border-b-0")}>
-            <Skeleton className="h-4 w-2/5" />
-            <Skeleton className="h-3 w-4/5" />
-            <Skeleton className="h-1 w-full" />
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="ml-auto h-4 w-7" />
+          <div key={i} className={cn(ROW_OUTER, "h-11 border-b last:border-b-0")}>
+            <Skeleton className="size-4 rounded" />
+            <div className={ROW_INNER}>
+              <Skeleton className="h-4 w-2/5" />
+              <Skeleton className="h-3 w-4/5" />
+              <Skeleton className="h-1 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+              <Skeleton className="ml-auto h-4 w-7" />
+            </div>
           </div>
         ))}
       </div>
@@ -310,7 +464,15 @@ function JobStateCell({ job }: { job: JobSummary }) {
   );
 }
 
-function JobRow({ job }: { job: JobSummary }) {
+function JobRow({
+  job,
+  selected,
+  onSelect,
+}: {
+  job: JobSummary;
+  selected: boolean;
+  onSelect: (id: string, next: boolean) => void;
+}) {
   const facts = [
     job.company,
     job.location,
@@ -322,12 +484,29 @@ function JobRow({ job }: { job: JobSummary }) {
   const scored = job.score !== null;
 
   return (
-    <li>
+    <li className={cn(ROW_OUTER, "h-11 border-b last:border-b-0", selected && "bg-muted/60")}>
+      {/*
+        A real checkbox, outside the link.
+
+        Nesting a control inside an anchor is invalid and unusable — every click
+        would navigate — so the row is two cells and only the second is the
+        link. The accessible name is the job's title rather than "select",
+        because a screen reader moving down the column hears the checkboxes and
+        nothing else, and "select, select, select" names nothing.
+      */}
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={(event) => onSelect(job.id, event.target.checked)}
+        aria-label={`Select ${job.title}`}
+        className="size-4 cursor-pointer rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+
       <Link
         href={`/jobs/${job.id}`}
         className={cn(
-          ROW_GRID,
-          "h-11 border-b transition-colors last:border-b-0 hover:bg-muted/50",
+          ROW_INNER,
+          "h-full items-center transition-colors hover:bg-muted/50",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         )}
       >
@@ -344,9 +523,7 @@ function JobRow({ job }: { job: JobSummary }) {
 
           `tabular-nums` because the whole reason this became a column is that a
           reader compares it down the page, and proportional digits make 78 and
-          100 start in different places. Mono for the same reason at a second
-          scale — `docs/05` puts this number beside the word alignment, which is
-          the column to its left.
+          100 start in different places.
         */}
         <span className="text-right font-mono text-lg font-medium tabular-nums">
           {scored ? job.score : <span className="text-muted-foreground">—</span>}
