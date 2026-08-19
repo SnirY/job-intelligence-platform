@@ -6,20 +6,20 @@ import {
   WORK_MODE_LABELS,
   type JobListQuery,
   type JobSummary,
+  type MatchStatus,
 } from "@jip/shared-types";
-import { Archive, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { StateCard } from "@/components/ui/state-card";
 import { useCompanies, useJobs } from "@/features/jobs/api";
 import { JobFilters } from "@/features/jobs/job-filters";
-import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
 import { ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 /** Matches `DEFAULT_PAGE_SIZE` in `application/jobs/queries.py`. */
 const DEFAULT_PAGE_SIZE = 20;
@@ -98,11 +98,7 @@ function JobResults({
 
   return (
     <div className="space-y-4">
-      <ul className="space-y-3">
-        {rows.map((job) => (
-          <JobRow key={job.id} job={job} />
-        ))}
-      </ul>
+      <JobRows rows={rows} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -140,38 +136,177 @@ function JobResults({
 }
 
 /**
- * The list while it is still arriving, in the shape it will arrive in.
+ * The grid the rows share.
  *
- * A card reading "Loading your jobs…" is one line tall and the list is not, so
- * the page moved under the reader every time it finished loading.
- *
- * The row count comes from the page size rather than from a number that looked
- * about right. It was five against a page size of twenty, which reserved a
- * quarter of the height that was coming and left the jump it existed to
- * prevent. Deriving it means the two cannot drift apart again.
- *
- * The announcement is separate because the rows are `aria-hidden` — a skeleton
- * describes nothing, and without the label the loading state would be silent
- * for the readers who cannot see it.
+ * Declared once and used by the header, every row and the skeleton, because
+ * three copies of a column list is three chances for the header to stop naming
+ * the column beneath it.
  */
+const ROW_GRID = "grid grid-cols-[1fr_180px_92px_150px_52px] items-center gap-3.5 px-3.5";
+
+/**
+ * The list as a table rather than a stack of cards.
+ *
+ * A card per row cost about 76px and put every row's contents in a
+ * `flex-wrap`, so nothing lined up between rows: the badges were conditional,
+ * which meant a figure sat in a different place depending on whether the job
+ * above it happened to be archived. A column of numbers that does not align is
+ * a column nobody can scan, and scanning is the entire purpose of this screen —
+ * `docs/08-ui-ux.md` asks it to answer "which of these do I open".
+ *
+ * Still a list of links semantically. Each row is one `<a>`, so the whole 44px
+ * band is the target rather than the 14px title inside it, and the reading order
+ * stays what it was.
+ */
+function JobRows({ rows }: { rows: JobSummary[] }) {
+  return (
+    <div className="overflow-hidden rounded-xl border">
+      {/* Visual only: every column's content is inside the link's own text, so
+          announcing these again would read each row twice. */}
+      <div
+        aria-hidden
+        className={cn(
+          ROW_GRID,
+          "h-9 border-b bg-muted/40 text-xs font-medium uppercase tracking-wider text-muted-foreground",
+        )}
+      >
+        <span>Role</span>
+        <span>Company and place</span>
+        <span>Coverage</span>
+        <span>Alignment</span>
+        <span className="text-right">Figure</span>
+      </div>
+
+      <ul>
+        {rows.map((job) => (
+          <JobRow key={job.id} job={job} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function JobRowsSkeleton({ rows }: { rows: number }) {
   return (
-    <SkeletonRegion label="Loading your jobs…" className="space-y-3">
-      {Array.from({ length: rows }, (_, i) => (
-        <Card key={i}>
-          <CardContent className="flex flex-wrap items-start gap-3 p-4">
-            <div className="min-w-0 flex-1 space-y-2">
-              <Skeleton className="h-4 w-1/3" />
-              <Skeleton className="h-3 w-2/3" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-5 w-16" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <SkeletonRegion label="Loading your jobs…">
+      <div className="overflow-hidden rounded-xl border">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className={cn(ROW_GRID, "h-11 border-b last:border-b-0")}>
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-4/5" />
+            <Skeleton className="h-1 w-full" />
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="ml-auto h-4 w-7" />
+          </div>
+        ))}
+      </div>
     </SkeletonRegion>
+  );
+}
+
+/**
+ * The order the coverage strip reads in: best evidence first, absence last.
+ *
+ * `MATCH` and `STRONG_MATCH` share a token because the strip is four pixels
+ * tall and answers "how much of this is covered", not "how well". The verdict
+ * that a requirement got is the job screen's answer, at a size that can carry
+ * the distinction.
+ */
+const STRIP_BANDS: { keys: MatchStatus[]; className: string }[] = [
+  { keys: ["STRONG_MATCH", "MATCH"], className: "bg-verdict-strong" },
+  { keys: ["PARTIAL_MATCH"], className: "bg-verdict-partial" },
+  { keys: ["TRANSFERABLE_MATCH"], className: "bg-verdict-transfer" },
+  { keys: ["GAP", "NO_EVIDENCE"], className: "bg-verdict-gap" },
+  { keys: ["BLOCKER"], className: "bg-verdict-blocked" },
+];
+
+/**
+ * Coverage at row scale.
+ *
+ * `aria-hidden`, with the same fact written out beside it in the row's own
+ * text. A four-pixel band carries its meaning in hue alone, which
+ * `docs/08-ui-ux.md` forbids as the *only* carrier — so it is the summary a
+ * sighted reader scans, and never the thing that has to be read.
+ *
+ * `UNKNOWN` is deliberately not a band. A requirement nobody could assess from
+ * a profile is not covered and is not a gap, and painting it as either would
+ * make the strip claim something the matcher declined to.
+ */
+function CoverageStrip({ job }: { job: JobSummary }) {
+  // Defaulted rather than assumed. The payload sends `{}` and `0`, but a
+  // response cached before those fields existed would otherwise throw here and
+  // take the whole row with it.
+  const counts = job.status_counts ?? {};
+  const total = job.total_requirements ?? 0;
+  if (total <= 0) return <span aria-hidden />;
+
+  return (
+    <span aria-hidden className="flex h-1 gap-px overflow-hidden rounded-full bg-muted">
+      {STRIP_BANDS.map((band) => {
+        const count = band.keys.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
+        if (count === 0) return null;
+        return (
+          <span
+            key={band.className}
+            className={band.className}
+            style={{ width: `${(count / total) * 100}%` }}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+/** How many requirements the profile answered, for the row's accessible text. */
+function coveredCount(job: JobSummary): number {
+  const counts = job.status_counts ?? {};
+  const counted: MatchStatus[] = ["STRONG_MATCH", "MATCH", "PARTIAL_MATCH", "TRANSFERABLE_MATCH"];
+  return counted.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
+}
+
+/**
+ * Where this job is, in one column.
+ *
+ * The design removed the badges from the dense row because the conditional
+ * "Archived" one was pushing the figure out of its column. The grid fixes that
+ * by construction, so what is left is a question of meaning rather than
+ * alignment: a row says either how it scored or why it has not, and both are
+ * the same column because a reader scanning for "what needs me" looks in one
+ * place.
+ *
+ * Processing state wins when there is one. `JobStatusBadge` renders nothing for
+ * the two resting states, which is what makes this safe — a badge on every row
+ * would be the noise `docs/08-ui-ux.md` asks us to avoid, and the states that
+ * do render are exactly the ones a user has to act on.
+ *
+ * Set as text rather than as a pill: at a 44px row a badge's own padding costs
+ * more than the words are worth, and the icon still carries the meaning beside
+ * the colour.
+ */
+function JobStateCell({ job }: { job: JobSummary }) {
+  if (job.status === "FETCHING" || job.status === "PARSING" || job.status === "ANALYZING") {
+    return (
+      <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+        <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+        {job.status === "FETCHING" ? "Reading the page" : "Analysing"}
+      </span>
+    );
+  }
+
+  if (job.status === "FAILED" || job.status === "ANALYSIS_FAILED") {
+    return (
+      <span className="flex items-center gap-1.5 truncate text-xs text-destructive">
+        <AlertTriangle aria-hidden className="size-3 shrink-0" />
+        {job.status === "FAILED" ? "Needs a description" : "Analysis failed"}
+      </span>
+    );
+  }
+
+  return (
+    <span className="truncate text-xs text-muted-foreground">
+      {job.alignment_label ?? "Not yet analysed"}
+      {job.is_stale && " · out of date"}
+    </span>
   );
 }
 
@@ -184,34 +319,46 @@ function JobRow({ job }: { job: JobSummary }) {
     job.seniority ? SENIORITY_LABELS[job.seniority] : null,
   ].filter(Boolean);
 
+  const scored = job.score !== null;
+
   return (
     <li>
-      <Card className="transition-colors hover:border-primary/40">
-        <CardContent className="flex flex-wrap items-start gap-3 p-4">
-          <div className="min-w-0 flex-1">
-            <Link
-              href={`/jobs/${job.id}`}
-              className="text-sm font-medium underline-offset-4 hover:underline"
-            >
-              {job.title}
-            </Link>
-            {facts.length > 0 && (
-              <p className="truncate text-xs text-muted-foreground">{facts.join(" · ")}</p>
-            )}
-          </div>
+      <Link
+        href={`/jobs/${job.id}`}
+        className={cn(
+          ROW_GRID,
+          "h-11 border-b transition-colors last:border-b-0 hover:bg-muted/50",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        )}
+      >
+        <span className="truncate text-sm font-medium">{job.title}</span>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <JobStatusBadge status={job.status} />
-            {job.archived_at && (
-              <Badge variant="outline" className="gap-1">
-                <Archive aria-hidden className="size-3" />
-                Archived
-              </Badge>
-            )}
-            <ImportMethodBadge method={job.import_method} />
-          </div>
-        </CardContent>
-      </Card>
+        <span className="truncate text-xs text-muted-foreground">{facts.join(" · ")}</span>
+
+        <CoverageStrip job={job} />
+
+        <JobStateCell job={job} />
+
+        {/*
+          The figure, and the dash that is not a zero.
+
+          `tabular-nums` because the whole reason this became a column is that a
+          reader compares it down the page, and proportional digits make 78 and
+          100 start in different places. Mono for the same reason at a second
+          scale — `docs/05` puts this number beside the word alignment, which is
+          the column to its left.
+        */}
+        <span className="text-right font-mono text-lg font-medium tabular-nums">
+          {scored ? job.score : <span className="text-muted-foreground">—</span>}
+        </span>
+
+        {/* What the strip means, for a reader who cannot see it. */}
+        <span className="sr-only">
+          {scored
+            ? `${coveredCount(job)} of ${job.total_requirements} requirements answered by your profile`
+            : "No match computed yet"}
+        </span>
+      </Link>
     </li>
   );
 }
