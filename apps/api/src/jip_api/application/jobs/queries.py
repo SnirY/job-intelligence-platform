@@ -81,6 +81,16 @@ class JobFilters:
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
 
+    min_score: int | None = None
+    max_score: int | None = None
+    """An alignment band, as a closed range.
+
+    Deliberately excludes unscored jobs rather than treating a missing score as
+    zero: asking for "30 to 49" is a question about jobs that were measured, and
+    a job nobody matched has no place in the answer. The screen reaches those
+    through their own figure.
+    """
+
 
 @dataclass(slots=True)
 class JobListItem:
@@ -139,7 +149,7 @@ def list_jobs(session: Session, user_id: uuid.UUID, filters: JobFilters) -> JobP
     page = max(1, filters.page)
     page_size = min(max(1, filters.page_size), MAX_PAGE_SIZE)
 
-    base = _apply_filters(owned(Job, user_id), filters)
+    base = _apply_filters(owned(Job, user_id), filters, user_id)
 
     total = session.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
@@ -250,7 +260,7 @@ def alignment_distribution(
     Filtered through the same ``_apply_filters`` as the list, so the two cannot
     describe different sets.
     """
-    base = _apply_filters(owned(Job, user_id), filters).subquery()
+    base = _apply_filters(owned(Job, user_id), filters, user_id).subquery()
     score = _latest_score(user_id, job_column=base.c.id)
 
     rows = session.execute(select(base.c.id, score.label("score"))).all()
@@ -276,7 +286,9 @@ def alignment_distribution(
     )
 
 
-def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select[tuple[Job]]:
+def _apply_filters(
+    statement: Select[tuple[Job]], filters: JobFilters, user_id: uuid.UUID
+) -> Select[tuple[Job]]:
     if filters.archived is ArchivedFilter.ACTIVE:
         statement = statement.where(Job.archived_at.is_(None))
     elif filters.archived is ArchivedFilter.ARCHIVED:
@@ -308,6 +320,16 @@ def _apply_filters(statement: Select[tuple[Job]], filters: JobFilters) -> Select
         statement = statement.where(Job.seniority == filters.seniority)
     if filters.status is not None:
         statement = statement.where(Job.status == filters.status)
+
+    if filters.min_score is not None or filters.max_score is not None:
+        # `IS NOT NULL` is implied by either comparison in SQL, but stating it
+        # says the intent out loud: a band is a question about measured jobs.
+        score = _latest_score(user_id)
+        statement = statement.where(score.is_not(None))
+        if filters.min_score is not None:
+            statement = statement.where(score >= filters.min_score)
+        if filters.max_score is not None:
+            statement = statement.where(score <= filters.max_score)
 
     return statement
 

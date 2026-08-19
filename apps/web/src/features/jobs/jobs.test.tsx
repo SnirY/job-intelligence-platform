@@ -86,6 +86,25 @@ function job(overrides: Record<string, unknown> = {}) {
 }
 
 /** Routes fetches by URL, since each screen makes more than one call. */
+function emptyDistribution() {
+  return { buckets: [], unscored: 0, total: 0 };
+}
+
+function distribution(counts: number[], unscored = 0) {
+  const bands = [
+    [85, "Strong alignment"],
+    [70, "Good alignment"],
+    [50, "Partial alignment"],
+    [30, "Limited alignment"],
+    [0, "Little alignment"],
+  ] as const;
+  return {
+    buckets: bands.map(([floor, label], i) => ({ floor, label, count: counts[i] ?? 0 })),
+    unscored,
+    total: counts.reduce((a, b) => a + b, 0) + unscored,
+  };
+}
+
 function routes(handlers: Record<string, unknown>) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     void init;
@@ -97,6 +116,7 @@ function routes(handlers: Record<string, unknown>) {
     // crashing on it says more about this mock than about the component.
     if (url.includes("/applications")) return ok(handlers.applications ?? []);
     if (url.includes("/resume")) return ok(handlers.resumes ?? []);
+    if (url.includes("/jobs/distribution")) return ok(handlers.distribution ?? emptyDistribution());
     if (url.includes("/jobs/archive"))
       return ok(handlers.bulkArchive ?? { archived: [], missing: [] });
     // The list is the only call with a query string or a bare /jobs path.
@@ -220,6 +240,65 @@ describe("jobs list", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText(/1 job archived/)).not.toBeInTheDocument();
+  });
+
+  it("narrows to a band when one is chosen, and back out again", async () => {
+    /* The point of the figure: reaching a subset without walking pages. */
+    const fetchMock = routes({
+      list: page([summary()]),
+      distribution: distribution([3, 7, 5, 2, 1]),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithQuery(<JobsList />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Good alignment/ }));
+
+    await vi.waitFor(() => {
+      const asked = fetchMock.mock.calls.some(
+        ([url]) => String(url).includes("min_score=70") && String(url).includes("max_score=84"),
+      );
+      expect(asked).toBe(true);
+    });
+
+    // And the same band again clears it, rather than leaving the reader stuck
+    // in a filter with no obvious way out.
+    await userEvent.click(screen.getByRole("button", { name: /Good alignment/ }));
+
+    await vi.waitFor(() => {
+      const cleared = fetchMock.mock.calls.at(-1)?.[0];
+      expect(String(cleared)).not.toContain("min_score");
+    });
+  });
+
+  it("keeps unscored jobs out of the lowest band and says why", async () => {
+    /* A job nobody matched has not scored badly. Sweeping it into "Little
+       alignment" would be a verdict on work that was never done. */
+    vi.stubGlobal(
+      "fetch",
+      routes({ list: page([summary()]), distribution: distribution([1, 0, 0, 0, 0], 4) }),
+    );
+
+    renderWithQuery(<JobsList />);
+
+    expect(await screen.findByText(/not compared against your profile yet/)).toBeInTheDocument();
+    expect(screen.getByText(/no figure — not a low one/)).toBeInTheDocument();
+
+    // The empty band is present and not offered as a filter.
+    expect(screen.getByRole("button", { name: /Little alignment/ })).toBeDisabled();
+  });
+
+  it("shows the count on the band rather than only on hover", async () => {
+    /* A bar whose value appears only on hover has no value on a touch screen. */
+    vi.stubGlobal(
+      "fetch",
+      routes({ list: page([summary()]), distribution: distribution([0, 12, 0, 0, 0]) }),
+    );
+
+    renderWithQuery(<JobsList />);
+
+    const band = await screen.findByRole("button", { name: /Good alignment/ });
+    expect(band).toHaveTextContent("12");
   });
 
   it("lists jobs with their facts", async () => {

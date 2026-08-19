@@ -545,6 +545,8 @@ def read_jobs(
     seniority: Seniority | None = None,
     job_status: Annotated[JobProcessingStatus | None, Query(alias="status")] = None,
     archived: queries_uc.ArchivedFilter = queries_uc.ArchivedFilter.ACTIVE,
+    min_score: Annotated[int | None, Query(ge=0, le=100)] = None,
+    max_score: Annotated[int | None, Query(ge=0, le=100)] = None,
     sort: queries_uc.JobSort = queries_uc.JobSort.NEWEST,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=queries_uc.MAX_PAGE_SIZE)] = (
@@ -563,6 +565,8 @@ def read_jobs(
             seniority=seniority,
             status=job_status,
             archived=archived,
+            min_score=min_score,
+            max_score=max_score,
             sort=sort,
             page=page,
             page_size=page_size,
