@@ -7,7 +7,7 @@ import {
   type Experience,
   type ExperienceCreate,
 } from "@jip/shared-types";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionSection, formatDateRange } from "@/features/career/section";
 import { useCollection, useDraft } from "@/features/career/use-collection";
+import { DeleteRecordButton, countOf } from "@/features/career/delete-record";
 
 const EMPTY: ExperienceCreate = {
   company: "",
@@ -62,6 +63,12 @@ function toDraft(record: Experience): ExperienceCreate {
   };
 }
 
+/** What goes with a role that the list never showed. */
+function achievementsLost(record: Experience): string | null {
+  const written = record.achievements?.length ?? 0;
+  return countOf(written, "achievement");
+}
+
 export function ExperienceSection() {
   const { query, create, remove, update } = useCollection<Experience, ExperienceCreate>(
     ["career", "experiences"],
@@ -105,16 +112,22 @@ export function ExperienceSection() {
           >
             <Pencil aria-hidden className="size-4" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${record.title} at ${record.company}`}
-            disabled={remove.isPending}
-            onClick={() => remove.mutate(record.id)}
-          >
-            <Trash2 aria-hidden className="size-4" />
-          </Button>
+          <DeleteRecordButton
+            label={`Remove ${record.title} at ${record.company}`}
+            title={`Delete ${record.title} at ${record.company}?`}
+            pending={remove.isPending}
+            onDelete={() => remove.mutate(record.id)}
+            consequence={
+              <>
+                <p>This cannot be undone.</p>
+                {/* The row above shows a title, a company and dates. Everything
+                    that took writing is in the edit form, which is not open. */}
+                {achievementsLost(record) && (
+                  <p>It also deletes {achievementsLost(record)} you wrote for this role.</p>
+                )}
+              </>
+            }
+          />
         </>
       )}
       form={

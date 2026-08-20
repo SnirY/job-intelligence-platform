@@ -9,7 +9,7 @@ import {
   type UserSkill,
   type UserSkillCreate,
 } from "@jip/shared-types";
-import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import { CollectionSection } from "@/features/career/section";
 import { SkillEvidencePanel } from "@/features/career/skill-evidence";
 import { useCollection, useDraft } from "@/features/career/use-collection";
 import { ApiError } from "@/lib/api";
+import { DeleteRecordButton } from "@/features/career/delete-record";
 
 const EMPTY: UserSkillCreate = { name: "", category: "OTHER", proficiency: null };
 
@@ -99,16 +100,22 @@ export function SkillsSection() {
             <Pencil aria-hidden className="size-4" />
           </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${skill.name}`}
-            disabled={remove.isPending}
-            onClick={() => remove.mutate(skill.id)}
-          >
-            <Trash2 aria-hidden className="size-4" />
-          </Button>
+          <DeleteRecordButton
+            label={`Remove ${skill.name}`}
+            title={`Delete ${skill.name}?`}
+            pending={remove.isPending}
+            onDelete={() => remove.mutate(skill.id)}
+            consequence={
+              <>
+                <p>This cannot be undone.</p>
+                {/* No count: the evidence list loads per skill when its panel
+                    is opened, and fetching to fill a sentence would make every
+                    delete button cost a request. The cascade is real whether or
+                    not anyone has counted it. */}
+                <p>Any reasons you recorded under &ldquo;Why I know this&rdquo; go with it.</p>
+              </>
+            }
+          />
 
           {/* `basis-full` drops the panel onto its own line inside the row's
               flex-wrap, so the shared section layout does not have to know
