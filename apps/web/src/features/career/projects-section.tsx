@@ -9,7 +9,7 @@ import {
   type ProjectStatus,
   type ProjectType,
 } from "@jip/shared-types";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CollectionSection, formatDateRange } from "@/features/career/section";
 import { useCollection, useDraft } from "@/features/career/use-collection";
 import { ApiError } from "@/lib/api";
+import { DeleteRecordButton } from "@/features/career/delete-record";
 
 const EMPTY: ProjectCreate = {
   name: "",
@@ -114,16 +115,20 @@ export function ProjectsSection() {
           >
             <Pencil aria-hidden className="size-4" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${project.name}`}
-            disabled={remove.isPending}
-            onClick={() => remove.mutate(project.id)}
-          >
-            <Trash2 aria-hidden className="size-4" />
-          </Button>
+          <DeleteRecordButton
+            label={`Remove ${project.name}`}
+            title={`Delete ${project.name}?`}
+            pending={remove.isPending}
+            onDelete={() => remove.mutate(project.id)}
+            consequence={
+              <>
+                <p>This cannot be undone.</p>
+                {(project.summary || project.description) && (
+                  <p>Its write-up goes with it, and the row above does not show it.</p>
+                )}
+              </>
+            }
+          />
         </>
       )}
       form={
