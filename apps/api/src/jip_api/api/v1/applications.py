@@ -160,7 +160,7 @@ def create(
         occurred_at=body.occurred_at,
     )
     session.commit()
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 @router.get("", response_model=DataResponse[list[ApplicationPayload]], summary="List applications")
@@ -180,7 +180,7 @@ def list_applications(
     stages = service.days_in_stage_for(session, [row.id for row in rows])
 
     return DataResponse(
-        data=[_payload(session, row, jobs=jobs, days=stages.get(row.id)) for row in rows]
+        data=[_payload(row, job=jobs.get(row.job_id), days=stages.get(row.id)) for row in rows]
     )
 
 
@@ -193,7 +193,7 @@ def read(
     user: CurrentUser, session: SessionDep, application_id: uuid.UUID
 ) -> DataResponse[ApplicationPayload]:
     application = service.get_application(session, user.id, application_id)
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 @router.patch(
@@ -207,7 +207,7 @@ def update(
     application = service.get_application(session, user.id, application_id)
     application.notes = (body.notes or "").strip() or None
     session.commit()
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 @router.patch(
@@ -228,7 +228,7 @@ def change_status(
         session, application, body.status, occurred_at=body.occurred_at, detail=body.detail
     )
     session.commit()
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 @router.post(
@@ -255,7 +255,7 @@ def apply(
         detail=body.detail,
     )
     session.commit()
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 @router.get(
@@ -303,7 +303,7 @@ def record_feedback(
     application = service.get_application(session, user.id, application_id)
     service.record_feedback(session, application, body.feedback, occurred_at=body.occurred_at)
     session.commit()
-    return DataResponse(data=_payload(session, application))
+    return DataResponse(data=_one(session, application))
 
 
 # --- helpers ------------------------------------------------------------------
@@ -317,21 +317,49 @@ def _jobs_for(session: Session, job_ids: list[uuid.UUID]) -> dict[uuid.UUID, Job
 
 
 def _payload(
-    session: Session,
     application: Application,
     *,
-    jobs: dict[uuid.UUID, Job] | None = None,
-    days: int | None = None,
+    job: Job | None,
+    days: int | None,
 ) -> ApplicationPayload:
+    """Format one application. Deliberately unable to query.
+
+    It used to take a session and fall back to fetching whatever the caller had
+    not supplied, which read as a convenience and was an N+1 with a guarantee
+    attached. ``days_in_stage_for`` returns a row only for applications that
+    have *changed* status, and ``days_in_stage`` is documented to answer None
+    before any move — so on the board, every application still sitting where it
+    was created came back missing from the batch, was read as "not computed",
+    and triggered a second query that re-ran the same batched statement for one
+    id and returned None again.
+
+    The cost landed exactly where it hurts most. The column with the newest
+    applications is the fullest one on a new account, and every card in it paid
+    for an answer the batch had already given.
+
+    None meant two different things — "nobody asked" and "asked, and there is no
+    answer" — and the fix is to remove the first meaning rather than to detect
+    it. With no session here, a caller has to say what it knows, and None is
+    only ever the answer.
+    """
     payload = ApplicationPayload.model_validate(application)
 
-    job = (jobs or {}).get(application.job_id) or session.get(Job, application.job_id)
     if job is not None:
         payload.job_title = job.title
         payload.company = job.company
 
     payload.allowed_transitions = sorted(allowed_from(application.status))
-    payload.days_in_stage = (
-        days if days is not None else service.days_in_stage(session, application.id)
-    )
+    payload.days_in_stage = days
     return payload
+
+
+def _one(session: Session, application: Application) -> ApplicationPayload:
+    """One application, reading what a single row needs.
+
+    Two queries, and both are meant. The list path does not come through here.
+    """
+    return _payload(
+        application,
+        job=session.get(Job, application.job_id),
+        days=service.days_in_stage(session, application.id),
+    )
