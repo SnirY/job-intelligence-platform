@@ -18,13 +18,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StateCard } from "@/components/ui/state-card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useDeleteJob,
   useJob,
   useJobAction,
+  useJobAnalysis,
+  useJobMatch,
   useJobSource,
   useSupplyDescription,
 } from "@/features/jobs/api";
+import { useApplications } from "@/features/applications/api";
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
 import { JobMatchPanel } from "@/features/jobs/job-match";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
@@ -67,6 +71,7 @@ function JobView({ job }: { job: Job }) {
   const router = useRouter();
   const archive = useJobAction(job.id, job.archived_at ? "unarchive" : "archive");
   const remove = useDeleteJob();
+  const [confirming, setConfirming] = useState(false);
 
   const facts: Array<[string, string]> = [
     ["Company", job.company ?? "—"],
@@ -213,7 +218,7 @@ function JobView({ job }: { job: Job }) {
               type="button"
               variant="ghost"
               disabled={remove.isPending}
-              onClick={() => remove.mutate(job.id, { onSuccess: () => router.push("/jobs") })}
+              onClick={() => setConfirming(true)}
             >
               <Trash2 aria-hidden className="size-4" />
               Delete permanently
@@ -222,6 +227,25 @@ function JobView({ job }: { job: Job }) {
             <p className="text-xs text-muted-foreground">
               Archiving keeps the job and its posting. Deleting does not.
             </p>
+
+            <DeleteJobDialog
+              job={job}
+              open={confirming}
+              pending={remove.isPending}
+              onCancel={() => setConfirming(false)}
+              onArchive={() => {
+                setConfirming(false);
+                archive.mutate();
+              }}
+              onConfirm={() =>
+                remove.mutate(job.id, {
+                  onSuccess: () => {
+                    setConfirming(false);
+                    router.push("/jobs");
+                  },
+                })
+              }
+            />
           </CardContent>
         </Card>
       </Reading>
@@ -239,6 +263,78 @@ function JobView({ job }: { job: Job }) {
  */
 function Reading({ children }: { children: ReactNode }) {
   return <div className="mx-auto w-full max-w-4xl space-y-6">{children}</div>;
+}
+
+/**
+ * What deleting this job actually costs, named from what is already loaded.
+ *
+ * F29. The button was one click with no dialog and no way back, and the reason
+ * that matters is not the click — it is that a job is not one row. Deleting it
+ * takes every reading of the posting, every match computed against it, and the
+ * application being tracked from it, and none of that is visible from a button
+ * labelled "Delete permanently".
+ *
+ * Every count here comes from a query the page has already run — `useJobAnalysis`
+ * and `useJobMatch` are what the panels above render from, and `useApplications`
+ * is what the tracker below uses — so the dialog costs no request. React Query
+ * serves them from the same cache keys.
+ *
+ * It says nothing it cannot count. A job with no analysis gets a shorter
+ * sentence rather than a hedged one, because a warning that lists things that
+ * might exist is the kind people learn to skip.
+ */
+function DeleteJobDialog({
+  job,
+  open,
+  pending,
+  onCancel,
+  onConfirm,
+  onArchive,
+}: {
+  job: Job;
+  open: boolean;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onArchive: () => void;
+}) {
+  const analysis = useJobAnalysis(job.id);
+  const match = useJobMatch(job.id);
+  const applications = useApplications(true);
+
+  const readings = analysis.data?.available_versions?.length ?? 0;
+  const matches = match.data?.available_versions?.length ?? 0;
+  const tracked = (applications.data ?? []).find((row) => row.job_id === job.id);
+
+  const losses: string[] = [];
+  if (readings > 0) {
+    losses.push(`${readings} ${readings === 1 ? "reading" : "readings"} of the posting`);
+  }
+  if (matches > 0) {
+    losses.push(`${matches} ${matches === 1 ? "match" : "matches"} and the evidence behind them`);
+  }
+
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`Delete ${job.title}?`}
+      confirmLabel="Delete permanently"
+      pending={pending}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      /* Only when there is one. Offering to archive something already archived
+         would be a button that does nothing, in the dialog whose whole job is
+         to be believed. */
+      alternative={job.archived_at ? undefined : { label: "Archive instead", onSelect: onArchive }}
+      consequence={
+        <>
+          <p>This cannot be undone. Archiving can.</p>
+          {losses.length > 0 && <p>It also deletes {losses.join(", and ")}.</p>}
+          {tracked && <p>The application you are tracking goes with it, including its history.</p>}
+        </>
+      }
+    />
+  );
 }
 
 function FetchingNotice() {
