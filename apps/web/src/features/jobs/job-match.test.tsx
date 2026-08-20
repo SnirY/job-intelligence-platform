@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -141,6 +141,22 @@ function routes(payload: Record<string, unknown>) {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+/**
+ * The requirement field, scoped.
+ *
+ * The strip and the field are two ways to reach the same requirement, which is
+ * the design — and it makes a bare `getByRole("button", { name: /Python/ })`
+ * ambiguous. Queries that mean "the chip" say so.
+ */
+function field() {
+  return within(screen.getByRole("region", { name: "Requirement by requirement" }));
+}
+
+/** The decision column's strip, scoped for the same reason. */
+function strip() {
+  return within(screen.getByRole("region", { name: "Coverage" }));
+}
 
 // --- states -------------------------------------------------------------------
 
@@ -383,10 +399,10 @@ describe("requirements and evidence", () => {
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    expect(screen.getByRole("button", { name: /Python/ })).toHaveAccessibleName(
+    expect(field().getByRole("button", { name: /Python/ })).toHaveAccessibleName(
       expect.stringContaining("Strong match"),
     );
-    expect(screen.getByRole("button", { name: /Rust/ })).toHaveAccessibleName(
+    expect(field().getByRole("button", { name: /Rust/ })).toHaveAccessibleName(
       expect.stringContaining("Gap"),
     );
   });
@@ -403,7 +419,7 @@ describe("requirements and evidence", () => {
 
     expect(screen.queryByText("Expert, 6 years")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Python/ }));
+    await userEvent.click(field().getByRole("button", { name: /Python/ }));
 
     expect(await screen.findByText("Expert, 6 years")).toBeInTheDocument();
   });
@@ -427,7 +443,7 @@ describe("requirements and evidence", () => {
 
     expect(screen.getByText(/Pick a requirement to see/)).toBeInTheDocument();
 
-    const chip = screen.getByRole("button", { name: /Python/ });
+    const chip = field().getByRole("button", { name: /Python/ });
     expect(chip).toHaveAccessibleName(expect.stringContaining("Essential"));
     expect(chip).toHaveAccessibleName(expect.stringContaining("Strong match"));
     expect(chip).toHaveAttribute("aria-pressed", "false");
@@ -468,7 +484,7 @@ describe("requirements and evidence", () => {
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    await userEvent.click(screen.getByRole("button", { name: /Python/ }));
+    await userEvent.click(field().getByRole("button", { name: /Python/ }));
 
     expect(await screen.findByText("Not yet confirmed by you")).toBeInTheDocument();
   });
@@ -491,7 +507,8 @@ describe("requirements and evidence", () => {
     );
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Rust/ }));
+    await screen.findByText("Requirement by requirement");
+    await userEvent.click(field().getByRole("button", { name: /Rust/ }));
 
     // A statement about our records, not about the person. That distinction is
     // the whole reason NO_EVIDENCE and GAP are different statuses.
@@ -505,8 +522,9 @@ describe("requirements and evidence", () => {
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
-    expect(await screen.findByText("Transferable")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Python/ })).toHaveAccessibleName(
+    await screen.findByText("Requirement by requirement");
+    expect(field().getByText("Transferable")).toBeInTheDocument();
+    expect(field().getByRole("button", { name: /Python/ })).toHaveAccessibleName(
       expect.stringContaining("Transferable"),
     );
   });
@@ -560,8 +578,9 @@ describe("sections", () => {
     );
 
     renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
 
-    const chip = await screen.findByRole("button", { name: /Spring Boot/ });
+    const chip = field().getByRole("button", { name: /Spring Boot/ });
     expect(chip).toHaveAccessibleName(expect.stringContaining("Transferable"));
     expect(chip).not.toHaveAccessibleName(expect.stringContaining("Strong match"));
   });
@@ -596,7 +615,7 @@ describe("sections", () => {
     await screen.findByText("Requirement by requirement");
 
     for (const lane of ["Covered", "Partial match", "Transferable", "Gap", "Blocker"]) {
-      expect(screen.getByText(lane)).toBeInTheDocument();
+      expect(field().getByText(lane)).toBeInTheDocument();
     }
   });
 
@@ -619,8 +638,9 @@ describe("sections", () => {
     );
 
     renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
 
-    const chip = await screen.findByRole("button", { name: /Kubernetes/ });
+    const chip = field().getByRole("button", { name: /Kubernetes/ });
     expect(chip).toHaveAccessibleName(expect.stringContaining("Preferred"));
     expect(screen.getByText(/does not lower the figure/)).toBeInTheDocument();
   });
@@ -643,6 +663,183 @@ describe("sections", () => {
   });
 });
 
+describe("the decision column", () => {
+  it("draws a cell per requirement, in the posting's own order", async () => {
+    /* The field arranges by meaning, which throws the posting's sequence away.
+       The strip is the only place it survives, and it is the only navigator
+       this screen has that is not the field itself. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item({
+              id: "second",
+              status: "GAP",
+              explanation: "Rust is not in your profile.",
+              evidence: [],
+              source_order: 1,
+              requirement: requirement({ id: "req-2", skill_name: "Rust", source_order: 1 }),
+            }),
+            item({ source_order: 0 }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Coverage");
+
+    expect(strip().getByRole("button", { name: /Requirement 1 of 2/ })).toHaveAccessibleName(
+      expect.stringContaining("Python"),
+    );
+    expect(strip().getByRole("button", { name: /Requirement 2 of 2/ })).toHaveAccessibleName(
+      expect.stringContaining("Rust"),
+    );
+  });
+
+  it("opens a requirement from the strip", async () => {
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Coverage");
+
+    await userEvent.click(strip().getByRole("button", { name: /Requirement 1 of 1/ }));
+
+    expect(screen.getByText("What the posting said")).toBeInTheDocument();
+  });
+
+  it("names every lane in the legend rather than on hover", async () => {
+    /* The recorded rule: a label that exists only on hover does not exist for
+       a touch or keyboard reader, and the strip is eight pixels tall with no
+       room for a word. So the legend carries all of them, with counts, and a
+       zero is a reading too. */
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Coverage");
+
+    for (const lane of [
+      "Covered",
+      "Partial match",
+      "Transferable",
+      "Gap",
+      "Blocker",
+      "Nothing on file",
+      "Check yourself",
+    ]) {
+      expect(strip().getByText(lane)).toBeInTheDocument();
+    }
+  });
+
+  it("offers confirming what the verdicts rest on, without promising a better number", async () => {
+    /* Derived from rows already on screen: a partial verdict standing on
+       evidence the user has never confirmed. The offer is real and the
+       promise is not — acting might not move the figure, and saying it would
+       invites editing a history for a score. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item({
+              status: "PARTIAL_MATCH",
+              evidence: [
+                {
+                  id: "ev-1",
+                  evidence_type: "SKILL",
+                  entity_id: "skill-1",
+                  label: "Python",
+                  detail: null,
+                  verification_status: "AI_INFERRED",
+                  relevance: 80,
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+
+    expect(await screen.findByText(/Confirm 1 thing you already have/)).toBeInTheDocument();
+    expect(screen.getByText(/statement about your record, not about this job/)).toBeInTheDocument();
+
+    for (const promise of [/raise your score/i, /improve your match/i, /higher/i]) {
+      expect(screen.queryByText(promise)).not.toBeInTheDocument();
+    }
+  });
+
+  it("counts one career row once, however many requirements cite it", async () => {
+    // Counting evidence rows instead would promise more work than exists.
+    const cited = {
+      id: "ev-1",
+      evidence_type: "SKILL",
+      entity_id: "skill-1",
+      label: "Python",
+      detail: null,
+      verification_status: "AI_INFERRED",
+      relevance: 80,
+    };
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item({ id: "a", status: "PARTIAL_MATCH", evidence: [cited] }),
+            item({
+              id: "b",
+              status: "PARTIAL_MATCH",
+              source_order: 1,
+              evidence: [{ ...cited, id: "ev-2" }],
+              requirement: requirement({ id: "req-2", skill_name: "asyncio", source_order: 1 }),
+            }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+
+    expect(await screen.findByText(/Confirm 1 thing you already have/)).toBeInTheDocument();
+  });
+
+  it("says an unanswered requirement is no figure rather than a low one", async () => {
+    // The rule the API keeps too: absence of measurement is not a bad score.
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item({
+              status: "NO_EVIDENCE",
+              explanation: "Nothing on file speaks to this.",
+              evidence: [],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+
+    expect(await screen.findByText(/requirement has\s+nothing on file/i)).toBeInTheDocument();
+    expect(screen.getByText(/Not a low score — no figure at all/)).toBeInTheDocument();
+  });
+
+  it("says nothing at all when there is nothing to suggest", async () => {
+    // A next-move panel that always finds something is a panel nobody believes
+    // the third time.
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Coverage");
+
+    expect(screen.queryByText("Next move")).not.toBeInTheDocument();
+  });
+});
+
 describe("the evidence chain", () => {
   it("quotes the posting and labels our reading as ours", async () => {
     /* Invariant 4, as a form. The posting's sentence and our reading of it are
@@ -652,7 +849,8 @@ describe("the evidence chain", () => {
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Python/ }));
+    await screen.findByText("Requirement by requirement");
+    await userEvent.click(field().getByRole("button", { name: /Python/ }));
 
     expect(screen.getByText("What the posting said")).toBeInTheDocument();
     expect(screen.getByText("Strong Python, ideally with async experience")).toBeInTheDocument();
@@ -666,7 +864,8 @@ describe("the evidence chain", () => {
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Python/ }));
+    await screen.findByText("Requirement by requirement");
+    await userEvent.click(field().getByRole("button", { name: /Python/ }));
 
     for (const link of [
       "What the posting said",
@@ -684,7 +883,8 @@ describe("the evidence chain", () => {
     vi.stubGlobal("fetch", routes(view({ items: [item({ requirement: null })] })));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await userEvent.click(await screen.findByRole("button", { name: /You have Python/ }));
+    await screen.findByText("Requirement by requirement");
+    await userEvent.click(field().getByRole("button", { name: /You have Python/ }));
 
     expect(screen.getByText(/is not on file, so there is nothing to quote/)).toBeInTheDocument();
   });
