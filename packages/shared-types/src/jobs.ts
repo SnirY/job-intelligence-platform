@@ -282,6 +282,40 @@ export function sortsUnscoredLast(sort: JobSort): boolean {
 export type ArchivedFilter = "ACTIVE" | "ARCHIVED" | "ALL";
 
 /** Query parameters for `GET /api/v1/jobs`. */
+/**
+ * A named set of list filters.
+ *
+ * A view is a question, not a position in the answer, so `page` is never part
+ * of one — reopening a saved view drops you at the start of it rather than on
+ * page four of a list you have not seen.
+ */
+export interface SavedJobView {
+  id: string;
+  name: string;
+  /** The stored query. A subset of `JobListQuery`, without `page`. */
+  filters: SavedViewFilters;
+  created_at: string;
+  updated_at: string;
+  /**
+   * Whether this version of the app can still run the view.
+   *
+   * False when a stored filter no longer parses — an enum member that has been
+   * removed, a number out of range, a key the API no longer has. The offending
+   * keys are **kept** rather than dropped: silently removing one would return a
+   * wider list than the name promises with nothing on screen admitting it.
+   */
+  is_readable: boolean;
+  /** Which keys are responsible, so a screen can name them. */
+  unreadable: string[];
+}
+
+export type SavedViewFilters = Omit<JobListQuery, "page">;
+
+export interface SavedJobViewCreate {
+  name: string;
+  filters: SavedViewFilters;
+}
+
 export interface JobListQuery {
   search?: string;
   company?: string;

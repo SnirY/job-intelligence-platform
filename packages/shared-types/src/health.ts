@@ -42,6 +42,7 @@ export const API_ROUTES = {
   resumeSupportedFormats: "/api/v1/resumes/supported-formats",
   processingJobs: "/api/v1/processing-jobs",
   jobs: "/api/v1/jobs",
+  jobViews: "/api/v1/job-views",
   jobCompanies: "/api/v1/jobs/companies",
   resumes: "/api/v1/resumes",
   resumeVersions: "/api/v1/resume-versions",

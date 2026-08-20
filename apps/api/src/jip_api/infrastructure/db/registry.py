@@ -16,6 +16,7 @@ from jip_api.domain.career import skills as career_skills
 from jip_api.domain.documents import models as document_models
 from jip_api.domain.jobs import analysis as job_analysis_models
 from jip_api.domain.jobs import models as job_models
+from jip_api.domain.jobs import saved_views as saved_view_models
 from jip_api.domain.matching import models as matching_models
 from jip_api.domain.processing import models as processing_models
 from jip_api.domain.resumes import models as resume_models
@@ -35,5 +36,6 @@ __all__ = [
     "processing_models",
     "resume_models",
     "resume_tailoring_models",
+    "saved_view_models",
     "user_models",
 ]
