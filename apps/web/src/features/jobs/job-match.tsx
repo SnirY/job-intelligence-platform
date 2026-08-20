@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { StateCard } from "@/components/ui/state-card";
 import { Callout } from "@/components/ui/callout";
 import { useJobMatch, useMatchJob } from "@/features/jobs/api";
+import { CoverageStrip, NextMove } from "@/features/jobs/decision-column";
 import { EvidenceChain } from "@/features/jobs/evidence-chain";
 import { RequirementField } from "@/features/jobs/requirement-field";
 
@@ -145,6 +146,8 @@ function MatchView({
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_400px] xl:items-start">
         <div className="space-y-4">
           <Overview match={match} />
+          <CoverageStrip items={view.items} selectedId={selectedId} onSelect={setSelectedId} />
+          <NextMove items={view.items} onSelect={setSelectedId} />
           {blockers.length > 0 && <Blockers items={blockers} onOpen={setSelectedId} />}
           <Categories match={match} />
           <PreferenceFitCard fit={view.preference_fit} />
@@ -242,7 +245,10 @@ function Overview({ match }: { match: JobMatch }) {
         </p>
 
         <div className="flex items-end gap-3">
-          <p className="font-mono text-6xl font-semibold leading-none tracking-tight tabular-nums">
+          {/* 72px, and the dash that is not a zero. The figure is the one
+              thing on this screen that has to survive being glanced at, and it
+              spent the whole redesign at the size of a card title. */}
+          <p className="font-mono text-[72px] font-semibold leading-[0.9] tracking-tighter tabular-nums">
             {match.overall_score === null ? "—" : match.overall_score}
           </p>
           {/* Never shortened. Invariant 1 wants the number beside the word
