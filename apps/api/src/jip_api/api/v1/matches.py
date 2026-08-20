@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from jip_api.api.dependencies import CurrentUser
+from jip_api.api.v1.jobs import RequirementPayload
 from jip_api.application.career import preference_fit
 from jip_api.application.career.preference_fit import FitVerdict
 from jip_api.application.career.preferences import get_or_create_preferences
@@ -84,6 +85,24 @@ class MatchItemPayload(BaseModel):
     is_blocker: bool
     source_order: int
     evidence: list[EvidencePayload] = []
+
+    requirement: RequirementPayload | None = None
+    """The requirement this verdict was made against, in the posting's words.
+
+    Here rather than left to the client to join, because the client can only
+    join against the job's *latest* analysis and this item was scored against
+    a specific one. On a stale match those are different sets of rows: some
+    ids would not resolve at all and the ones that did could carry re-worded
+    text, so a quote meant to be checkable would be checkable against the
+    wrong thing.
+
+    It also carries `importance`, which is the only place the screen can get
+    it. The verdict lives on the item and how much the posting insisted lives
+    on the requirement, and a field laid out on both needs them in one row.
+
+    Nullable only so a payload built without the join is still valid; every
+    route here fills it, and the column behind it is `NOT NULL`.
+    """
 
 
 class MatchPayload(BaseModel):
@@ -320,14 +339,21 @@ def read_match_items(
 
 
 def _items(session: Session, match_id: uuid.UUID) -> list[MatchItemPayload]:
-    """Items with their evidence attached, in one extra query rather than N."""
+    """Items with their evidence and their requirement, in two extra queries."""
     rows: list[JobMatchItem] = match_queries.match_items(session, match_id)
     evidence = match_queries.evidence_for(session, [row.id for row in rows])
+    requirements = match_queries.requirements_for_items(
+        session, [row.requirement_id for row in rows]
+    )
 
     payloads: list[MatchItemPayload] = []
     for row in rows:
         payload = MatchItemPayload.model_validate(row)
         payload.evidence = [EvidencePayload.model_validate(ref) for ref in evidence.get(row.id, [])]
+        requirement = requirements.get(row.requirement_id)
+        payload.requirement = (
+            RequirementPayload.model_validate(requirement) if requirement else None
+        )
         payloads.append(payload)
     return payloads
 

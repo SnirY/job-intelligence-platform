@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from jip_api.application.errors import ResourceNotFoundError
 from jip_api.application.matching.evidence import load_profile_snapshot
 from jip_api.application.ownership import owned
+from jip_api.domain.jobs.analysis import JobRequirement
 from jip_api.domain.matching.models import JobMatch, JobMatchEvidence, JobMatchItem
 from jip_api.domain.matching.rules import MATCHING_ENGINE_VERSION
 
@@ -85,6 +86,31 @@ def match_items(session: Session, match_id: uuid.UUID) -> list[JobMatchItem]:
             .order_by(JobMatchItem.source_order, JobMatchItem.id)
         ).scalars()
     )
+
+
+def requirements_for_items(
+    session: Session, requirement_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, JobRequirement]:
+    """The requirement each verdict was made against, keyed by id.
+
+    By id from the item, never by the job's current analysis. Requirements
+    belong to an analysis version and a new reading of the posting writes new
+    rows, so a match computed against reading v2 points at v2's requirements
+    while the job's latest is v3. Resolving through the latest analysis would
+    show today's wording beside a verdict reached on yesterday's — the one
+    thing `docs/08-ui-ux.md` asks the quote to make impossible. The item's own
+    foreign key cannot drift.
+
+    Batched for the same reason `evidence_for` is: a match has as many items as
+    the posting has requirements.
+    """
+    if not requirement_ids:
+        return {}
+
+    rows = session.execute(
+        select(JobRequirement).where(JobRequirement.id.in_(requirement_ids))
+    ).scalars()
+    return {row.id: row for row in rows}
 
 
 def evidence_for(

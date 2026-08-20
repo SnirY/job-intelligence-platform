@@ -616,6 +616,20 @@ export interface MatchItem {
   is_blocker: boolean;
   source_order: number;
   evidence: MatchEvidence[];
+  /**
+   * The requirement this verdict was made against, in the posting's words.
+   *
+   * Sent with the item rather than joined client-side, because the analysis
+   * this client can fetch is the job's latest and this verdict was scored
+   * against a specific version of it. On a stale match those differ, and a
+   * quote that is meant to be checkable would be checkable against the wrong
+   * text.
+   *
+   * `importance` comes from here and the verdict from the item, which is what
+   * lets the two be laid out on one field. Null only for a payload built
+   * without the join.
+   */
+  requirement: JobRequirement | null;
 }
 
 export interface CategoryScore {

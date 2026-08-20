@@ -267,6 +267,38 @@ def read(
     return data
 
 
+def reanalyse(client: TestClient, factory: TokenFactory, job_id: str) -> None:
+    """Read the posting a second time, in process.
+
+    A new analysis version writes a new set of requirement rows rather than
+    editing the old ones, which is what makes an existing match point at
+    wording nobody can reach through the job's latest analysis.
+    """
+    started = client.post(f"{JOBS}/{job_id}/analysis", headers=auth(factory))
+    assert started.status_code in (200, 202), started.text
+    router = build_router(
+        resume_parse_model="fake-model",
+        resume_parse_max_output_tokens=16000,
+        resume_parse_effort=None,
+    )
+    session = new_session()
+    try:
+        processing = session.get(
+            ProcessingJob, uuid.UUID(started.json()["data"]["processing_job_id"])
+        )
+        assert processing is not None
+        run_analysis(
+            session,
+            FakeLLMProvider([PARSE_RESPONSE, ANALYSIS_RESPONSE]),
+            router,
+            job=processing,
+            max_input_chars=60_000,
+            max_attempts=1,
+        )
+    finally:
+        session.close()
+
+
 # --- preconditions ------------------------------------------------------------
 
 
@@ -357,6 +389,66 @@ def test_every_item_carries_the_documented_fields(
         assert item["confidence"] is not None
         assert item["explanation"].strip()
         assert "evidence" in item
+
+
+def test_every_item_carries_the_requirement_it_judged(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The posting's own words travel with the verdict on them.
+
+    Two things the screen cannot draw without this. The quote in the evidence
+    chain is `source_text`, and a verdict shown without the wording it was
+    reached on is exactly the unsourced claim `docs/08-ui-ux.md` forbids. And
+    `importance` is one of the two axes the requirement field is laid out on —
+    it lives on the requirement, the verdict lives on the item, and a grid
+    needs both in one row.
+    """
+    job_id = analysed_job(client, factory)
+    add_skill(client, factory, "Python")
+
+    items = match(client, factory, job_id)["items"]
+    wanted = {r["source_text"] for r in PARSE_RESPONSE["requirements"]}
+
+    for item in items:
+        requirement = item["requirement"]
+        assert requirement is not None
+        assert requirement["id"] == item["requirement_id"]
+        assert requirement["source_text"].strip()
+        assert requirement["importance"]
+
+    assert {item["requirement"]["source_text"] for item in items} == wanted
+
+
+def test_the_quoted_words_are_the_ones_the_verdict_was_reached_on(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Re-reading the posting does not re-word an existing match.
+
+    A second analysis writes a fresh set of requirement rows, so the job's
+    latest requirements and the ones this match scored share no ids. A client
+    joining on its own could only join against the latest and would show
+    today's wording beside yesterday's verdict — or drop the row entirely.
+    Resolving through the item's own foreign key cannot do either.
+    """
+    job_id = analysed_job(client, factory)
+    add_skill(client, factory, "Python")
+    scored = {item["requirement_id"] for item in match(client, factory, job_id)["items"]}
+
+    reanalyse(client, factory, job_id)
+
+    analysis = client.get(f"{JOBS}/{job_id}/analysis", headers=auth(factory))
+    assert analysis.status_code == 200, analysis.text
+    latest = {r["id"] for r in analysis.json()["data"]["requirements"]}
+
+    assert scored and latest
+    assert scored.isdisjoint(latest), "the second reading should have written new rows"
+
+    stale = read(client, factory, job_id)
+    assert stale["is_stale"] is True
+    for item in stale["items"]:
+        assert item["requirement"] is not None
+        assert item["requirement"]["id"] == item["requirement_id"]
+        assert item["requirement"]["id"] not in latest
 
 
 def test_a_held_skill_produces_evidence_pointing_at_the_career_row(
@@ -770,28 +862,7 @@ def test_reanalysing_the_job_makes_the_match_stale(
     match(client, factory, job_id)
 
     # A second analysis of the same posting; the match now points at v1.
-    started = client.post(f"{JOBS}/{job_id}/analysis", headers=auth(factory))
-    router = build_router(
-        resume_parse_model="fake-model",
-        resume_parse_max_output_tokens=16000,
-        resume_parse_effort=None,
-    )
-    session = new_session()
-    try:
-        processing = session.get(
-            ProcessingJob, uuid.UUID(started.json()["data"]["processing_job_id"])
-        )
-        assert processing is not None
-        run_analysis(
-            session,
-            FakeLLMProvider([PARSE_RESPONSE, ANALYSIS_RESPONSE]),
-            router,
-            job=processing,
-            max_input_chars=60_000,
-            max_attempts=1,
-        )
-    finally:
-        session.close()
+    reanalyse(client, factory, job_id)
 
     data = read(client, factory, job_id)
     assert data["is_stale"] is True
