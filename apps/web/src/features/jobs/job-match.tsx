@@ -2,10 +2,7 @@
 
 import {
   FIT_VERDICT_LABELS,
-  isPositiveMatch,
   MATCH_CATEGORY_LABELS,
-  MATCH_STATUS_LABELS,
-  MATCH_STATUS_TONE,
   PREFERENCE_DIMENSION_LABELS,
   RECOMMENDATION_LABELS,
   type Job,
@@ -13,31 +10,28 @@ import {
   type JobMatchView,
   type MatchCategory,
   type MatchItem,
-  type MatchStatus,
   type PreferenceFit,
 } from "@jip/shared-types";
-import {
-  AlertOctagon,
-  ArrowLeftRight,
-  CheckCircle2,
-  CircleDashed,
-  CircleHelp,
-  MinusCircle,
-  RotateCw,
-  Target,
-} from "lucide-react";
+import { AlertOctagon, RotateCw, Target } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StateCard } from "@/components/ui/state-card";
 import { Callout } from "@/components/ui/callout";
 import { useJobMatch, useMatchJob } from "@/features/jobs/api";
+import { EvidenceChain } from "@/features/jobs/evidence-chain";
+import { RequirementField } from "@/features/jobs/requirement-field";
 
 /**
  * The match half of the Job Detail screen.
+ *
+ * Three panes rather than a scroll. The decision is on the left, the shape of
+ * the answer is in the middle, and why one requirement got its verdict is on
+ * the right. Choosing a requirement in the field fills the chain, which is what
+ * makes the middle pane a navigator rather than a picture — a form that carries
+ * meaning in position is only worth the space if position is also how you move.
  *
  * Two things this deliberately never says. It never presents the score as a
  * chance of being hired — `docs/05-ai-and-matching.md` is categorical, so the
@@ -45,10 +39,6 @@ import { useJobMatch, useMatchJob } from "@/features/jobs/api";
  * status by colour alone: every verdict carries an icon and a label too,
  * because `docs/08-ui-ux.md` requires it and because a red dot means nothing to
  * someone who cannot see red.
- *
- * The evidence drawer is the point of the screen. `docs/08-ui-ux.md` asks that
- * a user be able to ask "why does the system think I match this?" and see the
- * exact evidence, so every requirement opens to show the career rows behind it.
  */
 export function JobMatchPanel({ job }: { job: Job }) {
   const [version, setVersion] = useState<number | undefined>(undefined);
@@ -114,12 +104,13 @@ function MatchView({
   const latest = Math.max(...view.available_versions);
   const isLatest = match.version === latest;
 
+  const ordered = [...view.items].sort((a, b) => a.source_order - b.source_order);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fieldView, setFieldView] = useState<"field" | "order">("field");
+
+  const selectedIndex = ordered.findIndex((item) => item.id === selectedId);
+  const selected = selectedIndex === -1 ? null : (ordered[selectedIndex] ?? null);
   const blockers = view.items.filter((item) => item.is_blocker);
-  const strengths = view.items
-    .filter((item) => item.status === "STRONG_MATCH" || item.status === "MATCH")
-    .sort((a, b) => b.weight - a.weight);
-  const gaps = view.items.filter((item) => item.status === "GAP");
-  const transferable = view.items.filter((item) => item.status === "TRANSFERABLE_MATCH");
 
   return (
     <div className="space-y-4">
@@ -147,53 +138,47 @@ function MatchView({
         </Callout>
       )}
 
-      <Overview match={match} />
+      {/* Three columns from xl up, stacked below it. The field wants seven
+          verdict lanes side by side and there is no width at which four of
+          them plus a chain and a decision column fit honestly, so the layout
+          gives up on columns rather than on lanes. */}
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_400px] xl:items-start">
+        <div className="space-y-4">
+          <Overview match={match} />
+          {blockers.length > 0 && <Blockers items={blockers} onOpen={setSelectedId} />}
+          <Categories match={match} />
+          <PreferenceFitCard fit={view.preference_fit} />
+        </div>
 
-      <PreferenceFitCard fit={view.preference_fit} />
-
-      {blockers.length > 0 && <Blockers items={blockers} />}
-
-      <Categories match={match} />
-
-      {strengths.length > 0 && (
-        <Highlights
-          title="What lines up"
-          description="Requirements your profile already covers."
-          items={strengths.slice(0, 5)}
+        <RequirementField
+          items={view.items}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          view={fieldView}
+          onView={setFieldView}
         />
-      )}
 
-      {transferable.length > 0 && (
-        <Highlights
-          title="Related, but not the same"
-          description="Experience that should transfer without being what the posting named."
-          items={transferable}
+        <EvidenceChain
+          item={selected}
+          position={selectedIndex + 1}
+          total={ordered.length}
+          analysisVersion={match.analysis_version}
+          onNext={() => {
+            const next = ordered[(selectedIndex + 1) % ordered.length];
+            if (next) setSelectedId(next.id);
+          }}
         />
-      )}
-
-      {gaps.length > 0 && (
-        <Highlights
-          title="Gaps"
-          description="Asked for, and not evidenced in your profile."
-          items={gaps.slice(0, 5)}
-        />
-      )}
-
-      <Requirements items={view.items} />
+      </div>
 
       {match.warnings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Worth knowing about this match</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-1 text-sm text-muted-foreground">
-              {match.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <Callout tone="caution">
+          <p className="font-medium">Worth knowing about this match</p>
+          <ul className="mt-1 space-y-0.5">
+            {match.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </Callout>
       )}
 
       <Card>
@@ -250,27 +235,28 @@ function MatchView({
 
 function Overview({ match }: { match: JobMatch }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Target aria-hidden className="size-4 text-muted-foreground" />
-          How you line up
-        </CardTitle>
-        <CardDescription>
-          {/* The sentence that keeps the number honest. docs/05-ai-and-matching.md
-              forbids presenting a score as a chance of being hired. */}
-          How much of this posting your profile covers. Not a prediction about interviews or offers.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-6">
-          <div>
-            <p className="text-4xl font-semibold tabular-nums">
-              {match.overall_score === null ? "—" : `${match.overall_score}%`}
-            </p>
-            <p className="text-sm text-muted-foreground">{match.alignment_label}</p>
-          </div>
+    <Card className="border-t-2 border-t-primary">
+      <CardContent className="space-y-4 pt-6">
+        <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          Alignment
+        </p>
 
+        <div className="flex items-end gap-3">
+          <p className="font-mono text-6xl font-semibold leading-none tracking-tight tabular-nums">
+            {match.overall_score === null ? "—" : match.overall_score}
+          </p>
+          {/* Never shortened. Invariant 1 wants the number beside the word
+              "alignment", and the label is where that word lives. */}
+          <p className="pb-1 text-lg font-semibold">{match.alignment_label ?? "Not measured"}</p>
+        </div>
+
+        {/* The sentence that keeps the number honest. docs/05-ai-and-matching.md
+            forbids presenting a score as a chance of being hired. */}
+        <p className="text-xs leading-relaxed text-foreground-faint">
+          How much of this posting your profile covers. Not a prediction about interviews or offers.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs">
           {/* Withheld when nothing was scored, for the same reason the score
               itself is null rather than 0: "not measured" is not a verdict.
               The engine still stores a neutral CONSIDER so the column is never
@@ -279,24 +265,18 @@ function Overview({ match }: { match: JobMatch }) {
               job" — a recommendation made on no evidence, next to the sentence
               saying there was none. */}
           {match.overall_score !== null && (
-            <div>
-              <p className="text-xs text-muted-foreground">Recommendation</p>
-              <Badge variant={match.has_blockers ? "outline" : "default"} className="mt-1">
-                {RECOMMENDATION_LABELS[match.recommendation]}
-              </Badge>
-            </div>
+            <Badge variant={match.has_blockers ? "outline" : "default"}>
+              {RECOMMENDATION_LABELS[match.recommendation]}
+            </Badge>
           )}
-
-          <div>
-            <p className="text-xs text-muted-foreground">Requirements checked</p>
-            <p className="text-sm">
-              {match.scored_requirements} of {match.total_requirements}
-            </p>
-          </div>
+          <span className="text-muted-foreground">
+            Checked <span className="font-mono text-foreground">{match.scored_requirements}</span>{" "}
+            of <span className="font-mono text-foreground">{match.total_requirements}</span>
+          </span>
         </div>
 
         {match.score_cap_reason && (
-          <p className="text-sm text-muted-foreground">{match.score_cap_reason}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{match.score_cap_reason}</p>
         )}
 
         {match.recommendation_reasons.length > 0 && (
@@ -350,14 +330,16 @@ function PreferenceFitCard({ fit }: { fit: PreferenceFit[] }) {
       <CardContent>
         <ul className="space-y-3">
           {rows.map((row) => (
-            <li key={row.dimension} className="flex flex-wrap items-start gap-2 text-sm">
-              <span className="min-w-32 font-medium">
-                {PREFERENCE_DIMENSION_LABELS[row.dimension] ?? row.dimension}
-              </span>
-              <Badge variant={row.verdict === "CONFLICTS" ? "destructive" : "outline"}>
-                {FIT_VERDICT_LABELS[row.verdict]}
-              </Badge>
-              <span className="min-w-48 flex-1 text-muted-foreground">{row.detail}</span>
+            <li key={row.dimension} className="space-y-1 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">
+                  {PREFERENCE_DIMENSION_LABELS[row.dimension] ?? row.dimension}
+                </span>
+                <Badge variant={row.verdict === "CONFLICTS" ? "destructive" : "outline"}>
+                  {FIT_VERDICT_LABELS[row.verdict]}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">{row.detail}</p>
             </li>
           ))}
         </ul>
@@ -366,7 +348,16 @@ function PreferenceFitCard({ fit }: { fit: PreferenceFit[] }) {
   );
 }
 
-function Blockers({ items }: { items: MatchItem[] }) {
+/**
+ * The one thing that should not need finding.
+ *
+ * The field has a Blocker lane and a blocker is visible in it, but a blocker is
+ * the finding that changes what someone does next, and making it something you
+ * notice by scanning a column would rank it with everything else. Each one
+ * opens its own chain, because "you may know better than we do" is only a fair
+ * thing to say if disagreeing with it takes one click.
+ */
+function Blockers({ items, onOpen }: { items: MatchItem[]; onOpen: (id: string) => void }) {
   return (
     <Card className="border-destructive/40">
       <CardHeader>
@@ -381,8 +372,14 @@ function Blockers({ items }: { items: MatchItem[] }) {
       <CardContent>
         <ul className="space-y-2">
           {items.map((item) => (
-            <li key={item.id} className="text-sm">
-              {item.explanation}
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+              >
+                {item.explanation}
+              </button>
             </li>
           ))}
         </ul>
@@ -391,6 +388,14 @@ function Blockers({ items }: { items: MatchItem[] }) {
   );
 }
 
+/**
+ * The score cut a second way.
+ *
+ * Kept alongside the field because it answers a different question. The field
+ * arranges requirements by how much the posting wanted them; this arranges them
+ * by what kind of thing they are, and it is the only place a category appears
+ * at all.
+ */
 function Categories({ match }: { match: JobMatch }) {
   const rows = Object.values(match.category_scores).filter((row) => row.score !== null);
   if (rows.length === 0) return null;
@@ -405,7 +410,7 @@ function Categories({ match }: { match: JobMatch }) {
           <div key={row.category} className="space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span>{MATCH_CATEGORY_LABELS[row.category as MatchCategory] ?? row.category}</span>
-              <span className="tabular-nums text-muted-foreground">{row.score}%</span>
+              <span className="font-mono text-muted-foreground tabular-nums">{row.score}%</span>
             </div>
             {/* A bar and a number, because docs/08-ui-ux.md asks for more than
                 one representation of a score. */}
@@ -419,147 +424,6 @@ function Categories({ match }: { match: JobMatch }) {
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-function Highlights({
-  title,
-  description,
-  items,
-}: {
-  title: string;
-  description: string;
-  items: MatchItem[];
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id} className="flex items-start gap-2 text-sm">
-              <StatusIcon status={item.status} />
-              <span>{item.explanation}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Requirements({ items }: { items: MatchItem[] }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Requirement by requirement</CardTitle>
-        <CardDescription>
-          Every requirement, its verdict, and the evidence behind it.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <RequirementRow key={item.id} item={item} />
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RequirementRow({ item }: { item: MatchItem }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <li className="rounded-md border p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-start gap-2">
-          <StatusIcon status={item.status} />
-          <p className="text-sm">{item.explanation}</p>
-        </div>
-        <StatusBadge status={item.status} />
-      </div>
-
-      {item.evidence.length > 0 ? (
-        <>
-          <Disclosure
-            open={open}
-            onToggle={() => setOpen((value) => !value)}
-            label="Why this verdict?"
-            openLabel="Hide the evidence"
-            count={item.evidence.length}
-          />
-
-          {open && (
-            <ul className="mt-2 space-y-2 border-l-2 pl-3">
-              {item.evidence.map((ref) => (
-                <li key={ref.id} className="text-xs">
-                  <p className="font-medium">{ref.label}</p>
-                  {ref.detail && <p className="text-muted-foreground">{ref.detail}</p>}
-                  {/* Shown because unverified data must never look like a
-                      confirmed fact, even when it is legitimately cited. */}
-                  {ref.verification_status !== "USER_CONFIRMED" &&
-                    ref.verification_status !== "EVIDENCE_BACKED" && (
-                      <p className="text-muted-foreground">Not yet confirmed by you</p>
-                    )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      ) : (
-        <p className="mt-2 text-xs text-muted-foreground">No evidence in your profile for this.</p>
-      )}
-    </li>
-  );
-}
-
-const STATUS_ICONS: Record<MatchStatus, typeof CheckCircle2> = {
-  STRONG_MATCH: CheckCircle2,
-  MATCH: CheckCircle2,
-  PARTIAL_MATCH: CircleDashed,
-  TRANSFERABLE_MATCH: ArrowLeftRight,
-  NO_EVIDENCE: CircleHelp,
-  GAP: MinusCircle,
-  BLOCKER: AlertOctagon,
-  UNKNOWN: CircleHelp,
-};
-
-// Tokens, not palette entries — DEV-057. These five are the roles
-// `docs/08-ui-ux.md` assigns meaning to, and hard-coding them here meant a
-// change of palette would move every colour in the product except the ones that
-// say something. `globals.css` carries the values and both themes.
-//
-// `ok` and `gap` were the same amber until 2026-08-15: two different verdicts,
-// one colour, told apart only by their icon.
-const TONE_CLASSES: Record<string, string> = {
-  strong: "text-verdict-strong",
-  ok: "text-verdict-partial",
-  transfer: "text-verdict-transfer",
-  gap: "text-verdict-gap",
-  blocked: "text-verdict-blocked",
-  neutral: "text-muted-foreground",
-};
-
-function StatusIcon({ status }: { status: MatchStatus }) {
-  const Icon = STATUS_ICONS[status];
-  return (
-    <Icon
-      aria-hidden
-      className={`mt-0.5 size-4 shrink-0 ${TONE_CLASSES[MATCH_STATUS_TONE[status]]}`}
-    />
-  );
-}
-
-function StatusBadge({ status }: { status: MatchStatus }) {
-  return (
-    <Badge variant={isPositiveMatch(status) ? "default" : "outline"}>
-      {MATCH_STATUS_LABELS[status]}
-    </Badge>
   );
 }
 

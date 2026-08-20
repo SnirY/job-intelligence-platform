@@ -41,10 +41,28 @@ function job(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
+function requirement(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "req-1",
+    requirement_type: "TECHNICAL_SKILL",
+    importance: "CORE",
+    explicitness: "EXPLICIT",
+    source_text: "Strong Python, ideally with async experience",
+    normalized_text: "Python",
+    confidence: 95,
+    source_order: 0,
+    skill_id: "skill-1",
+    skill_name: "Python",
+    years_min: null,
+    ...overrides,
+  };
+}
+
 function item(overrides: Record<string, unknown> = {}) {
   return {
     id: "item-1",
     requirement_id: "req-1",
+    requirement: requirement(),
     status: "STRONG_MATCH",
     category: "TECHNICAL",
     score: 100,
@@ -199,7 +217,7 @@ describe("the score", () => {
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
-    expect(await screen.findByText("78%")).toBeInTheDocument();
+    expect(await screen.findByText("78")).toBeInTheDocument();
     expect(screen.getByText("Good alignment")).toBeInTheDocument();
   });
 
@@ -208,7 +226,7 @@ describe("the score", () => {
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await screen.findByText("78%");
+    await screen.findByText("78");
 
     expect(screen.getByText(/Not a prediction about interviews or offers/)).toBeInTheDocument();
     for (const forbidden of [/chance of/i, /likely to get/i, /probability/i, /odds/i]) {
@@ -269,7 +287,7 @@ describe("the score", () => {
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
-    expect(await screen.findByText("2 of 3")).toBeInTheDocument();
+    expect(await screen.findByText(/Checked/)).toHaveTextContent("Checked 2 of 3");
   });
 
   it("explains a capped score", async () => {
@@ -332,7 +350,7 @@ describe("recommendation", () => {
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
-    expect(await screen.findByText("72%")).toBeInTheDocument();
+    expect(await screen.findByText("72")).toBeInTheDocument();
     expect(screen.getByText("Low priority")).toBeInTheDocument();
   });
 });
@@ -341,17 +359,43 @@ describe("recommendation", () => {
 
 describe("requirements and evidence", () => {
   it("lists every requirement with its verdict", async () => {
-    vi.stubGlobal("fetch", routes(view()));
+    // Every item lands somewhere and says what it is. The field has no
+    // overflow and no "and 3 more": a requirement the posting made that this
+    // screen does not show is a requirement nobody knows they were judged on.
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item(),
+            item({
+              id: "item-2",
+              status: "GAP",
+              explanation: "Rust is not in your profile.",
+              evidence: [],
+              requirement: requirement({ id: "req-2", skill_name: "Rust", source_order: 1 }),
+            }),
+          ],
+        }),
+      ),
+    );
 
     renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
 
-    expect(await screen.findByText("Requirement by requirement")).toBeInTheDocument();
-    expect(screen.getAllByText(/You have Python/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Python/ })).toHaveAccessibleName(
+      expect.stringContaining("Strong match"),
+    );
+    expect(screen.getByRole("button", { name: /Rust/ })).toHaveAccessibleName(
+      expect.stringContaining("Gap"),
+    );
   });
 
   it("keeps the evidence one click away", async () => {
     // docs/08-ui-ux.md: the user should be able to ask "why does the system
-    // think I match this?" and see the exact evidence.
+    // think I match this?" and see the exact evidence. One click, still: the
+    // requirement itself is the control now, rather than a disclosure beneath
+    // a row that had already said everything the row was going to say.
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
@@ -359,35 +403,39 @@ describe("requirements and evidence", () => {
 
     expect(screen.queryByText("Expert, 6 years")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /why this verdict/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Python/ }));
 
     expect(await screen.findByText("Expert, 6 years")).toBeInTheDocument();
   });
 
-  it("makes the evidence control say what is behind it", async () => {
-    /* DEV-029. The test above proves the drawer opens, and could never ask
-       whether anyone would open it — it finds the control by accessible name,
-       which is knowing the answer in advance. The person who commissioned this
-       feature, told to look for it, could not find it.
+  it("says what picking a requirement will do, before anything is picked", async () => {
+    /* DEV-029, carried across. The test above proves the evidence opens and
+       could never ask whether anyone would open it — it finds the control by
+       accessible name, which is knowing the answer in advance. The person who
+       commissioned that feature, told to look for it, could not find it.
 
-       So assert the parts that make it read as a control to someone who is not
-       looking for one: a name that says what opens rather than a bare "Why?",
-       a count so the click has a visible promise behind it, and the expanded
-       state a screen reader announces. */
+       The disclosure it was written against is gone, but the failure it
+       records is not about disclosures: a control nobody reads as a control is
+       a control nobody uses. So assert the two things that make this one
+       legible without being sought. The empty pane states the offer in full,
+       and the chip's name carries both axes rather than leaving position to
+       carry them alone. */
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    const control = screen.getByRole("button", { name: /why this verdict/i });
+    expect(screen.getByText(/Pick a requirement to see/)).toBeInTheDocument();
 
-    expect(control).toHaveAttribute("aria-expanded", "false");
-    expect(control).toHaveAccessibleName(expect.stringContaining("1"));
+    const chip = screen.getByRole("button", { name: /Python/ });
+    expect(chip).toHaveAccessibleName(expect.stringContaining("Essential"));
+    expect(chip).toHaveAccessibleName(expect.stringContaining("Strong match"));
+    expect(chip).toHaveAttribute("aria-pressed", "false");
 
-    await userEvent.click(control);
+    await userEvent.click(chip);
 
-    expect(control).toHaveAttribute("aria-expanded", "true");
-    expect(control).toHaveAccessibleName(expect.stringMatching(/hide the evidence/i));
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText(/Pick a requirement to see/)).not.toBeInTheDocument();
   });
 
   it("flags evidence the user has not confirmed", async () => {
@@ -420,7 +468,7 @@ describe("requirements and evidence", () => {
     renderWithQuery(<JobMatchPanel job={job()} />);
     await screen.findByText("Requirement by requirement");
 
-    await userEvent.click(screen.getByRole("button", { name: /why this verdict/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Python/ }));
 
     expect(await screen.findByText("Not yet confirmed by you")).toBeInTheDocument();
   });
@@ -431,24 +479,36 @@ describe("requirements and evidence", () => {
       routes(
         view({
           items: [
-            item({ status: "GAP", explanation: "Rust is not in your profile.", evidence: [] }),
+            item({
+              status: "GAP",
+              explanation: "Rust is not in your profile.",
+              evidence: [],
+              requirement: requirement({ skill_name: "Rust", normalized_text: "Rust" }),
+            }),
           ],
         }),
       ),
     );
 
     renderWithQuery(<JobMatchPanel job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Rust/ }));
 
-    expect(await screen.findByText(/No evidence in your profile/)).toBeInTheDocument();
+    // A statement about our records, not about the person. That distinction is
+    // the whole reason NO_EVIDENCE and GAP are different statuses.
+    expect(await screen.findByText(/statement about what is on file/)).toBeInTheDocument();
   });
 
   it("labels every status in words as well as colour", async () => {
-    // docs/08-ui-ux.md: never rely on colour alone.
+    // docs/08-ui-ux.md: never rely on colour alone. In a field the lane is a
+    // colour too, so the lane is headed by the same word the status carries.
     vi.stubGlobal("fetch", routes(view({ items: [item({ status: "TRANSFERABLE_MATCH" })] })));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
     expect(await screen.findByText("Transferable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Python/ })).toHaveAccessibleName(
+      expect.stringContaining("Transferable"),
+    );
   });
 });
 
@@ -479,7 +539,9 @@ describe("sections", () => {
   });
 
   it("separates transferable matches from real ones", async () => {
-    // The distinction the transferability design exists to preserve.
+    // The distinction the transferability design exists to preserve. It used
+    // to be a card headed "Related, but not the same"; it is now a lane of its
+    // own, which says the same thing without listing the item a second time.
     vi.stubGlobal(
       "fetch",
       routes(
@@ -490,6 +552,7 @@ describe("sections", () => {
               status: "TRANSFERABLE_MATCH",
               explanation: "You have FastAPI, not Spring Boot.",
               evidence: [],
+              requirement: requirement({ skill_name: "Spring Boot" }),
             }),
           ],
         }),
@@ -498,7 +561,9 @@ describe("sections", () => {
 
     renderWithQuery(<JobMatchPanel job={job()} />);
 
-    expect(await screen.findByText("Related, but not the same")).toBeInTheDocument();
+    const chip = await screen.findByRole("button", { name: /Spring Boot/ });
+    expect(chip).toHaveAccessibleName(expect.stringContaining("Transferable"));
+    expect(chip).not.toHaveAccessibleName(expect.stringContaining("Strong match"));
   });
 
   it("shows the category breakdown", async () => {
@@ -517,7 +582,111 @@ describe("sections", () => {
     await screen.findByText("Requirement by requirement");
 
     expect(screen.queryByText("Blockers")).not.toBeInTheDocument();
-    expect(screen.queryByText("Gaps")).not.toBeInTheDocument();
+  });
+
+  it("keeps every verdict lane, including the empty ones", async () => {
+    /* The opposite rule to the one above, and deliberately. A card with
+       nothing in it is noise; a lane with nothing in it is the finding. An
+       empty Blocker lane is the best news this screen can deliver, and a job
+       whose lanes came and went would not be comparable to the next one: the
+       same position would mean different things on different screens. */
+    vi.stubGlobal("fetch", routes(view({ items: [item()] })));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
+
+    for (const lane of ["Covered", "Partial match", "Transferable", "Gap", "Blocker"]) {
+      expect(screen.getByText(lane)).toBeInTheDocument();
+    }
+  });
+
+  it("places a requirement by how much the posting insisted", async () => {
+    /* The axis that is not the verdict. A gap in a preferred requirement and a
+       gap in an essential one are the same status and different news, and the
+       band is the only thing on screen that says which. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          items: [
+            item({
+              status: "GAP",
+              requirement: requirement({ importance: "PREFERRED", skill_name: "Kubernetes" }),
+            }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+
+    const chip = await screen.findByRole("button", { name: /Kubernetes/ });
+    expect(chip).toHaveAccessibleName(expect.stringContaining("Preferred"));
+    expect(screen.getByText(/does not lower the figure/)).toBeInTheDocument();
+  });
+
+  it("offers the posting's own order as well as the field", async () => {
+    // docs/08-ui-ux.md asks a chart for a textual alternative, and sequence is
+    // information the field throws away.
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await screen.findByText("Requirement by requirement");
+
+    await userEvent.click(screen.getByRole("button", { name: "Posting order" }));
+
+    expect(screen.getAllByText(/You have Python/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Posting order" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+});
+
+describe("the evidence chain", () => {
+  it("quotes the posting and labels our reading as ours", async () => {
+    /* Invariant 4, as a form. The posting's sentence and our reading of it are
+       two different kinds of claim, and a screen that sets them in one voice
+       asserts our interpretation with the authority of the source. Link 1 is
+       the quote; link 2 says in as many words that it is not. */
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Python/ }));
+
+    expect(screen.getByText("What the posting said")).toBeInTheDocument();
+    expect(screen.getByText("Strong Python, ideally with async experience")).toBeInTheDocument();
+    expect(screen.getByText(/own words, unedited/)).toBeInTheDocument();
+
+    expect(screen.getByText("How we read it")).toBeInTheDocument();
+    expect(screen.getByText(/Our reading of the posting, not the posting/)).toBeInTheDocument();
+  });
+
+  it("shows the chain in the order the reasoning ran", async () => {
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Python/ }));
+
+    for (const link of [
+      "What the posting said",
+      "How we read it",
+      "What we found in your profile",
+      "Where that leaves it",
+    ]) {
+      expect(screen.getByText(link)).toBeInTheDocument();
+    }
+  });
+
+  it("says nothing was quoted rather than quoting nothing", async () => {
+    /* An empty blockquote reads as a posting that said nothing, which is a
+       claim about the posting rather than about our records. */
+    vi.stubGlobal("fetch", routes(view({ items: [item({ requirement: null })] })));
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+    await userEvent.click(await screen.findByRole("button", { name: /You have Python/ }));
+
+    expect(screen.getByText(/is not on file, so there is nothing to quote/)).toBeInTheDocument();
   });
 });
 
@@ -545,7 +714,7 @@ describe("staleness and history", () => {
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await screen.findByText("78%");
+    await screen.findByText("78");
 
     expect(screen.queryByText("This match is out of date.")).not.toBeInTheDocument();
   });
@@ -577,7 +746,7 @@ describe("staleness and history", () => {
 
     expect(await screen.findByText(/could not be recalculated/i)).toBeInTheDocument();
     // The existing match stays put. A failed request changes nothing.
-    expect(screen.getByText("78%")).toBeInTheDocument();
+    expect(screen.getByText("78")).toBeInTheDocument();
   });
 
   it("offers earlier matches once there is more than one", async () => {
@@ -624,7 +793,7 @@ describe("what this phase does not show", () => {
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobMatchPanel job={job()} />);
-    await screen.findByText("78%");
+    await screen.findByText("78");
 
     for (const absent of [
       /resume strategy/i,
