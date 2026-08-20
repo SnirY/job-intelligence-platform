@@ -12,6 +12,7 @@ import os
 import uuid
 from collections.abc import Iterator
 
+import psycopg
 import pytest
 import sqlalchemy
 from redis import Redis
@@ -19,6 +20,9 @@ from redis.exceptions import RedisError
 from sqlalchemy.engine import URL, make_url
 
 REQUIRE_INTEGRATION = os.environ.get("JIP_REQUIRE_INTEGRATION") == "1"
+
+PROBE_TIMEOUT_SECONDS = 5
+"""How long a healthy stack gets to answer before the run gives up on it."""
 
 
 @pytest.fixture(autouse=True)
@@ -53,8 +57,39 @@ def _require(url: str | None, variable: str) -> str:
 
 @pytest.fixture(scope="session")
 def postgres_url() -> str:
-    """URL of a reachable PostgreSQL server."""
-    return _require(os.environ.get("JIP_TEST_DATABASE_URL"), "JIP_TEST_DATABASE_URL")
+    """URL of a reachable PostgreSQL server.
+
+    Reachable is checked, not assumed. This docstring claimed it for months
+    while only the variable's presence was tested, and the difference is not
+    academic: with the stack down, a run against a set-but-dead URL spent
+    **43 minutes** timing out one connection per test before reporting five
+    errors that said `ConnectionTimeout` rather than "start the stack".
+
+    `redis_url` below has always pinged. The asymmetry was the whole defect.
+
+    One probe, session-scoped, with a short deadline — long enough for a
+    container that is still opening its port, short enough that a stack which
+    is simply not running says so before anyone makes coffee. `psycopg` is used
+    directly rather than through SQLAlchemy because `connect_timeout` is a
+    driver argument and this needs to be the one connection that cannot hang.
+    """
+    url = _require(os.environ.get("JIP_TEST_DATABASE_URL"), "JIP_TEST_DATABASE_URL")
+
+    try:
+        with psycopg.connect(
+            make_url(url).set(drivername="postgresql").render_as_string(hide_password=False),
+            connect_timeout=PROBE_TIMEOUT_SECONDS,
+        ):
+            pass
+    except psycopg.Error as exc:
+        pytest.fail(
+            f"PostgreSQL at {make_url(url).set(password=None)} did not respond "
+            f"within {PROBE_TIMEOUT_SECONDS}s: {exc}\n"
+            "The integration stack is not running. `docker compose up -d` in the "
+            "repository root, then re-run."
+        )
+
+    return url
 
 
 @pytest.fixture(scope="session")
