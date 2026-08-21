@@ -11,8 +11,19 @@ DATABASE_URL = "postgresql+psycopg://jip:secret@localhost:5432/jip"
 REDIS_URL = "redis://localhost:6379/0"
 
 
-def test_required_urls_have_no_default() -> None:
-    """A missing database or Redis URL must fail loudly rather than default."""
+def test_required_urls_have_no_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing database or Redis URL must fail loudly rather than default.
+
+    The variables are cleared as well as the env file. `_env_file=None` stops
+    pydantic reading `.env` and does nothing about `os.environ`, so the test was
+    asserting about the shell it happened to run in: exporting
+    `JIP_REDIS_URL` — which the integration suite asks you to do — made it pass
+    for the wrong reason and then fail when the value was one pydantic accepted.
+    Caught 2026-08-21 doing exactly that.
+    """
+    monkeypatch.delenv("JIP_DATABASE_URL", raising=False)
+    monkeypatch.delenv("JIP_REDIS_URL", raising=False)
+
     with pytest.raises(ValidationError) as excinfo:
         Settings(_env_file=None)  # type: ignore[call-arg]
 

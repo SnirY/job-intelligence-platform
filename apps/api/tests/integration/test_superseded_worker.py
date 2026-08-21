@@ -30,7 +30,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 
-from jip_ai import build_router
+from jip_ai import ModelRouter, build_router
 from jip_ai.providers.fake import FakeLLMProvider
 from jip_api.api.dependencies import get_dispatcher
 from jip_api.application.jobs.analysis_pipeline import run_analysis
@@ -156,7 +156,7 @@ def queued_analysis(client: TestClient, factory: TokenFactory) -> tuple[str, str
     return job_id, started.json()["data"]["processing_job_id"]
 
 
-def router():
+def router() -> ModelRouter:
     return build_router(
         resume_parse_model="fake-model",
         resume_parse_max_output_tokens=16000,
