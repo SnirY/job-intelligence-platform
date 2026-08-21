@@ -5,7 +5,6 @@ import {
   APPLICATION_STATUS_LABELS,
   type Application,
   type ApplicationSource,
-  type ApplicationStatus,
   type Job,
 } from "@jip/shared-types";
 import { Send } from "lucide-react";
@@ -94,30 +93,54 @@ function TrackedApplication({ application }: { application: Application }) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {application.allowed_transitions.length > 0 && (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="app-status">Move to</Label>
-              <Select
-                id="app-status"
-                className="w-56"
-                value=""
-                disabled={change.isPending}
-                onChange={(event) => {
-                  const next = event.target.value as ApplicationStatus;
-                  if (next) change.mutate({ id: application.id, status: next });
-                }}
-              >
-                <option value="">Choose a stage…</option>
-                {application.allowed_transitions.map((status) => (
-                  <option key={status} value={status}>
-                    {APPLICATION_STATUS_LABELS[status]}
-                  </option>
-                ))}
-              </Select>
+        {/*
+          Buttons rather than a select, and the reason is what the select did to
+          a keyboard.
+
+          It held `value=""` and moved the application on `change`. Two things
+          followed. It never showed where the application actually was — the
+          control that moves you somewhere also has to say where you are. And
+          arrow-keying through it fires `change` per option in a native select,
+          so a reader walking from "HR screen" down to "Offer" would post every
+          stage on the way. Application status is append-only and every move
+          writes an event, so that is not a wasted request: it is a career
+          history that says things which never happened, written by somebody who
+          was only looking.
+
+          One button, one deliberate move. `allowed_transitions` comes from the
+          server's own transition table, so the offer and the refusal cannot
+          disagree.
+        */}
+        <div className="space-y-2">
+          <p id="stage-now" className="text-sm">
+            <span className="text-muted-foreground">Now at</span>{" "}
+            <span className="font-medium">{APPLICATION_STATUS_LABELS[application.status]}</span>
+          </p>
+
+          {application.allowed_transitions.length > 0 ? (
+            <div role="group" aria-labelledby="stage-now" className="flex flex-wrap gap-2">
+              {application.allowed_transitions.map((status) => (
+                <Button
+                  key={status}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={change.isPending}
+                  onClick={() => change.mutate({ id: application.id, status })}
+                >
+                  {APPLICATION_STATUS_LABELS[status]}
+                </Button>
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            /* A terminal stage. Said out loud rather than left as an absence,
+               because a row of buttons that simply stops appearing reads as a
+               screen that failed to load them. */
+            <p className="text-sm text-muted-foreground">
+              This application has nowhere further to go.
+            </p>
+          )}
+        </div>
 
         {change.isError && (
           <p className="text-sm text-destructive">

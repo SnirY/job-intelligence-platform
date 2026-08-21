@@ -83,10 +83,26 @@
    * sentences beside them; the hierarchy the direction is built on needs the
    * step.
    *
-   * Deliberately still above the 4.5:1 contrast floor on `--card`: faint is a
-   * rank, not permission to become unreadable.
+   * **L 0.555, and the comment above it used to claim what was never checked.**
+   * It read "deliberately still above the 4.5:1 contrast floor on `--card`" at
+   * L 0.654, which measures **3.19:1 there and 3.05:1 on `--background`** —
+   * over the 3.0 non-text floor and under the text one. The dark twin passes at
+   * 9.61:1, which is how it survived a pass that looked at both themes: the
+   * pair that fails is one theme of one token, and the sentence in the file
+   * said it had been checked.
+   *
+   * Found 2026-08-21 by a mockup reading this file. The measured values now sit
+   * in the comment rather than the claim, because a claim is what let it drift.
+   *
+   *   L 0.555 on --background  4.56:1     on --card  4.76:1
+   *
+   * The cost is that faint is no longer much lighter than `--muted-foreground`
+   * (6.13:1 on card), so the third tier stops being a step in lightness. That
+   * is the same place the dark column already arrived at, and for the same
+   * reason — below a point there is no room left between "quieter" and
+   * "unreadable". Rank is carried by size, case and tracking instead.
    */
-  --foreground-faint: oklch(0.654 0.025 269.307);
+  --foreground-faint: oklch(0.555 0.025 269.307);
 
   /*
    * The surface that sits above a card — the dark "what this job taught us"
