@@ -533,6 +533,40 @@ describe("requirements and evidence", () => {
 // --- sections ---------------------------------------------------------------------
 
 describe("sections", () => {
+  it("puts a blocker above the figure, not below it", async () => {
+    /* "A 70% with a blocker is not the same advice as a 70% without one" is
+       already recorded against the recommendation, and there is a test by that
+       name. The layout was contradicting it — the number led and the blocker
+       sat fourth in the column, under the strip and the next move.
+
+       Asserted by document position rather than by looking at the markup,
+       because the point is what someone reads first. */
+    vi.stubGlobal(
+      "fetch",
+      routes(
+        view({
+          match: match({ has_blockers: true }),
+          items: [
+            item({
+              status: "BLOCKER",
+              is_blocker: true,
+              explanation: "Rust is not in your profile. This is listed as essential.",
+              evidence: [],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    renderWithQuery(<JobMatchPanel job={job()} />);
+
+    const heading = await screen.findByText("Blockers");
+    const figure = screen.getByText("78");
+
+    // Node.DOCUMENT_POSITION_FOLLOWING: the figure comes after the heading.
+    expect(heading.compareDocumentPosition(figure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows blockers in their own section", async () => {
     vi.stubGlobal(
       "fetch",

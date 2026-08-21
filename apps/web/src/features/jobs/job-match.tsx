@@ -144,11 +144,23 @@ function MatchView({
           them plus a chain and a decision column fit honestly, so the layout
           gives up on columns rather than on lanes. */}
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_400px] xl:items-start">
+        {/*
+          Blockers first, above the figure.
+
+          The rule was already recorded against the recommendation — "a 70% with
+          a blocker is not the same advice as a 70% without one", and there is a
+          test by that name. It is just as true of the layout, and the column
+          was contradicting it: the number led and the blocker sat fourth.
+
+          Then the figure, then what to do about it, and only then the strip.
+          The strip is a tool rather than a conclusion, and reading it before
+          the conclusion is reading the index before the chapter.
+        */}
         <div className="space-y-4">
-          <Overview match={match} />
-          <CoverageStrip items={view.items} selectedId={selectedId} onSelect={setSelectedId} />
-          <NextMove items={view.items} onSelect={setSelectedId} />
           {blockers.length > 0 && <Blockers items={blockers} onOpen={setSelectedId} />}
+          <Overview match={match} />
+          <NextMove items={view.items} onSelect={setSelectedId} />
+          <CoverageStrip items={view.items} selectedId={selectedId} onSelect={setSelectedId} />
           <Categories match={match} />
           <PreferenceFitCard fit={view.preference_fit} />
         </div>

@@ -74,7 +74,9 @@ jobs:
 
     env:
       JIP_TEST_DATABASE_URL: postgresql+psycopg://jip:jip_ci@localhost:5432/jip
-      JIP_TEST_REDIS_URL: redis://localhost:6379/0
+      # Not /0: that is the application's, and the suite flushes what it is
+      # given. `conftest.py` refuses to run when the two agree.
+      JIP_TEST_REDIS_URL: redis://localhost:6379/15
       # Turns "infrastructure missing" from a silent skip into a failure, so a
       # broken service shows up as a red build rather than a shorter test run.
       JIP_REQUIRE_INTEGRATION: "1"
