@@ -83,9 +83,15 @@ never point at the same database a developer is using by hand:
 
 ```bash
 export JIP_TEST_DATABASE_URL=postgresql+psycopg://jip:jip_local_dev_only@localhost:55432/jip
-export JIP_TEST_REDIS_URL=redis://localhost:6379/0
+export JIP_TEST_REDIS_URL=redis://localhost:6379/15
 pytest -m integration
 ```
+
+**Database 15, not 0.** Nought is what the application uses, and the suite
+flushes whatever it is given around every test — pointing both at the same
+database wipes the developer's queue and lets a running worker steal the tests'
+jobs. `conftest.py` refuses to run when the two agree, so this is a check rather
+than a convention.
 
 The port is `POSTGRES_PORT` from `.env`, not 5432. This said 5432 until
 2026-08-08, from before the Compose service moved off the port the machine's own

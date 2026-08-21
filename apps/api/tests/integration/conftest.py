@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from urllib.parse import urlparse
 
 import psycopg
 import pytest
@@ -94,8 +95,38 @@ def postgres_url() -> str:
 
 @pytest.fixture(scope="session")
 def redis_url() -> str:
-    """URL of a reachable Redis server."""
+    """URL of a reachable Redis server that is **not** the application's.
+
+    The separation is the point of having two variables at all, and it held for
+    PostgreSQL and not for Redis: both `JIP_REDIS_URL` and `JIP_TEST_REDIS_URL`
+    shipped as `redis://localhost:6379/0`, the same database. Two things follow
+    from that, and both were happening.
+
+    `redis_client` calls `flushdb()` around every test, so a suite run **wipes
+    the queue of whoever is developing at the time** — jobs enqueued by hand,
+    gone, with nothing to say so.
+
+    And a worker attached to that database competes for the test's own jobs.
+    `test_task_dispatch` enqueues a ping and then drains the queue in-process;
+    a live worker sitting on `BLMOVE` takes it first, and the test fails
+    reporting that the worker never ran it. Found 2026-08-21 as two failures
+    that reproduced only in a full-length run — long enough for the race to be
+    lost reliably rather than occasionally.
+
+    Checked rather than documented, because a documented convention about which
+    database number to use is exactly the kind that drifts back.
+    """
     url = _require(os.environ.get("JIP_TEST_REDIS_URL"), "JIP_TEST_REDIS_URL")
+
+    application = os.environ.get("JIP_REDIS_URL")
+    if application and _same_redis_database(url, application):
+        pytest.fail(
+            "JIP_TEST_REDIS_URL and JIP_REDIS_URL point at the same Redis "
+            f"database ({url}). The suite flushes it around every test, so this "
+            "would destroy the queue the application is using and let a running "
+            "worker steal the tests' own jobs. Point the test URL at another "
+            "database — /15, for instance."
+        )
 
     client = Redis.from_url(url)
     try:
@@ -106,6 +137,20 @@ def redis_url() -> str:
         client.close()
 
     return url
+
+
+def _same_redis_database(left: str, right: str) -> bool:
+    """Whether two Redis URLs address the same database.
+
+    Compared on host, port and database number rather than on the strings: the
+    hazard is two URLs that differ in spelling and agree in effect.
+    """
+    first, second = urlparse(left), urlparse(right)
+    return (first.hostname, first.port or 6379, first.path or "/0") == (
+        second.hostname,
+        second.port or 6379,
+        second.path or "/0",
+    )
 
 
 @pytest.fixture
