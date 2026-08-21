@@ -11,7 +11,9 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
+from typing import Any, cast
 
+from sqlalchemy import CursorResult, update
 from sqlalchemy.orm import Session
 
 from jip_ai import AIError, AIFailureCode
@@ -32,6 +34,21 @@ DEFAULT_MAX_ATTEMPTS = 5
 class JobNotRetriableError(ApplicationError):
     """The job cannot be retried: it is not failed, the failure is permanent, or
     it has already used its attempts."""
+
+
+class JobSupersededError(ApplicationError):
+    """Somebody else gave this job a verdict while the worker was still running.
+
+    The reaper is the only thing that does this today. It marks a job FAILED
+    after a threshold and releases the entity, which is a decision made **about
+    a worker it cannot see** — a hung process and a dead one look identical from
+    the outside, and the threshold has to choose.
+
+    So the reaper's verdict has to bind. Without that, a worker that stalls on a
+    model call for half an hour and then finishes writes its results over a
+    failure the user has already been shown, and if they retried in the meantime
+    the posting is analysed twice.
+    """
 
 
 def create_job(
@@ -100,13 +117,63 @@ def advance(session: Session, job: ProcessingJob, step: ProcessingStep) -> Proce
 
 
 def mark_completed(session: Session, job: ProcessingJob) -> ProcessingJob:
-    job.status = ProcessingJobStatus.COMPLETED
-    job.step = ProcessingStep.COMPLETED
-    job.error_code = None
-    job.error_message = None
-    job.is_retriable = False
-    job.finished_at = dt.datetime.now(tz=dt.UTC)
-    session.flush()
+    """Finish a job, but only if it is still the one in flight.
+
+    Conditional, and that is the whole point. ``mark_completed`` used to assign
+    COMPLETED unconditionally, so a job the reaper had already failed would be
+    quietly resurrected by the worker it had given up on — the row would read
+    COMPLETED after the user had been told it failed, and any retry they started
+    in the meantime would already be running.
+
+    Written as ``UPDATE ... WHERE status = 'RUNNING'`` rather than a read
+    followed by a write, because the two are not the same under concurrency: the
+    reaper commits from a different session, and a check that passed a moment
+    ago is not a check that still holds. One statement decides and reports what
+    it did.
+
+    Raises :class:`JobSupersededError` when it decided nothing. The caller has a
+    transaction full of work that nobody wants and must roll it back — the entity
+    was released when the job was failed, so committing now would leave a
+    completed analysis attached to a job that says it never ran.
+    """
+    now = dt.datetime.now(tz=dt.UTC)
+
+    # `Session.execute` is typed as returning `Result`, which does not declare
+    # `rowcount`; an UPDATE always yields a `CursorResult` at runtime.
+    claimed = cast(
+        "CursorResult[Any]",
+        session.execute(
+            update(ProcessingJob)
+            .where(
+                ProcessingJob.id == job.id,
+                ProcessingJob.status == ProcessingJobStatus.RUNNING,
+            )
+            .values(
+                status=ProcessingJobStatus.COMPLETED,
+                step=ProcessingStep.COMPLETED,
+                error_code=None,
+                error_message=None,
+                is_retriable=False,
+                finished_at=now,
+            )
+        ),
+    )
+
+    if claimed.rowcount == 0:
+        session.refresh(job)
+        logger.warning(
+            "Refused to complete a job that is no longer running",
+            extra={
+                "job_id": str(job.id),
+                "kind": str(job.kind),
+                "status": str(job.status),
+            },
+        )
+        raise JobSupersededError(
+            f"This job is {job.status}, not running. Its work has been discarded."
+        )
+
+    session.refresh(job)
     return job
 
 

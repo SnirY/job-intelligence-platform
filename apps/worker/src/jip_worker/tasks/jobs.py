@@ -131,6 +131,18 @@ def run_job_analysis(processing_job_id: str) -> dict[str, object]:
                 max_input_chars=settings.ai_max_input_chars,
                 max_attempts=settings.ai_max_attempts,
             )
+        except jobs_uc.JobSupersededError:
+            # Somebody already decided this job's fate — the reaper, after the
+            # stall threshold. Roll the work back and leave their verdict alone.
+            # Recording a failure here would replace a correct and specific
+            # STALLED with a generic one, and the user may already have retried
+            # on the strength of it.
+            session.rollback()
+            logger.warning(
+                "Discarded work for a job that was no longer running",
+                extra={"job_id": processing_job_id},
+            )
+            return {"job_id": processing_job_id, "status": "SUPERSEDED"}
         except AIError as error:
             session.rollback()
             jobs_uc.mark_failed(session, processing_job, error)
