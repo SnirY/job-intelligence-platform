@@ -22,6 +22,7 @@ import { useBulkArchive, useCompanies, useJobDistribution, useJobs } from "@/fea
 import { JobFilters } from "@/features/jobs/job-filters";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SavedViews } from "@/features/jobs/saved-views";
 
 /** Matches `DEFAULT_PAGE_SIZE` in `application/jobs/queries.py`. */
 const DEFAULT_PAGE_SIZE = 20;
@@ -63,6 +64,16 @@ export function JobsList() {
         companies={companies.data ?? []}
         onChange={update}
         onReset={() => setQuery(INITIAL)}
+      />
+
+      {/* Applying a view replaces the query rather than merging into it. A
+          merge would leave whatever the reader had set before sitting
+          underneath a name that does not mention it, which is the one thing a
+          named place must not do. Page one, for the reason the band filter
+          gives: a different set, read from the start. */}
+      <SavedViews
+        query={query}
+        onApply={(filters) => setQuery({ ...INITIAL, ...filters, page: 1 })}
       />
 
       {distribution.data && (

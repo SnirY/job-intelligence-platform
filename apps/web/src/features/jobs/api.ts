@@ -15,6 +15,8 @@ import {
   type BulkArchiveRequest,
   type BulkArchiveResult,
   type JobUpdate,
+  type SavedJobView,
+  type SavedJobViewCreate,
   type StartedAnalysis,
 } from "@jip/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -302,5 +304,63 @@ export function useMatchJob(id: string) {
       void queryClient.invalidateQueries({ queryKey: matchKey(id) });
       void queryClient.invalidateQueries({ queryKey: jobsKey });
     },
+  });
+}
+
+// --- saved views --------------------------------------------------------------
+
+export const jobViewsKey = ["job-views"] as const;
+
+/**
+ * The views this user has saved.
+ *
+ * One request for all of them, which is what the API offers and what the screen
+ * wants: a row of chips is drawn whole or not at all.
+ */
+export function useJobViews() {
+  const { getToken } = useAuth();
+  return useQuery({
+    queryKey: jobViewsKey,
+    queryFn: () => apiFetch<SavedJobView[]>(API_ROUTES.jobViews, { getToken }),
+  });
+}
+
+export function useSaveJobView() {
+  const client = useQueryClient();
+  const { getToken } = useAuth();
+  return useMutation({
+    mutationFn: (body: SavedJobViewCreate) =>
+      apiFetch<SavedJobView>(API_ROUTES.jobViews, {
+        getToken,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: jobViewsKey }),
+  });
+}
+
+export function useRenameJobView() {
+  const client = useQueryClient();
+  const { getToken } = useAuth();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      apiFetch<SavedJobView>(`${API_ROUTES.jobViews}/${id}`, {
+        getToken,
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: jobViewsKey }),
+  });
+}
+
+export function useDeleteJobView() {
+  const client = useQueryClient();
+  const { getToken } = useAuth();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<null>(`${API_ROUTES.jobViews}/${id}`, { getToken, method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: jobViewsKey }),
   });
 }

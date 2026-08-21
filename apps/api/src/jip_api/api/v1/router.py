@@ -17,6 +17,7 @@ from jip_api.api.v1 import (
     resume_authoring,
     resume_tailoring,
     resumes,
+    saved_views,
     skill_candidates,
     users,
 )
@@ -28,6 +29,7 @@ api_v1_router.include_router(career.router)
 api_v1_router.include_router(career_records.router)
 api_v1_router.include_router(resumes.router)
 api_v1_router.include_router(applications.router)
+api_v1_router.include_router(saved_views.router)
 api_v1_router.include_router(jobs.router)
 api_v1_router.include_router(matches.router)
 api_v1_router.include_router(resume_authoring.router)
