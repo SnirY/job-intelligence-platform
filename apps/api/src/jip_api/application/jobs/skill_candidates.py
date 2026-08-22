@@ -44,7 +44,11 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from jip_api.application.errors import ApplicationError, ResourceNotFoundError
-from jip_api.application.jobs.requirement_skills import clean_skill_name, resolve_known_skills
+from jip_api.application.jobs.requirement_skills import (
+    alternatives,
+    clean_skill_name,
+    resolve_known_skills,
+)
 from jip_api.domain.career.skills import (
     CandidateStatus,
     Skill,
@@ -140,6 +144,36 @@ def resolve_pending_requirements(session: Session) -> int:
     return updated
 
 
+def _composites_the_catalogue_already_knows(session: Session, names: list[str]) -> set[str]:
+    """Composite names whose every part is a skill the catalogue has.
+
+    `GitHub/GitLab` is not a missing catalogue entry. Both halves have been in
+    the catalogue the whole time; what the requirement cannot do is point at two
+    of them, because `skill_id` is one column. That is the open half of DEV-055
+    and it is a schema problem, not a vocabulary one.
+
+    Queuing it anyway asks a reviewer to decide something already decided, and
+    the only answers available are wrong: add a `GitHub/GitLab` entry to a
+    catalogue that has both, or reject a name that is two real technologies.
+    On the development data eight of the queue's entries are this shape —
+    `MongoDB/SQL`, `JUnit/TestNG`, and six more.
+
+    Every part has to resolve. A composite that is half known — `React/Svelte`
+    where only React is catalogued — is a genuine gap wearing a slash, and it
+    stays in the queue where a person can add the missing half.
+    """
+    composite = {name: alternatives(name) for name in names}
+    composite = {name: parts for name, parts in composite.items() if len(parts) > 1}
+    if not composite:
+        return set()
+
+    known = resolve_known_skills(
+        session, sorted({part for parts in composite.values() for part in parts})
+    )
+
+    return {name for name, parts in composite.items() if all(part in known for part in parts)}
+
+
 def refresh_candidates(session: Session) -> list[CandidateView]:
     """Rebuild the queue from what the postings still cannot resolve.
 
@@ -156,10 +190,18 @@ def refresh_candidates(session: Session) -> list[CandidateView]:
         .group_by(JobRequirement.skill_name)
     ).all()
 
+    # Asked once for the whole batch rather than per name, for the reason
+    # `resolve_known_skills` gives about round trips.
+    settled = _composites_the_catalogue_already_knows(
+        session, [clean_skill_name(raw or "") for raw, _ in rows]
+    )
+
     for raw_name, count in rows:
         display = clean_skill_name(raw_name or "")
         key = normalize_skill_name(display)
         if not key:
+            continue
+        if display in settled:
             continue
         # Two spellings of one technology collapse to a single queue entry. The
         # display name is whichever sorted first, so the queue does not reshuffle

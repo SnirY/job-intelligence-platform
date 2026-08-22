@@ -196,6 +196,43 @@ def test_a_name_the_catalogue_already_holds_never_reaches_the_queue(
     assert unresolved_count(engine) == 0
 
 
+def test_a_composite_the_catalogue_fully_knows_is_not_a_gap(
+    client: TestClient, factory: TokenFactory, engine: sqlalchemy.Engine
+) -> None:
+    """`Python/Java` is not a missing catalogue entry.
+
+    Both halves are seeded. What the requirement cannot do is point at two of
+    them, because `skill_id` is one column — the open half of DEV-055, and a
+    schema problem rather than a vocabulary one.
+
+    Queuing it anyway asks a reviewer to decide something already decided, and
+    both available answers are wrong: add a `Python/Java` row to a catalogue
+    that has both, or reject a name that is two real technologies. Eight of the
+    development queue's entries were this shape.
+    """
+    seed_requirements(engine, "Python/Java")
+
+    rows = refresh(client, factory)
+
+    assert rows == []
+
+
+def test_a_half_known_composite_is_still_a_gap(
+    client: TestClient, factory: TokenFactory, engine: sqlalchemy.Engine
+) -> None:
+    """The other side of the same rule, and the reason it checks every part.
+
+    A composite where one half is catalogued and the other is not is a genuine
+    absence wearing a slash. It stays in the queue, where somebody can add the
+    half that is missing.
+    """
+    seed_requirements(engine, "Python/Kryptonite")
+
+    rows = refresh(client, factory)
+
+    assert [row["display_name"] for row in rows] == ["Python/Kryptonite"]
+
+
 def test_an_alias_resolves_too(
     client: TestClient, factory: TokenFactory, engine: sqlalchemy.Engine
 ) -> None:
