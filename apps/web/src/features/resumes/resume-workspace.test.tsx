@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -246,8 +246,65 @@ describe("a version that has been sent", () => {
     renderWithQuery(<ResumeWorkspace />);
 
     expect(await screen.findByText(/its\s+content is fixed/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Experience")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    /* Not a disabled textarea any more. A disabled control leaves the tab order
+       and several screen readers announce it as unavailable or skip it — so on
+       the version somebody actually sent, the document itself became the one
+       thing on the screen a keyboard could not reach.
+
+       It is still readable, still selectable, and still labelled. What it is
+       not is an input. */
+    /* Queried as a textbox rather than by label: the frozen block keeps its
+       accessible name, so `getByLabelText` still finds it — which is the
+       point. What has gone is the editable control, not the label. */
+    expect(screen.queryByRole("textbox", { name: "Experience" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Experience" })).toBeInTheDocument();
+  });
+
+  it("moves between versions with arrow keys, at one tab stop", async () => {
+    /* A tablist rather than a row of buttons carrying `aria-current`, which
+       announces "current page" — a claim about navigation on a control that
+       navigates nowhere. The pattern's payoff is the tab order: a resume with
+       nine versions costs one stop, not nine. */
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        versions: [version({ id: "v1", version: 1 }), version({ id: "v2", version: 2 })],
+        detail: detail(),
+      }),
+    );
+
+    renderWithQuery(<ResumeWorkspace />);
+    const tabs = await screen.findByRole("tablist", { name: "Versions of this resume" });
+    const [first, second] = within(tabs).getAllByRole("tab");
+
+    expect(first).toHaveAttribute("tabindex", "0");
+    expect(second).toHaveAttribute("tabindex", "-1");
+
+    (first as HTMLElement).focus();
+    await userEvent.keyboard("{ArrowRight}");
+
+    expect(second).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps the sent document readable rather than only visible", async () => {
+    // The record an application refers to. Somebody quoting it into an email
+    // needs to be able to select it.
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        versions: [version({ status: "USED" })],
+        detail: detail({ status: "USED", is_editable: false }),
+      }),
+    );
+
+    renderWithQuery(<ResumeWorkspace />);
+    await screen.findByText(/its\s+content is fixed/);
+
+    const experience = screen.getByRole("region", { name: "Experience" });
+    expect(experience).toBeInTheDocument();
+    expect(within(experience).queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("offers no further status transitions", async () => {

@@ -199,22 +199,50 @@ function ResumeEditor({ resume }: { resume: Resume }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Versions:</span>
-        {versions.data.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            aria-current={row.id === currentId}
-            className={
-              row.id === currentId
-                ? "rounded border px-2 py-1 text-xs font-medium"
-                : "rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-            }
-            onClick={() => setSelected(row.id)}
-          >
-            v{row.version} · {VERSION_STATUS_LABELS[row.status]}
-          </button>
-        ))}
+        {/*
+          A real tablist, because that is what it is: one panel below, one of
+          these selected, and the rest reachable. It was a row of buttons
+          carrying `aria-current`, which announces "current page" — a claim
+          about navigation, on a control that navigates nowhere.
+
+          Arrow keys move between tabs and only the selected one is tabbable,
+          which is the pattern's whole point: a resume with nine versions costs
+          one Tab stop rather than nine.
+        */}
+        <div
+          role="tablist"
+          aria-label="Versions of this resume"
+          className="flex flex-wrap items-center gap-2"
+          onKeyDown={(event) => {
+            const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+            if (step === 0) return;
+            event.preventDefault();
+            const rows = versions.data ?? [];
+            const at = rows.findIndex((row) => row.id === currentId);
+            const next = rows[(at + step + rows.length) % rows.length];
+            if (next) setSelected(next.id);
+          }}
+        >
+          {versions.data.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              role="tab"
+              id={`version-tab-${row.id}`}
+              aria-selected={row.id === currentId}
+              aria-controls="version-panel"
+              tabIndex={row.id === currentId ? 0 : -1}
+              className={
+                row.id === currentId
+                  ? "rounded border px-2 py-1 text-xs font-medium"
+                  : "rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              }
+              onClick={() => setSelected(row.id)}
+            >
+              v{row.version} · {VERSION_STATUS_LABELS[row.status]}
+            </button>
+          ))}
+        </div>
         <Button
           type="button"
           variant="ghost"
@@ -229,8 +257,14 @@ function ResumeEditor({ resume }: { resume: Resume }) {
         </Button>
       </div>
 
-      {version.isPending && <StateCard>Loading…</StateCard>}
-      {version.data && <VersionEditor version={version.data} />}
+      <div
+        id="version-panel"
+        role="tabpanel"
+        aria-labelledby={currentId ? `version-tab-${currentId}` : undefined}
+      >
+        {version.isPending && <StateCard>Loading…</StateCard>}
+        {version.data && <VersionEditor version={version.data} />}
+      </div>
     </div>
   );
 }
@@ -283,19 +317,22 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {SECTION_ORDER.map((kind) => (
-            <div key={kind} className="space-y-2">
-              <Label htmlFor={`section-${kind}`}>{SECTION_KIND_LABELS[kind]}</Label>
-              <Textarea
-                id={`section-${kind}`}
-                className="min-h-24 font-mono text-xs"
-                placeholder="One line per bullet. Prefix a line with # to make it a heading."
-                disabled={frozen}
-                value={draft[kind] ?? ""}
-                onChange={(event) => setDraft({ ...draft, [kind]: event.target.value })}
-              />
-            </div>
-          ))}
+          {SECTION_ORDER.map((kind) =>
+            frozen ? (
+              <FrozenSection key={kind} kind={kind} text={draft[kind] ?? ""} />
+            ) : (
+              <div key={kind} className="space-y-2">
+                <Label htmlFor={`section-${kind}`}>{SECTION_KIND_LABELS[kind]}</Label>
+                <Textarea
+                  id={`section-${kind}`}
+                  className="min-h-24 font-mono text-xs"
+                  placeholder="One line per bullet. Prefix a line with # to make it a heading."
+                  value={draft[kind] ?? ""}
+                  onChange={(event) => setDraft({ ...draft, [kind]: event.target.value })}
+                />
+              </div>
+            ),
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -361,6 +398,45 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
  * arrives; opening it after the `await` is what browsers block as a popup.
  * ADR-0006: the browser's own print dialog is the PDF exporter.
  */
+/**
+ * A section of a version that can no longer change.
+ *
+ * Static text rather than a `disabled` textarea, which is what this was. A
+ * disabled control is taken out of the tab order and, in several screen
+ * readers, announced as unavailable or skipped — so on a version that has been
+ * **sent**, the document somebody actually submitted became the one thing on
+ * the screen a keyboard could not reach and a screen reader would not read.
+ *
+ * That is the wrong way round. A frozen version is not less important than a
+ * draft; it is the record an application refers to, and the reason it cannot be
+ * edited is that it has to keep saying what was sent.
+ *
+ * On `--muted` rather than in a bordered box, so the surface says "settled"
+ * where the border said "input you may not use". The text stays selectable,
+ * which is what somebody wants from a document they are about to quote in an
+ * email.
+ */
+function FrozenSection({ kind, text }: { kind: ResumeSectionKind; text: string }) {
+  return (
+    <section aria-labelledby={`frozen-${kind}`} className="space-y-2">
+      <p id={`frozen-${kind}`} className="text-sm font-medium">
+        {SECTION_KIND_LABELS[kind]}
+      </p>
+      {text.trim() ? (
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">
+          {text}
+        </pre>
+      ) : (
+        /* An empty section of a sent document is a fact about the document, and
+           the reader should not have to infer it from a gap. */
+        <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+          Nothing was written here.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function PrintButton({ versionId }: { versionId: string }) {
   const render = useRenderVersion();
 
