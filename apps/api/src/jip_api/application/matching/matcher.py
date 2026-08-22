@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
+from jip_api.application.jobs.requirement_skills import alternatives
 from jip_api.application.matching.evidence import (
     STRONG_VERIFICATION,
     CertificationEvidence,
@@ -218,37 +219,14 @@ def _evaluate(
 # --- technical skills ---------------------------------------------------------
 
 
-_ALTERNATIVE_SEPARATORS = re.compile(
-    r"\s*/\s*|\s+(?:or|and/or)\s+",
-    re.IGNORECASE,
-)
-"""What separates one offered skill from another.
-
-A slash with optional spaces, or the words "or" / "and/or" **surrounded by
-spaces**. The spaces are load-bearing: without them this splits `Fortran` into
-`F` and `tran`, and `Terraform` into `Terraf` and `m`.
-"""
-
-
 def _alternatives(name: str) -> list[str]:
     """The separate skills a composite requirement name offers.
 
-    `Linux/Unix` is two, `C/C++` is two, `Node.js` is one — the split is on
-    separators between words, and a dot inside a name is not one.
-
-    Returns nothing for a name with no separator, so the ordinary case does no
-    extra work and cannot be changed by this at all.
-
-    Length-guarded: a requirement whose "skill name" is a whole sentence — "at
-    least one programming or scripting language (e.g. Python, Go, Bash)" — is
-    not repairable by splitting, and pretending otherwise would produce
-    fragments that match nothing. That case needs the parse schema to carry a
-    list, which is the other half of DEV-055 and is still open.
+    Moved to `requirement_skills.alternatives` so the candidate queue can ask
+    the same question — see the note there. Kept as a name here because the
+    matcher reads better for it.
     """
-    if len(name) > 40:
-        return []
-    parts = [part.strip() for part in _ALTERNATIVE_SEPARATORS.split(name)]
-    return [part for part in parts if part and part != name]
+    return alternatives(name)
 
 
 def _match_skill(

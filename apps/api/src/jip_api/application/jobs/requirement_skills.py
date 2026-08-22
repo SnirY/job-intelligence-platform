@@ -85,6 +85,45 @@ def clean_skill_name(raw: str) -> str:
     return cleaned or raw.strip()
 
 
+ALTERNATIVE_SEPARATORS = re.compile(
+    r"\s*/\s*|\s+(?:or|and/or)\s+",
+    re.IGNORECASE,
+)
+"""What separates one offered skill from another.
+
+A slash with optional spaces, or the words "or" / "and/or" **surrounded by
+spaces**. The spaces are load-bearing: without them this splits `Fortran` into
+`F` and `tran`, and `Terraform` into `Terraf` and `m`.
+"""
+
+
+def alternatives(name: str) -> list[str]:
+    """The separate skills a composite requirement name offers.
+
+    `Linux/Unix` is two, `C/C++` is two, `Node.js` is one — the split is on
+    separators between words, and a dot inside a name is not one.
+
+    Returns nothing for a name with no separator, so the ordinary case does no
+    extra work and cannot be changed by this at all.
+
+    Length-guarded: a requirement whose "skill name" is a whole sentence — "at
+    least one programming or scripting language (e.g. Python, Go, Bash)" — is
+    not repairable by splitting, and pretending otherwise would produce
+    fragments that match nothing. That case needs the parse schema to carry a
+    list, which is the other half of DEV-055 and is still open.
+
+    Lives here rather than in the matcher because two callers need it and they
+    ask different questions of it. The matcher asks "which of these does the
+    profile hold". The candidate queue asks "does the catalogue already know all
+    of them", which is how `GitHub/GitLab` stopped being proposed as a missing
+    entry when both halves had been in the catalogue the whole time.
+    """
+    if len(name) > 40:
+        return []
+    parts = [part.strip() for part in ALTERNATIVE_SEPARATORS.split(name)]
+    return [part for part in parts if part and part != name]
+
+
 def resolve_known_skills(session: Session, names: list[str]) -> dict[str, Skill]:
     """Map each name to a canonical skill, where one already exists.
 
