@@ -7,7 +7,6 @@ import {
   isTerminal,
   type Application,
   type ApplicationEvent,
-  type ApplicationStatus,
 } from "@jip/shared-types";
 import { Clock, LayoutGrid, Table2 } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +14,6 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StateCard } from "@/components/ui/state-card";
 import {
@@ -228,23 +226,39 @@ function StatusPicker({ application }: { application: Application }) {
 
   return (
     <div className="space-y-1">
-      <Select
+      {/*
+        The second copy of DEV-074, and the one the mockup could not see.
+
+        That entry fixed the identical control on the job screen: a native
+        select holding `value=""` and mutating on `change`. A native select
+        fires `change` per option under arrow keys, and every option here is an
+        append-only status transition — so a reader walking the list posted a
+        history of moves that never happened.
+
+        Wave D drew the job panel, so it flagged the instance it was looking at.
+        This one was three files away, doing the same thing, on the screen the
+        feature is actually named after. It is the argument for sweeping rather
+        than reacting.
+      */}
+      <div
+        role="group"
         aria-label={`Move ${application.job_title}`}
-        className="h-8 w-full text-xs"
-        value=""
-        disabled={change.isPending}
-        onChange={(event) => {
-          const next = event.target.value as ApplicationStatus;
-          if (next) change.mutate({ id: application.id, status: next });
-        }}
+        className="flex flex-wrap gap-1"
       >
-        <option value="">Move to…</option>
         {application.allowed_transitions.map((status) => (
-          <option key={status} value={status}>
+          <Button
+            key={status}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={change.isPending}
+            onClick={() => change.mutate({ id: application.id, status })}
+          >
             {APPLICATION_STATUS_LABELS[status]}
-          </option>
+          </Button>
         ))}
-      </Select>
+      </div>
 
       {change.isError && (
         <p className="text-xs text-destructive">

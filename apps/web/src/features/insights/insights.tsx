@@ -12,7 +12,6 @@ import {
   type RoleReport,
   type SkillDemandEntry,
 } from "@jip/shared-types";
-import { Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +24,7 @@ import {
   useSkillGaps,
 } from "@/features/insights/api";
 import { SkillReview } from "@/features/insights/skill-review";
+import { Callout } from "@/components/ui/callout";
 
 /**
  * Insights.
@@ -255,14 +255,13 @@ function Header({ analysed }: { analysed: number }) {
  */
 function Sample({ analysed, minimum }: { analysed: number; minimum: number }) {
   return (
-    <div className="flex gap-3 rounded-md border border-notice/40 bg-notice/5 p-3 text-sm">
-      <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+    <Callout tone="caution">
       <p>
         This is counted over {analysed === 1 ? "one posting" : `${analysed} postings`}. Below{" "}
         {minimum} there is not enough here to call anything a pattern — the counts are real, what
         they add up to is not yet.
       </p>
-    </div>
+    </Callout>
   );
 }
 

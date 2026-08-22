@@ -9,6 +9,7 @@ import { CommandPalette } from "@/features/navigation/command-palette";
 import { SidebarNav } from "@/features/navigation/sidebar-nav";
 import { ThemeToggle } from "@/features/navigation/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { useModalFocus } from "@/components/ui/use-modal-focus";
 
 /**
  * Authenticated application frame: fixed sidebar on desktop, drawer on mobile.
@@ -18,6 +19,15 @@ import { Button } from "@/components/ui/button";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* Close focused on the close button rather than the first nav link: the
+     drawer's first act should be to say how to leave it, and a reader who
+     opened a menu by mistake is one key from undoing that. */
+  const drawer = useModalFocus<HTMLElement>({
+    open: drawerOpen,
+    onDismiss: () => setDrawerOpen(false),
+    initialFocus: "[data-drawer-close]",
+  });
   const pathname = usePathname();
 
   // Navigating with the drawer open would otherwise leave it covering the page
@@ -26,17 +36,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     setDrawerOpen(false);
   }, [pathname]);
 
-  // Escape closes the drawer; a menu that can only be dismissed by pointer is
-  // a keyboard trap.
-  useEffect(() => {
-    if (!drawerOpen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawerOpen]);
+  /* Escape used to be handled here, on `window`, and it was the one part of the
+     contract this drawer already kept. It moved into the hook with the rest:
+     focus now enters the panel on open and is trapped there, so a key event
+     always reaches it, and the hook's version restores focus on the way out
+     while a window listener cannot. */
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,12 +62,23 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Mobile drawer */}
       {drawerOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden
-          />
+          <div className="absolute inset-0 bg-black/50" onClick={drawer.dismiss} aria-hidden />
+          {/*
+            F31, finally where it was recorded.
+
+            This drawer is the overlay that entry describes, and it is the one
+            that never got the fix: it promised `aria-modal` while Tab walked
+            straight out of it, took no focus when it opened, and gave none
+            back when it closed. Both other overlays cite F31 in their own
+            comments as the reason they do all of that.
+
+            Escape it did already handle, on a window listener — the one part
+            of the contract that was here. Worth saying because the first read
+            of this file said otherwise.
+          */}
           <aside
+            ref={drawer.panelRef}
+            onKeyDown={drawer.onKeyDown}
             role="dialog"
             aria-modal="true"
             aria-label="Main menu"
@@ -74,12 +89,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setDrawerOpen(false)}
+                data-drawer-close
+                onClick={drawer.dismiss}
                 aria-label="Close menu"
               >
                 <X aria-hidden className="size-4" />
               </Button>
             </div>
+            {/* Navigating away closes it, and focus goes with the navigation
+                rather than back to the button that opened a menu which is no
+                longer on screen. */}
             <SidebarNav onNavigate={() => setDrawerOpen(false)} />
           </aside>
         </div>

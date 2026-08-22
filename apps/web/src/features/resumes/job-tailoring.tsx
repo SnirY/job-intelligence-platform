@@ -332,7 +332,14 @@ function SuggestionRow({ jobId, suggestion }: { jobId: string; suggestion: Resum
       {!settled && (
         <div className="mt-3 space-y-2">
           {editing && (
+            /* Named after what it is editing. The list renders one of these per
+               suggestion, so an unnamed box is announced as "edit text" however
+               many of them are on screen — the reader is told there is a field
+               and not which claim it rewrites. */
             <Textarea
+              aria-label={`Rewrite the ${SUGGESTION_TYPE_LABELS[
+                suggestion.suggestion_type
+              ].toLowerCase()} suggestion`}
               className="min-h-20 text-sm"
               value={text}
               onChange={(event) => setText(event.target.value)}
