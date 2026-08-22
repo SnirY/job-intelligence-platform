@@ -25,6 +25,7 @@ import {
 } from "@/features/insights/api";
 import { SkillReview } from "@/features/insights/skill-review";
 import { Callout } from "@/components/ui/callout";
+import { GapMatrix } from "@/features/insights/gap-matrix";
 
 /**
  * Insights.
@@ -87,6 +88,12 @@ export function InsightsScreen() {
       )}
 
       <Gaps gaps={gaps.data.gaps} analysed={report.analysed_jobs} />
+
+      {/* Beside the list rather than instead of it. The list answers "what is
+          worst"; the matrix answers a question a ranking cannot hold — a gap
+          named once as essential and one named twelve times as a preference are
+          different problems in the same column. */}
+      <GapMatrix gaps={gaps.data.gaps} analysed={report.analysed_jobs} />
       <Demand skills={report.skills} analysed={report.analysed_jobs} total={report.total_skills} />
 
       <SkillReview />
