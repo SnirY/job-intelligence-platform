@@ -553,19 +553,36 @@ describe("requirements", () => {
     expect(await screen.findByText(/1 required, 1 preferred/)).toBeInTheDocument();
   });
 
-  it("keeps the posting's own words one click away", async () => {
-    // The check that makes the whole panel trustworthy: any reading can be
-    // compared against what was actually written.
+  it("shows the posting's own words beside every reading, with no click at all", async () => {
+    /* The check that makes the whole panel trustworthy: any reading can be
+       compared against what was actually written. It used to be one click —
+       the quote sat behind a per-row disclosure, so the resting state of the
+       list was our normalisation standing alone.
+
+       `evidence-chain.tsx` states the rule that breaks, about itself: the quote
+       and the reading are never rendered without the other. A closed disclosure
+       breaks it on every row simultaneously, which is the version nobody
+       notices, because nothing on screen looks missing. */
     vi.stubGlobal("fetch", routes(view()));
 
     renderWithQuery(<JobIntelligence job={job()} />);
-    await screen.findByText("Python");
-
-    expect(screen.queryByText("Strong Python and PostgreSQL")).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /show the posting's words/i }));
 
     expect(await screen.findByText("Strong Python and PostgreSQL")).toBeInTheDocument();
+    expect(screen.getByText("Python")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /show the posting's words/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("heads the two columns once rather than per row", async () => {
+    // The same vocabulary the evidence chain uses for its first two links, so a
+    // reader who has seen one recognises the other.
+    vi.stubGlobal("fetch", routes(view()));
+
+    renderWithQuery(<JobIntelligence job={job()} />);
+
+    expect(await screen.findByText("What the posting said")).toBeInTheDocument();
+    expect(screen.getByText("How we read it")).toBeInTheDocument();
   });
 
   it("marks an implied requirement as implied", async () => {

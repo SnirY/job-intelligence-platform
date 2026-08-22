@@ -10,7 +10,7 @@ import {
 import { Archive, ArchiveRestore, ExternalLink, Loader2, RotateCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-ba
 import { JobApplicationPanel } from "@/features/applications/job-application-panel";
 import { JobTailoringPanel } from "@/features/resumes/job-tailoring";
 import { ApiError } from "@/lib/api";
+import { Reading } from "@/components/ui/reading";
 
 /**
  * The job detail screen.
@@ -114,8 +115,12 @@ function JobView({ job }: { job: Job }) {
             has been read, the structured version is what someone deciding
             about the job actually wants, and the description below is what
             they check it against. */}
-        {read && <JobIntelligence job={job} />}
       </Reading>
+
+      {/* Outside the reading column, and it constrains itself. Only its
+          requirement list wants the width — the summary and the seniority
+          judgement are prose and stay at the measure. */}
+      {read && <JobIntelligence job={job} />}
 
       {/* Outside the reading column, and the only panel that is. It lays
           twenty-odd requirements on two axes beside the evidence for the one
@@ -251,18 +256,6 @@ function JobView({ job }: { job: Job }) {
       </Reading>
     </div>
   );
-}
-
-/**
- * A column at a reading measure, inside a page that is wider than one.
- *
- * The page had to grow for the match panel, and prose does not want the width:
- * a description set across 1600px is a line nobody can track back from. So the
- * page stops capping and each panel says what it needs, which is one measure
- * for everything except the workspace.
- */
-function Reading({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-4xl space-y-6">{children}</div>;
 }
 
 /**

@@ -2,31 +2,25 @@
 
 import {
   ANALYZED_SENIORITY_LABELS,
-  IMPORTANCE_LABELS,
   isAnalysisRunning,
-  isMandatory,
-  REQUIREMENT_TYPE_LABELS,
-  REQUIREMENT_TYPE_ORDER,
   ROLE_FAMILY_LABELS,
   type Job,
   type JobAnalysis,
   type JobAnalysisView,
-  type JobRequirement,
   type AnalysisProcessingState,
   type JobStatus,
-  type RequirementType,
   type RunningAnalysisStatus,
 } from "@jip/shared-types";
-import { AlertTriangle, Loader2, Quote, RotateCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Loader2, RotateCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StateCard } from "@/components/ui/state-card";
 import { Callout } from "@/components/ui/callout";
 import { useAnalyzeJob, useJobAnalysis } from "@/features/jobs/api";
+import { Reading } from "@/components/ui/reading";
+import { RequirementList } from "@/features/jobs/requirement-list";
 
 /**
  * The intelligence half of the Job Detail screen.
@@ -180,73 +174,91 @@ function AnalysisView({
 
   return (
     <div className="space-y-4">
-      {view.is_stale && isLatest && (
-        <Callout tone="caution">
-          The description has been edited since this was read, so parts of it may no longer match.
-          Analysing again will read the current text.
-        </Callout>
-      )}
+      <Reading>
+        {view.is_stale && isLatest && (
+          <Callout tone="caution">
+            The description has been edited since this was read, so parts of it may no longer match.
+            Analysing again will read the current text.
+          </Callout>
+        )}
 
-      {!isLatest && (
-        <Callout>
-          You are reading version {analysis.version} of {Math.max(...view.available_versions)}.{" "}
-          <button
-            type="button"
-            className="underline underline-offset-4"
-            onClick={() => onVersion(undefined)}
-          >
-            Show the latest
-          </button>
-        </Callout>
-      )}
+        {!isLatest && (
+          <Callout>
+            You are reading version {analysis.version} of {Math.max(...view.available_versions)}.{" "}
+            <button
+              type="button"
+              className="underline underline-offset-4"
+              onClick={() => onVersion(undefined)}
+            >
+              Show the latest
+            </button>
+          </Callout>
+        )}
+      </Reading>
 
-      <Overview analysis={analysis} />
-      <RoleAndSeniority analysis={analysis} />
-      <Requirements requirements={view.requirements} />
-      <Responsibilities view={view} />
+      <Reading>
+        <Overview analysis={analysis} />
+        <RoleAndSeniority analysis={analysis} />
+      </Reading>
 
-      {analysis.warnings.length > 0 && <Warnings warnings={analysis.warnings} />}
+      {/* The one part of this panel that leaves the reading column. It has two
+          things to set beside each other — the posting's words and ours — and
+          nothing else here does. */}
+      <RequirementList requirements={view.requirements} />
 
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          {feedback}
+      <Reading>
+        <Responsibilities view={view} />
+      </Reading>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="secondary" disabled={reanalyzing} onClick={onReanalyze}>
-              <RotateCw aria-hidden className={reanalyzing ? "size-4 animate-spin" : "size-4"} />
-              {reanalyzing ? "Analysing…" : "Analyse again"}
-            </Button>
+      <Reading>
+        {analysis.warnings.length > 0 && <Warnings warnings={analysis.warnings} />}
 
-            {view.available_versions.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Earlier readings:</span>
-                {view.available_versions.map((number) => (
-                  <button
-                    key={number}
-                    type="button"
-                    aria-current={number === analysis.version}
-                    className={
-                      number === analysis.version
-                        ? "rounded border px-2 py-0.5 text-xs font-medium"
-                        : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                    }
-                    onClick={() => onVersion(number === viewingVersion ? undefined : number)}
-                  >
-                    v{number}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            {feedback}
 
-          {/* Provenance, in small print. Which prompt and model produced a
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reanalyzing}
+                onClick={onReanalyze}
+              >
+                <RotateCw aria-hidden className={reanalyzing ? "size-4 animate-spin" : "size-4"} />
+                {reanalyzing ? "Analysing…" : "Analyse again"}
+              </Button>
+
+              {view.available_versions.length > 1 && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Earlier readings:</span>
+                  {view.available_versions.map((number) => (
+                    <button
+                      key={number}
+                      type="button"
+                      aria-current={number === analysis.version}
+                      className={
+                        number === analysis.version
+                          ? "rounded border px-2 py-0.5 text-xs font-medium"
+                          : "rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                      }
+                      onClick={() => onVersion(number === viewingVersion ? undefined : number)}
+                    >
+                      v{number}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Provenance, in small print. Which prompt and model produced a
               reading is what makes a disagreement with it actionable. */}
-          <p className="text-xs text-muted-foreground">
-            Read by {analysis.model} using {analysis.parse_prompt_version}
-            {analysis.analysis_prompt_version && ` and ${analysis.analysis_prompt_version}`}.
-          </p>
-        </CardContent>
-      </Card>
+            <p className="text-xs text-muted-foreground">
+              Read by {analysis.model} using {analysis.parse_prompt_version}
+              {analysis.analysis_prompt_version && ` and ${analysis.analysis_prompt_version}`}.
+            </p>
+          </CardContent>
+        </Card>
+      </Reading>
     </div>
   );
 }
@@ -362,97 +374,6 @@ function Confidence({ value }: { value: number }) {
     <p className="text-xs text-muted-foreground">
       {label} ({value}% confidence)
     </p>
-  );
-}
-
-function Requirements({ requirements }: { requirements: JobRequirement[] }) {
-  if (requirements.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Requirements</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Nothing in this posting reads as a requirement. That is unusual, and worth checking
-            against the original.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const grouped = groupByType(requirements);
-  const mandatory = requirements.filter((r) => isMandatory(r.importance)).length;
-  const preferred = requirements.length - mandatory;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Requirements</CardTitle>
-        <CardDescription>
-          {mandatory} required, {preferred} preferred or optional. Each one can show the
-          posting&rsquo;s own words.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {grouped.map(([type, rows]) => (
-          <div key={type} className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {REQUIREMENT_TYPE_LABELS[type]}
-            </h3>
-            <ul className="space-y-2">
-              {rows.map((requirement) => (
-                <RequirementRow key={requirement.id} requirement={requirement} />
-              ))}
-            </ul>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RequirementRow({ requirement }: { requirement: JobRequirement }) {
-  const [open, setOpen] = useState(false);
-  const mandatory = isMandatory(requirement.importance);
-
-  return (
-    <li className="rounded-md border p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm">{requirement.normalized_text}</p>
-          {requirement.explicitness === "IMPLIED" && (
-            <p className="text-xs text-muted-foreground">
-              Implied by the posting rather than stated in it
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {requirement.years_min !== null && (
-            <span className="text-xs text-muted-foreground">{requirement.years_min}+ years</span>
-          )}
-          <Badge variant={mandatory ? "default" : "outline"}>
-            {IMPORTANCE_LABELS[requirement.importance]}
-          </Badge>
-        </div>
-      </div>
-
-      <Disclosure
-        open={open}
-        onToggle={() => setOpen((value) => !value)}
-        label="Show the posting's words"
-        openLabel="Hide the posting's words"
-        icon={<Quote aria-hidden className="size-3 shrink-0" />}
-      />
-
-      {open && (
-        <blockquote className="mt-2 border-l-2 pl-3 text-xs leading-relaxed text-muted-foreground">
-          {requirement.source_text}
-        </blockquote>
-      )}
-    </li>
   );
 }
 
@@ -648,28 +569,6 @@ function EmptyState({
 }
 
 /** Group requirements by type, in the order the reader needs them. */
-function groupByType(requirements: JobRequirement[]): [RequirementType, JobRequirement[]][] {
-  const groups = new Map<RequirementType, JobRequirement[]>();
-  for (const requirement of requirements) {
-    const existing = groups.get(requirement.requirement_type);
-    if (existing) existing.push(requirement);
-    else groups.set(requirement.requirement_type, [requirement]);
-  }
-
-  return REQUIREMENT_TYPE_ORDER.filter((type) => groups.has(type)).map((type) => [
-    type,
-    // Required before preferred within a group: the reader is deciding whether
-    // they qualify, and the mandatory items are what answers that.
-    [...(groups.get(type) ?? [])].sort(byImportanceThenOrder),
-  ]);
-}
-
-const IMPORTANCE_RANK = { CORE: 0, REQUIRED: 1, PREFERRED: 2, OPTIONAL: 3, UNKNOWN: 4 };
-
-function byImportanceThenOrder(a: JobRequirement, b: JobRequirement): number {
-  const rank = IMPORTANCE_RANK[a.importance] - IMPORTANCE_RANK[b.importance];
-  return rank !== 0 ? rank : a.source_order - b.source_order;
-}
 
 function formatYears(min: number | null, max: number | null): string | null {
   if (min === null && max === null) return null;

@@ -148,6 +148,45 @@ describe("moving an application between stages", () => {
     expect(moves(calls)).toBe(0);
   });
 
+  it("remembers what was sent, not only when", async () => {
+    /* docs/07 names four things to preserve when a user applies: the date, the
+       exact resume version, the source, and any notes. The card kept the first
+       and dropped the rest, though the form had collected them on the way in.
+
+       The version is the one that decays. A resume is edited after it is sent,
+       so within a week "which one did they actually see" stops being
+       answerable from the current document. */
+    const calls = server([application({ resume_version_id: "ver-1", source: "COMPANY_WEBSITE" })]);
+    void calls;
+
+    renderWithQuery(<JobApplicationPanel job={JOB} />);
+
+    expect(await screen.findByText("Resume")).toBeInTheDocument();
+    expect(screen.getByText("Through")).toBeInTheDocument();
+    expect(screen.getByText("Company website")).toBeInTheDocument();
+  });
+
+  it("says a fact was not recorded rather than leaving a gap", async () => {
+    /* "Not recorded" is a fact about the application — the form offers it and
+       somebody chose it. A blank would read as the record having lost
+       something. */
+    server([application({ resume_version_id: null, source: null })]);
+
+    renderWithQuery(<JobApplicationPanel job={JOB} />);
+    await screen.findByText("Resume");
+
+    expect(screen.getAllByText("Not recorded")).toHaveLength(2);
+  });
+
+  it("says nothing about sending until something has been sent", async () => {
+    server([application({ applied_at: null, status: "READY_TO_APPLY" })]);
+
+    renderWithQuery(<JobApplicationPanel job={JOB} />);
+    await screen.findByText(/Now at/);
+
+    expect(screen.queryByText("Through")).not.toBeInTheDocument();
+  });
+
   it("says so when there is nowhere left to go", async () => {
     /* Rather than rendering nothing. A row of buttons that simply stops
        appearing reads as a screen that failed to load them. */
