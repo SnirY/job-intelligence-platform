@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -162,12 +162,33 @@ describe("moving a card", () => {
     vi.stubGlobal("fetch", routes([application()]));
 
     renderWithQuery(<ApplicationTracker />);
-    const picker = await screen.findByRole("combobox", { name: /move senior backend engineer/i });
+    const moves = await screen.findByRole("group", { name: /move senior backend engineer/i });
 
-    const options = Array.from(picker.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toContain("HR screen");
-    expect(options).toContain("Technical interview");
-    expect(options).not.toContain("Preparing");
+    expect(within(moves).getByRole("button", { name: "HR screen" })).toBeInTheDocument();
+    expect(within(moves).getByRole("button", { name: "Technical interview" })).toBeInTheDocument();
+    expect(within(moves).queryByRole("button", { name: "Preparing" })).not.toBeInTheDocument();
+  });
+
+  it("moves nothing while a keyboard is passing through", async () => {
+    /* DEV-074's second copy. This control was a native select mutating on
+       `change`, and a native select fires `change` per option under arrow
+       keys — so a reader walking the list of moves posted every one of them.
+       Status is append-only and each move writes an event, which makes that a
+       history of things that never happened rather than a wasted request. */
+    const fetchMock = routes([application()]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithQuery(<ApplicationTracker />);
+    const moves = await screen.findByRole("group", { name: /move senior backend engineer/i });
+
+    within(moves).getByRole("button", { name: "HR screen" }).focus();
+    await userEvent.keyboard("{Tab}{Tab}");
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      ),
+    ).toHaveLength(0);
   });
 
   it("PATCHes the chosen status", async () => {
@@ -175,8 +196,8 @@ describe("moving a card", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderWithQuery(<ApplicationTracker />);
-    const picker = await screen.findByRole("combobox", { name: /move senior backend engineer/i });
-    await userEvent.selectOptions(picker, "HR_SCREEN");
+    const moves = await screen.findByRole("group", { name: /move senior backend engineer/i });
+    await userEvent.click(within(moves).getByRole("button", { name: "HR screen" }));
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find(
