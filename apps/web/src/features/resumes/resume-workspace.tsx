@@ -9,7 +9,7 @@ import {
   type ResumeVersionDetail,
   type ResumeVersionStatus,
 } from "@jip/shared-types";
-import { Lock, Plus, Printer } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +20,10 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StateCard } from "@/components/ui/state-card";
+import { VersionPreview } from "@/features/resumes/version-preview";
 import {
   useCreateResume,
   useCreateVersion,
-  useRenderVersion,
   useResumes,
   useSaveContent,
   useSetVersionStatus,
@@ -312,79 +312,88 @@ function VersionEditor({ version }: { version: ResumeVersionDetail }) {
             <Badge variant={frozen ? "outline" : "default"}>
               {VERSION_STATUS_LABELS[version.status]}
             </Badge>
-            <PrintButton versionId={version.id} />
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-5">
-          {SECTION_ORDER.map((kind) =>
-            frozen ? (
-              <FrozenSection key={kind} kind={kind} text={draft[kind] ?? ""} />
-            ) : (
-              <div key={kind} className="space-y-2">
-                <Label htmlFor={`section-${kind}`}>{SECTION_KIND_LABELS[kind]}</Label>
-                <Textarea
-                  id={`section-${kind}`}
-                  className="min-h-24 font-mono text-xs"
-                  placeholder="One line per bullet. Prefix a line with # to make it a heading."
-                  value={draft[kind] ?? ""}
-                  onChange={(event) => setDraft({ ...draft, [kind]: event.target.value })}
-                />
-              </div>
-            ),
-          )}
+        {/*
+          Split from `lg` up: the sections on the left, the page on the right.
+          A resume is a document, and writing one without seeing it is the thing
+          this screen exists to fix. Below that width they stack, because two
+          columns of a document at phone width is neither.
+        */}
+        <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
+          <div className="space-y-5">
+            {SECTION_ORDER.map((kind) =>
+              frozen ? (
+                <FrozenSection key={kind} kind={kind} text={draft[kind] ?? ""} />
+              ) : (
+                <div key={kind} className="space-y-2">
+                  <Label htmlFor={`section-${kind}`}>{SECTION_KIND_LABELS[kind]}</Label>
+                  <Textarea
+                    id={`section-${kind}`}
+                    className="min-h-24 font-mono text-xs"
+                    placeholder="One line per bullet. Prefix a line with # to make it a heading."
+                    value={draft[kind] ?? ""}
+                    onChange={(event) => setDraft({ ...draft, [kind]: event.target.value })}
+                  />
+                </div>
+              ),
+            )}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              disabled={frozen || save.isPending || dangling.length > 0}
-              onClick={() => save.mutate(fromDraft(draft))}
-            >
-              {save.isPending ? "Saving…" : "Save"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                disabled={frozen || save.isPending || dangling.length > 0}
+                onClick={() => save.mutate(fromDraft(draft))}
+              >
+                {save.isPending ? "Saving…" : "Save"}
+              </Button>
 
-            <StatusActions
-              status={version.status}
-              pending={setStatus.isPending}
-              onSet={(next) => setStatus.mutate(next)}
-            />
+              <StatusActions
+                status={version.status}
+                pending={setStatus.isPending}
+                onSet={(next) => setStatus.mutate(next)}
+              />
 
-            <p aria-live="polite" className="text-sm">
-              {save.isSuccess && !save.isPending && dangling.length === 0 && (
-                <span className="text-muted-foreground">Saved.</span>
-              )}
-              {save.isError && <span className="text-destructive">Could not save.</span>}
-            </p>
-          </div>
-
-          {dangling.length > 0 && (
-            /* DEV-044. Refused before the request rather than reported after
-               it: the save would succeed, and the line would be gone under a
-               "Saved." that had nothing to do with it. */
-            <div
-              role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
-            >
-              <p className="font-medium">
-                {dangling.length === 1
-                  ? "One heading has no lines under it."
-                  : `${dangling.length} headings have no lines under them.`}
-              </p>
-              <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-                {dangling.map((entry) => (
-                  <li key={`${entry.kind}-${entry.heading}`}>
-                    <span className="font-medium">{SECTION_KIND_LABELS[entry.kind]}</span>
-                    {" — "}
-                    {entry.heading || "(empty heading)"}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-muted-foreground">
-                A heading belongs to the bullets beneath it, so one on its own has nowhere to be
-                stored. Add a line under it, or remove the <code>#</code> to make it a bullet.
+              <p aria-live="polite" className="text-sm">
+                {save.isSuccess && !save.isPending && dangling.length === 0 && (
+                  <span className="text-muted-foreground">Saved.</span>
+                )}
+                {save.isError && <span className="text-destructive">Could not save.</span>}
               </p>
             </div>
-          )}
+
+            {dangling.length > 0 && (
+              /* DEV-044. Refused before the request rather than reported after
+               it: the save would succeed, and the line would be gone under a
+               "Saved." that had nothing to do with it. */
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+              >
+                <p className="font-medium">
+                  {dangling.length === 1
+                    ? "One heading has no lines under it."
+                    : `${dangling.length} headings have no lines under them.`}
+                </p>
+                <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                  {dangling.map((entry) => (
+                    <li key={`${entry.kind}-${entry.heading}`}>
+                      <span className="font-medium">{SECTION_KIND_LABELS[entry.kind]}</span>
+                      {" — "}
+                      {entry.heading || "(empty heading)"}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-muted-foreground">
+                  A heading belongs to the bullets beneath it, so one on its own has nowhere to be
+                  stored. Add a line under it, or remove the <code>#</code> to make it a bullet.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <VersionPreview versionId={version.id} />
         </CardContent>
       </Card>
     </div>
@@ -434,40 +443,6 @@ function FrozenSection({ kind, text }: { kind: ResumeSectionKind; text: string }
         </p>
       )}
     </section>
-  );
-}
-
-function PrintButton({ versionId }: { versionId: string }) {
-  const render = useRenderVersion();
-
-  return (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={render.isPending}
-        onClick={() => {
-          // No `noopener` here, unusually: it severs the handle and returns
-          // null, and we need the handle to write into. Safe because the tab
-          // starts at about:blank and the only thing that ever reaches it is
-          // our own rendered document.
-          const tab = window.open("", "_blank");
-          render.mutate(versionId, {
-            onSuccess: (html) => {
-              if (!tab) return;
-              tab.document.write(html);
-              tab.document.close();
-            },
-            onError: () => tab?.close(),
-          });
-        }}
-      >
-        <Printer aria-hidden className="size-4" />
-        {render.isPending ? "Preparing…" : "Preview / print"}
-      </Button>
-      {render.isError && <span className="text-xs text-destructive">Could not render.</span>}
-    </div>
   );
 }
 

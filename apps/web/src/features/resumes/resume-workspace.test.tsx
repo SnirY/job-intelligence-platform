@@ -357,10 +357,57 @@ describe("printing", () => {
     renderWithQuery(<ResumeWorkspace />);
     await screen.findByLabelText("Experience");
 
-    await userEvent.click(screen.getByRole("button", { name: /preview \/ print/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Print" }));
 
     await waitFor(() => expect(write).toHaveBeenCalledWith("<html><body>rendered</body></html>"));
     expect(open).toHaveBeenCalled();
+  });
+
+  it("says so when the browser blocks the print window", async () => {
+    /* The case that used to be a button doing nothing. `window.open` returns
+       null when a browser refuses, and the old handler read `if (!tab) return`
+       — so the click ran, reported nothing, and left somebody pressing a button
+       that had already worked.
+
+       It has an answer now only because the render is on this screen: the page
+       is below, and printing from there is the same thing. */
+    vi.stubGlobal("fetch", routes());
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => null),
+    );
+
+    renderWithQuery(<ResumeWorkspace />);
+    await screen.findByLabelText("Experience");
+    await userEvent.click(screen.getByRole("button", { name: "Print" }));
+
+    expect(await screen.findByText(/browser blocked the print window/)).toBeInTheDocument();
+    expect(await screen.findByTitle("The rendered resume")).toBeInTheDocument();
+  });
+
+  it("shows the page without leaving the screen", async () => {
+    // A resume is a document. Not being able to see it while writing it is the
+    // one thing an editor for a document has to fix.
+    vi.stubGlobal("fetch", routes());
+
+    renderWithQuery(<ResumeWorkspace />);
+    await screen.findByLabelText("Experience");
+    await userEvent.click(screen.getByRole("button", { name: "Show the page" }));
+
+    expect(await screen.findByTitle("The rendered resume")).toBeInTheDocument();
+  });
+
+  it("says the page is of the last save, not of what is typed", async () => {
+    /* The render is of the saved version and the editor above may have moved
+       since. Stated rather than left for somebody to discover by printing an
+       old draft. */
+    vi.stubGlobal("fetch", routes());
+
+    renderWithQuery(<ResumeWorkspace />);
+    await screen.findByLabelText("Experience");
+    await userEvent.click(screen.getByRole("button", { name: "Show the page" }));
+
+    expect(await screen.findByText(/last saved version/)).toBeInTheDocument();
   });
 
   it("fetches the rendered page with the session token rather than linking to it", async () => {
@@ -376,7 +423,7 @@ describe("printing", () => {
     renderWithQuery(<ResumeWorkspace />);
     await screen.findByLabelText("Experience");
 
-    await userEvent.click(screen.getByRole("button", { name: /preview \/ print/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Print" }));
 
     await waitFor(() => {
       const rendered = fetchMock.mock.calls.find(([url]) => String(url).includes("/render"));
