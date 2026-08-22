@@ -9,7 +9,7 @@ import {
 } from "@jip/shared-types";
 import { Send } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,9 @@ import {
   useCreateApplication,
   useMarkApplied,
 } from "@/features/applications/api";
-import { useResumes, useVersions } from "@/features/resumes/api";
+import { useResumes, useVersion, useVersions } from "@/features/resumes/api";
 import { ApiError } from "@/lib/api";
+import type { ResumeVersionDetail } from "@jip/shared-types";
 
 /**
  * Tracking, from the job it belongs to.
@@ -142,6 +143,8 @@ function TrackedApplication({ application }: { application: Application }) {
           )}
         </div>
 
+        {application.applied_at && <SentRecord application={application} />}
+
         {change.isError && (
           <p className="text-sm text-destructive">
             {change.error instanceof ApiError ? change.error.message : "That move was refused."}
@@ -167,6 +170,76 @@ function TrackedApplication({ application }: { application: Application }) {
  * and any note. The version is also frozen — from here it is what an employer
  * read, and editing it would rewrite what was sent.
  */
+/**
+ * What was actually sent, and with what.
+ *
+ * `docs/07-applications.md` names four things to preserve when a user applies:
+ * the applied date, the exact resume version, the application source, and any
+ * notes. The card kept the first and dropped the rest — `resume_version_id` and
+ * `source` were collected by the form on the way in and then never shown again.
+ *
+ * That is the difference between recording something and remembering it. The
+ * version matters most, because it is the one fact here that decays: a resume
+ * is edited after it is sent, so within a week "which one did they actually
+ * see" stops being answerable from the current document.
+ *
+ * One request, and only for an application that has been sent — `useVersion`
+ * is disabled without an id. Not free, and worth it: this is the line the
+ * screen exists to still be able to answer in three months.
+ */
+function SentRecord({ application }: { application: Application }) {
+  const version = useVersion(application.resume_version_id);
+
+  const rows: Array<[string, ReactNode]> = [
+    ["Sent", new Date(application.applied_at as string).toLocaleDateString()],
+    ["Resume", <SentVersion key="v" application={application} version={version.data} />],
+    [
+      "Through",
+      application.source ? (
+        APPLICATION_SOURCE_LABELS[application.source]
+      ) : (
+        /* Not the same as unknown. The form offers "Not recorded" and somebody
+           chose it, which is a fact about the application rather than a gap. */
+        <span className="text-muted-foreground">Not recorded</span>
+      ),
+    ],
+  ];
+
+  return (
+    <dl className="grid gap-3 rounded-lg border p-3.5 sm:grid-cols-3">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd className="text-sm">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function SentVersion({
+  application,
+  version,
+}: {
+  application: Application;
+  version: ResumeVersionDetail | undefined;
+}) {
+  if (!application.resume_version_id) {
+    return <span className="text-muted-foreground">Not recorded</span>;
+  }
+
+  // The id was stored and the lookup has not landed, or failed. Said as a
+  // wait rather than as an absence: a blank here would read as "nothing was
+  // recorded", which is the opposite of what the row knows.
+  if (!version) return <span className="text-muted-foreground">Looking it up…</span>;
+
+  return (
+    <span>
+      {version.label ? `${version.label} · v${version.version}` : `Version ${version.version}`}
+    </span>
+  );
+}
+
 function MarkApplied({ application }: { application: Application }) {
   const resumes = useResumes();
   const [resumeId, setResumeId] = useState("");

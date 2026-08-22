@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useApi } from "@/lib/use-api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const queueKey = ["skill-candidates"] as const;
 
@@ -32,6 +33,7 @@ export function SkillReview() {
   const api = useApi();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
 
   const queue = useQuery({
     queryKey: queueKey,
@@ -123,7 +125,7 @@ export function SkillReview() {
                     )}
                   </div>
 
-                  <Badge variant={candidate.occurrences > 1 ? "default" : "secondary"}>
+                  <Badge variant="secondary">
                     {candidate.occurrences} {candidate.occurrences === 1 ? "posting" : "postings"}
                   </Badge>
 
@@ -144,11 +146,55 @@ export function SkillReview() {
                     size="sm"
                     aria-label={`Not a skill: ${candidate.display_name}`}
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ id: candidate.id, action: "reject", body: {} })}
+                    onClick={() => setRejecting(candidate.id)}
                   >
                     <X aria-hidden className="size-4" />
                     Not a skill
                   </Button>
+
+                  <ConfirmDialog
+                    open={rejecting === candidate.id}
+                    title={`Record that “${candidate.display_name}” is not a skill?`}
+                    confirmLabel="Not a skill"
+                    pending={decide.isPending}
+                    onCancel={() => setRejecting(null)}
+                    onConfirm={() => {
+                      setRejecting(null);
+                      decide.mutate({ id: candidate.id, action: "reject", body: {} });
+                    }}
+                    consequence={
+                      <>
+                        {/* The strongest case for a confirmation in this
+                            product, and it had the weakest control. Rejecting
+                            is remembered on purpose — this module's own note
+                            says a rejected candidate "stays rejected however
+                            many further postings use it", which is the point
+                            of storing rejections at all. There is no route
+                            that reopens one: `_pending` refuses anything that
+                            is not still pending. */}
+                        <p>
+                          The name will not be proposed again, however many postings use it, and
+                          there is no way to undo this from here.
+                        </p>
+                        <p>
+                          {/* Named because the catalogue is not this account's.
+                              Every other rule about destructive actions in this
+                              product concerns the user's own data; this one
+                              does not. */}
+                          The catalogue is shared with every account, so this decides the name for
+                          everyone — not only for you.
+                        </p>
+                        <p>
+                          It was named in{" "}
+                          <span className="font-medium text-foreground">
+                            {candidate.occurrences}{" "}
+                            {candidate.occurrences === 1 ? "posting" : "postings"}
+                          </span>{" "}
+                          you have saved.
+                        </p>
+                      </>
+                    }
+                  />
                 </div>
 
                 {editing === candidate.id && (

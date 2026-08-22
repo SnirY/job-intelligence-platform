@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -85,17 +85,58 @@ describe("SkillReview", () => {
     ).toBeInTheDocument();
   });
 
-  it("posts a rejection", async () => {
+  it("asks before rejecting, and names who the decision is for", async () => {
+    /* The strongest case for a confirmation in this product, and it had the
+       weakest control — a ghost button, one click.
+
+       Rejecting is remembered on purpose: `skill_candidates.py` says a rejected
+       candidate "stays rejected however many further postings use it", and no
+       route reopens one, because `_pending` refuses anything that is not still
+       pending. And the catalogue is shared, so unlike every other destructive
+       action here it decides something for accounts that are not this one. */
     const fetchMock = routedFetch([CAN], { ...CAN, status: "REJECTED" });
     vi.stubGlobal("fetch", fetchMock);
 
     renderReview(<SkillReview />);
     await userEvent.click(await screen.findByRole("button", { name: /Not a skill: CAN/ }));
 
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/no way to undo this/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/shared with every account/)).toBeInTheDocument();
+
+    expect(
+      fetchMock.mock.calls.find((entry) => String(entry[0]).endsWith("/reject")),
+    ).toBeUndefined();
+  });
+
+  it("posts the rejection once it is confirmed", async () => {
+    const fetchMock = routedFetch([CAN], { ...CAN, status: "REJECTED" });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderReview(<SkillReview />);
+    await userEvent.click(await screen.findByRole("button", { name: /Not a skill: CAN/ }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Not a skill" }));
+
     await waitFor(() => {
       const call = fetchMock.mock.calls.find((entry) => String(entry[0]).endsWith("/reject"));
       expect(call).toBeDefined();
     });
+  });
+
+  it("rejects nothing when the question is declined", async () => {
+    const fetchMock = routedFetch([CAN], { ...CAN, status: "REJECTED" });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderReview(<SkillReview />);
+    await userEvent.click(await screen.findByRole("button", { name: /Not a skill: CAN/ }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.find((entry) => String(entry[0]).endsWith("/reject")),
+    ).toBeUndefined();
   });
 
   it("adds to the catalogue with a corrected name and a category", async () => {
