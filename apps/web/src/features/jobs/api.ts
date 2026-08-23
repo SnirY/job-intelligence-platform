@@ -71,14 +71,26 @@ export function useJobs(query: JobListQuery) {
   });
 }
 
-export function useJob(id: string) {
+/**
+ * One job.
+ *
+ * `poll` exists for work that finishes on the worker without moving the job's
+ * status — a liveness check is the only such case today. A fetch announces
+ * itself as FETCHING and this hook can watch for that; a check announces
+ * nothing, so the caller waiting on one has to say it is waiting.
+ *
+ * The key is shared, so a second caller passing `poll` drives the refetch for
+ * every component reading this job. That is why the flag can live next to the
+ * button that needs it rather than being lifted to the screen.
+ */
+export function useJob(id: string, options?: { poll?: boolean }) {
   const api = useApi();
 
   return useQuery({
     queryKey: jobKey(id),
     queryFn: () => api<Job>(`${API_ROUTES.jobs}/${id}`),
     refetchInterval: (result) =>
-      result.state.data?.status === "FETCHING" ? POLL_INTERVAL_MS : false,
+      result.state.data?.status === "FETCHING" || options?.poll ? POLL_INTERVAL_MS : false,
   });
 }
 
@@ -181,7 +193,10 @@ export function useSupplyDescription(id: string) {
 }
 
 /** Archive, unarchive, or retry — the one-shot actions on a job. */
-export function useJobAction(id: string, action: "archive" | "unarchive" | "retry-import") {
+export function useJobAction(
+  id: string,
+  action: "archive" | "unarchive" | "retry-import" | "liveness-check",
+) {
   const api = useApi();
   const queryClient = useQueryClient();
 
