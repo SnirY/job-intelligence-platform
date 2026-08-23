@@ -76,7 +76,10 @@ export function JobLiveness({ job }: { job: Job }) {
 
   return (
     <div className="mt-4 border-t pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Grid rather than a wrapping flex row: a long observation sentence
+        must not push the Check button onto its own line, where it reads as
+        unrelated to the text it acts on. */}
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <p className="flex items-center gap-2 text-sm">
           <Status job={current} busy={busy} />
         </p>
