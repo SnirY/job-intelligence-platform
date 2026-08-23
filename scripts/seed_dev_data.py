@@ -6,7 +6,7 @@ an analysis, running a match, adding a board and scanning it — twenty minutes 
 clicking before twenty minutes of looking, which is how a manual walkthrough
 stops happening.
 
-    python scripts/seed_dev_data.py --email you@example.com
+    python scripts/seed_dev_data.py
 
 **No model is called and nothing costs money.** The analysis and its
 requirements are written directly, and `run_match` is deterministic — it takes a
@@ -104,7 +104,13 @@ carries the concerns; these two are the control.
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--email", help="The signed-in user to seed. Omit if there is only one.")
+    parser.add_argument(
+        "--user",
+        help=(
+            "Which account to seed — any part of its Clerk id. "
+            "Omit to take the one you signed in with most recently."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -117,11 +123,10 @@ def main() -> int:
 
     session = new_session()
     try:
-        user = _find_user(session, args.email)
+        user = _find_user(session, args.user)
         if user is None:
             return 1
 
-        print(f"Seeding {user.email or user.external_user_id}")
         made = _seed(session, user)
         session.commit()
     finally:
@@ -151,27 +156,61 @@ def _refuse_unless_local() -> None:
         raise SystemExit(f"Refusing to seed: the database is at {host!r}, which is not local.")
 
 
-def _find_user(session: Session, email: str | None) -> User | None:
+def _find_user(session: Session, wanted: str | None) -> User | None:
     """The account to seed, or a message explaining why not.
 
     Never creates one. A user row is minted by signing in, and a script that
     invented one would produce an account nobody can log into — which looks like
     seeding worked and is worse than failing.
-    """
-    if email:
-        user = session.scalars(select(User).where(User.email == email)).one_or_none()
-        if user is None:
-            print(f"No user with email {email}. Sign in once first.", file=sys.stderr)
-        return user
 
-    users = list(session.scalars(select(User).limit(2)))
+    **Matched on `external_user_id`, not on email.** The first version of this
+    took `--email` and could never work: `provisioning._sync_profile` says so
+    directly — "Clerk's default session token carries no email or name" — so
+    `users.email` is null in an ordinary local setup and every lookup missed.
+
+    With no argument it takes the newest row, which is the session you just
+    signed in with. It says which one it picked, because signing in twice is
+    normal here and picking silently would seed the account you are not looking
+    at.
+    """
+    users = list(session.scalars(select(User).order_by(User.created_at.desc())))
+
     if not users:
-        print("No users yet. Sign in once, then run this again.", file=sys.stderr)
+        print("No users yet. Sign in at http://localhost:3000, then run this again.")
         return None
+
+    if wanted:
+        matches = [
+            user
+            for user in users
+            if wanted in user.external_user_id or (user.email and wanted in user.email)
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        print(f"{'No' if not matches else 'More than one'} account matches {wanted!r}.")
+        _list_users(users)
+        return None
+
     if len(users) > 1:
-        print("More than one user. Say which with --email.", file=sys.stderr)
-        return None
-    return users[0]
+        print(f"{len(users)} accounts here. Taking the newest — pass --user to choose another.")
+        _list_users(users)
+        print()
+
+    chosen = users[0]
+    print(f"Seeding {chosen.external_user_id}")
+    return chosen
+
+
+def _list_users(users: list[User]) -> None:
+    """Show what there is to choose between.
+
+    Printed rather than described, because the identifiers are Clerk subjects
+    and nobody knows theirs by heart.
+    """
+    for index, user in enumerate(users):
+        when = user.created_at.strftime("%Y-%m-%d %H:%M")
+        newest = "  (newest)" if index == 0 else ""
+        print(f"  {user.external_user_id}  first seen {when}{newest}")
 
 
 def _seed(session: Session, user: User) -> list[str]:

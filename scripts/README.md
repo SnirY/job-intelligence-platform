@@ -21,7 +21,7 @@ README) and `npm install` to have been run for the frontend checks.
 Fills a development account with enough data to look at the screens.
 
 ```bash
-python scripts/seed_dev_data.py --email you@example.com
+python scripts/seed_dev_data.py
 ```
 
 Four screens shipped in Phase 12 and none of them shows anything on an empty
@@ -39,6 +39,13 @@ It makes one clean job, one job that trips every legitimacy rule, one job with a
 real link, a genuine match, a watched board, and two candidates already in the
 review list. Everything is tagged `[seed]` and a second run reports what is
 already there rather than making a second copy.
+
+It picks the account you signed in with most recently and says which one, since
+signing in twice is normal here. Pass `--user` with any part of a Clerk id to
+choose another; with no match it prints the list. It matches on
+`external_user_id` rather than email, because `users.email` is null in an
+ordinary local setup — `provisioning._sync_profile` explains why: Clerk's
+default session token carries no email claim.
 
 **It refuses to run against anything but a local database**, and checks that
 twice: the environment setting is the stated intent and the database host is the
