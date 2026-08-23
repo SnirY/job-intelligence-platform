@@ -30,7 +30,7 @@ No change to `jobs`. `JobImportMethod.DISCOVERED` needs no migration because
 does not need one.
 
 Revision ID: b7d4e9a2c015
-Revises: a5f1c3e8b247
+Revises: e2a9f4c71b83
 Create Date: 2026-08-23
 """
 
@@ -43,7 +43,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 
 revision: str = "b7d4e9a2c015"
-down_revision: str | None = "a5f1c3e8b247"
+down_revision: str | None = "e2a9f4c71b83"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

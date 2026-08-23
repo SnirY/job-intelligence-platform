@@ -157,6 +157,39 @@ def test_an_http_error_is_reported(server: tuple[int, type[_Handler]]) -> None:
     assert caught.value.code == "HTTP_ERROR"
 
 
+@pytest.mark.parametrize("status", [403, 404, 410, 429, 503])
+def test_an_http_failure_carries_its_status(
+    server: tuple[int, type[_Handler]], status: int
+) -> None:
+    """Every ``HTTP_ERROR`` looks the same to a caller reading only ``code``.
+
+    Liveness checking has to tell a 404 from a 403 — the posting is gone versus
+    we were not allowed to look — and reading that out of the ``details``
+    string would mean parsing prose. So the status travels structurally.
+    """
+    port, handler = server
+    handler.routes["/failing"] = (status, {"Content-Type": "text/html"}, b"nope")
+    target = target_for(port, "/failing")
+
+    with pytest.raises(FetchError) as caught:
+        _read(_request(target, timeout_seconds=5), target, target.url, [])
+
+    assert caught.value.status == status
+
+
+def test_a_refusal_before_a_response_carries_no_status() -> None:
+    """A blocked target never reached a server, so there is no status to report.
+
+    ``None`` is what tells liveness "unreachable" apart from "answered 404",
+    and the two must never collapse.
+    """
+    with pytest.raises(FetchError) as caught:
+        fetch_url("http://169.254.169.254/latest/meta-data/")
+
+    assert caught.value.code == "BLOCKED_URL"
+    assert caught.value.status is None
+
+
 def test_a_non_textual_response_is_refused(server: tuple[int, type[_Handler]]) -> None:
     """Not a security control — the body is parsed on its own merits either way
     — but there is no point downloading a video to look for prose in it."""
