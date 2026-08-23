@@ -208,7 +208,17 @@ class Job(TimestampMixin, UserOwnedMixin, Base):
     """
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    posted_at: Mapped[dt.date | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    posted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """When the employer published the posting, where a source says so.
+
+    Annotated `date` until 2026-08-23 over this same `DateTime` column, so the
+    annotation was simply false: SQLAlchemy loads a `datetime` and mypy was
+    being told otherwise. Same defect shape as the one `StrEnumType` was written
+    about — an annotation a column does not honour is worse than no annotation,
+    because it type-checks.
+
+    Null where nothing said. An absent date is not an old posting.
+    """
 
     salary_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
     """Free text on purpose. Salary appears as ranges, currencies, periods, and

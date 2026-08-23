@@ -16,6 +16,7 @@ here is what this system does with what a board returned.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -42,6 +43,11 @@ BASE = "/api/v1/discovery"
 ALICE = "user_alice"
 BOB = "user_bob"
 
+POSTED_AT = dt.datetime(2026, 3, 1, 9, 0, tzinfo=dt.UTC)
+"""What the board says about when the role went up. Kept old enough to be worth
+carrying: the point of carrying it is that a legitimacy check can then see how
+long the posting has been advertised."""
+
 DESCRIPTION = (
     "We are hiring a Senior Backend Engineer for the shipment platform. You "
     "will build REST services in Python and own the PostgreSQL schema behind "
@@ -58,6 +64,7 @@ def posting(external_id: str = "gh-1", title: str = "Senior Backend Engineer") -
         url=f"https://boards.greenhouse.io/verdant/jobs/{external_id}",
         company="Verdant Logistics",
         location="Lisbon, Portugal",
+        posted_at=POSTED_AT,
         description_text=DESCRIPTION,
     )
 
@@ -356,6 +363,28 @@ def test_promoting_creates_an_ordinary_job(
     assert job["title"] == "Senior Backend Engineer"
     assert job["description"].startswith("We are hiring")
     assert job["status"] == "RAW"
+
+
+def test_promoting_carries_the_boards_publish_date(
+    client: TestClient, factory: TokenFactory, boards_return: Any
+) -> None:
+    """Read from the board, stored on the candidate, and until now dropped here.
+
+    It is what tells a legitimacy check how long the role has been advertised,
+    and `first_seen_at` is only a lower bound on it — we may have found a role
+    months after it was published.
+    """
+    add_board(client, factory)
+    run_scan(client, factory)
+    row = pending(client, factory)[0]
+
+    promoted = client.post(f"{BASE}/postings/{row['id']}/promote", headers=auth(factory), json={})
+    job_id = promoted.json()["data"]["job_id"]
+
+    concerns = client.get(f"/api/v1/jobs/{job_id}/concerns", headers=auth(factory)).json()["data"][
+        "concerns"
+    ]
+    assert any(c["type"] == "LONG_RUNNING" for c in concerns)
 
 
 def test_a_promoted_posting_leaves_the_list(
