@@ -146,7 +146,18 @@ function PostingRow({ posting }: { posting: DiscoveredPosting }) {
 
   return (
     <div className="rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* A grid, not `flex flex-wrap justify-between`. With flex, a row whose
+        location line is long — "Remote-Friendly (Travel-Required) | San
+        Francisco, CA | Seattle, WA | New York City, NY" — pushed the action
+        group past the available width, and it wrapped onto its own line and
+        re-aligned to the start. The actions then sat in a different place on
+        every row, which is exactly what a list of identical rows must not do.
+
+        Two columns from `sm`: the content column shrinks (`minmax(0,1fr)`) and
+        the actions keep their intrinsic width, so the long location wraps
+        inside its own column instead of moving anything. Below `sm` the
+        actions sit underneath — consistently, on every row. */}
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div className="min-w-0 space-y-1">
           <p className="font-medium">{posting.title}</p>
           <p className="text-sm text-muted-foreground">
@@ -158,7 +169,7 @@ function PostingRow({ posting }: { posting: DiscoveredPosting }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <a
             href={posting.url}
             target="_blank"
@@ -237,7 +248,10 @@ function BoardRow({ board }: { board: WatchedBoard }) {
   const remove = useBoardAction(board.id, "remove");
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0">
+    // Same reasoning as the posting row above: a board whose label or error
+    // message is long must not push Pause and Remove onto their own line and
+    // out of alignment with every other board.
+    <div className="grid gap-3 border-b pb-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
         <p className="text-sm font-medium">
           {board.label ?? board.token}
