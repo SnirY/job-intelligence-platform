@@ -115,6 +115,11 @@ def promote(
             location=posting.location,
             description=_description(posting),
             source_url=posting.url,
+            # The board's own publish date, which until now was read from the
+            # board, stored on the candidate, and then dropped at promotion.
+            # It is what tells a legitimacy check how long the role has been
+            # advertised, and `first_seen_at` is only a lower bound on it.
+            posted_at=posting.posted_at,
         ),
         allow_duplicate=allow_duplicate,
     )

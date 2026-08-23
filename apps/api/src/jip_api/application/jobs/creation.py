@@ -75,6 +75,12 @@ class JobInput:
     source_url: str | None = None
     notes: str | None = None
     salary_text: str | None = None
+    posted_at: dt.datetime | None = None
+    """When the employer published, where the source says so.
+
+    Only a board states this. A pasted or hand-entered job leaves it null, and
+    null keeps meaning nothing said rather than published today.
+    """
 
 
 def content_hash(description: str | None) -> str | None:
@@ -189,6 +195,7 @@ def create_job(
         content_hash=digest,
         notes=_clean(data.notes),
         salary_text=_clean(data.salary_text),
+        posted_at=data.posted_at,
     )
     session.add(job)
     session.flush()

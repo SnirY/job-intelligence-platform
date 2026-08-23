@@ -139,7 +139,7 @@ def read_posting(
     *,
     description: str | None,
     first_seen_at: dt.datetime | None = None,
-    posted_at: dt.date | dt.datetime | None = None,
+    posted_at: dt.datetime | None = None,
     now: dt.datetime | None = None,
 ) -> LegitimacyReading:
     """Every concern the rules raise about one posting.
@@ -283,7 +283,7 @@ def _quote(text: str, start_at: int, end_at: int) -> str:
 def _open_days(
     *,
     first_seen_at: dt.datetime | None,
-    posted_at: dt.date | dt.datetime | None,
+    posted_at: dt.datetime | None,
     now: dt.datetime,
 ) -> int | None:
     """How long the posting has been open, in days, or ``None`` if unknown.
@@ -296,17 +296,14 @@ def _open_days(
     Unknown returns `None` and raises nothing. An absent date is not an old
     posting, and this is the same rule invariant 14 keeps on the screen.
     """
-    earliest: dt.date | dt.datetime | None = posted_at or first_seen_at
+    earliest = posted_at or first_seen_at
     if earliest is None:
         return None
 
-    # `Job.posted_at` is annotated `date` over a `DateTime` column, so what
-    # arrives is a datetime and the annotation says otherwise. Both are handled
-    # rather than trusting either — a plain date becomes midnight UTC, which is
-    # the earliest the posting could have gone up and so the conservative read.
-    if not isinstance(earliest, dt.datetime):
-        earliest = dt.datetime.combine(earliest, dt.time.min, tzinfo=dt.UTC)
-    elif earliest.tzinfo is None:
+    # A naive value is still possible — nothing stops one being constructed —
+    # and is read as UTC rather than discarded. Losing "posted three weeks ago"
+    # over a missing offset would be the wrong trade.
+    if earliest.tzinfo is None:
         earliest = earliest.replace(tzinfo=dt.UTC)
 
     days = (now - earliest).days
