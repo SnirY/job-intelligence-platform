@@ -62,6 +62,17 @@ class JobImportMethod(enum.StrEnum):
     PASTED_DESCRIPTION = "PASTED_DESCRIPTION"
     URL = "URL"
     MANUAL = "MANUAL"
+    DISCOVERED = "DISCOVERED"
+    """Found by a board scan and promoted by a person.
+
+    Distinct from URL even though both start from a link. URL means the user
+    brought that link; DISCOVERED means a scan offered it and they said yes.
+    Only the second can answer "is watching these boards worth it", which is the
+    question that decides whether discovery stays.
+
+    No migration: `StrEnumType` stores these as VARCHAR precisely so that adding
+    a member does not need one.
+    """
 
 
 class JobProcessingStatus(enum.StrEnum):

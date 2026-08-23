@@ -11,6 +11,7 @@ dependencies = [
   "jip-config",
   "jip-ai-core",
   "jip-prompts",
+  "jip-job-sources",
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
   "sqlalchemy>=2.0,<3",

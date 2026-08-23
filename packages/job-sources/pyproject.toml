@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jip-job-sources"
+version = "0.1.0"
+description = "Reading public applicant-tracking boards into postings the workspace can import."
+requires-python = ">=3.12"
+# No runtime dependencies on purpose. Every board here answers JSON over HTTPS,
+# which the standard library does, and a package whose whole job is talking to
+# other people's servers is the last place to take a dependency that has to be
+# trusted with that traffic.
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jip_sources"]
