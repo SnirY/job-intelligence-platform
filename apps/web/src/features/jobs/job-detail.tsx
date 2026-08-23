@@ -35,6 +35,7 @@ import { JobMatchPanel } from "@/features/jobs/job-match";
 import { PostingConcerns } from "@/features/jobs/posting-concerns";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
 import { JobApplicationPanel } from "@/features/applications/job-application-panel";
+import { CoverLetterPanel } from "@/features/resumes/cover-letter";
 import { JobTailoringPanel } from "@/features/resumes/job-tailoring";
 import { ApiError } from "@/lib/api";
 import { Reading } from "@/components/ui/reading";
@@ -145,6 +146,10 @@ function JobView({ job }: { job: Job }) {
             match, so seeing it above the score would invite tailoring towards
             a job before knowing whether it fits. */}
         {read && <JobTailoringPanel job={job} />}
+        {/* After tailoring, because a letter argues from the same evidence the
+            resume was tailored around and reads oddly if written first. Before
+            tracking, because it is preparation rather than outcome. */}
+        {read && <CoverLetterPanel job={job} />}
         {/* Then tracking, which is what happens once the preparation above is
             done, and the only panel here that outlives the job. */}
         {read && <JobApplicationPanel job={job} />}

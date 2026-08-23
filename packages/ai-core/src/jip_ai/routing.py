@@ -47,6 +47,16 @@ class AIOperation(enum.StrEnum):
     RESUME_STRATEGY = "RESUME_STRATEGY"
     """Planning how to tailor a resume. Produces a plan, never resume text."""
 
+    COVER_LETTER = "COVER_LETTER"
+    """Drafting a cover letter for one job.
+
+    Its own operation rather than a mode of RESUME_REWRITE. A rewrite is
+    constrained by an existing line and may only re-say it; a cover letter has
+    no original, so every number in it has to come from the profile or not
+    appear. Different failure mode, different token ceiling, and worth being
+    able to route and price separately.
+    """
+
     RESUME_REWRITE = "RESUME_REWRITE"
     """Proposing changes to individual resume lines.
 
@@ -147,6 +157,9 @@ def build_router(
     resume_rewrite_model: str | None = None,
     resume_rewrite_max_output_tokens: int = 8000,
     resume_rewrite_effort: str | None = None,
+    cover_letter_model: str | None = None,
+    cover_letter_max_output_tokens: int = 2000,
+    cover_letter_effort: str | None = None,
 ) -> ModelRouter:
     """Assemble the routing table from settings.
 
@@ -184,6 +197,12 @@ def build_router(
             match_explain_model,
             match_explain_max_output_tokens,
             match_explain_effort,
+        ),
+        (
+            AIOperation.COVER_LETTER,
+            cover_letter_model,
+            cover_letter_max_output_tokens,
+            cover_letter_effort,
         ),
         (
             AIOperation.RESUME_STRATEGY,
