@@ -9,7 +9,15 @@ import {
   type MatchStatus,
   type AlignmentDistribution,
 } from "@jip/shared-types";
-import { AlertTriangle, Archive, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Plus,
+  Radar,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -51,12 +59,25 @@ export function JobsList() {
             Every role you are considering, kept with the posting it came from.
           </p>
         </div>
-        <Button asChild>
-          <Link href="/jobs/new">
-            <Plus aria-hidden className="size-4" />
-            Add job
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Discovery sits beside "Add job" rather than in the main navigation,
+            because it is the other answer to the same question — where the next
+            job comes from. It stays out of the nav until Phase 12 closes, since
+            `destinations.ts` derives what is available from the shipped phase
+            and claiming this one had shipped would be false. */}
+          <Button asChild variant="secondary">
+            <Link href="/discovery">
+              <Radar aria-hidden className="size-4" />
+              Discover
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/jobs/new">
+              <Plus aria-hidden className="size-4" />
+              Add job
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <JobFilters
