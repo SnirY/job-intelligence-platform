@@ -21,6 +21,7 @@ from jip_ai import AIError
 from jip_api.application.jobs.analysis_pipeline import run_analysis
 from jip_api.application.jobs.creation import mark_fetch_failed, record_import
 from jip_api.application.jobs.importing import run_url_import
+from jip_api.application.jobs.liveness import run_liveness_check
 from jip_api.application.processing import jobs as jobs_uc
 from jip_api.domain.jobs.models import Job, JobImportMethod, JobProcessingStatus
 from jip_api.domain.processing.models import ProcessingJobStatus
@@ -93,6 +94,54 @@ def run_job_url_import(job_id: str) -> dict[str, object]:
             "status": "COMPLETED" if outcome.succeeded else "FAILED",
             "characters": outcome.characters,
             "error_code": outcome.error_code,
+        }
+    finally:
+        session.close()
+
+
+def run_job_liveness_check(job_id: str) -> dict[str, object]:
+    """Check whether one posting is still open.
+
+    Takes the *job's* id, like the import above and unlike the analysis below,
+    for the reason that docstring gives: the outcome lives on the job row. A
+    liveness check is one request with one observation — there is no attempt to
+    count, nothing to retry differently, and no progress to report.
+
+    Background work because it is a remote fetch, which is the same reason the
+    import is. Nothing else about it is expensive.
+    """
+    settings = get_settings()
+    session = new_session()
+
+    try:
+        job = session.get(Job, uuid.UUID(job_id))
+        if job is None:
+            logger.error("Job not found for liveness check", extra={"job_id": job_id})
+            return {"job_id": job_id, "status": "MISSING"}
+
+        try:
+            outcome = run_liveness_check(
+                session,
+                job,
+                timeout_seconds=settings.job_fetch_timeout_seconds,
+                max_bytes=settings.job_fetch_max_bytes,
+            )
+        except Exception:
+            # A bug, not a failed check. Roll back and record nothing: a
+            # liveness check that crashed has observed nothing, and writing a
+            # timestamp here would be the module's one rule broken from
+            # outside it.
+            session.rollback()
+            logger.exception("Liveness check raised unexpectedly", extra={"job_id": job_id})
+            return {"job_id": job_id, "status": "FAILED", "error_code": "INTERNAL_ERROR"}
+
+        session.commit()
+        return {
+            "job_id": job_id,
+            "status": "COMPLETED",
+            "verdict": str(outcome.verdict),
+            "reason": str(outcome.reason),
+            "http_status": outcome.status,
         }
     finally:
         session.close()

@@ -44,10 +44,27 @@ _TEXTUAL_TYPES = ("text/html", "text/plain", "application/xhtml+xml", "applicati
 class FetchError(Exception):
     """The page could not be retrieved. Message is safe to show the user."""
 
-    def __init__(self, message: str, *, code: str, details: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        details: str | None = None,
+        status: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.details = details
+        self.status = status
+        """The HTTP status, where the failure had one. ``None`` for anything
+        that failed before a response arrived — DNS, a blocked target, a
+        redirect loop.
+
+        Carried structurally rather than only inside ``details`` because a
+        caller has to be able to tell 404 from 403 without parsing prose.
+        Liveness checking turns exactly on that distinction: one means the
+        posting is gone, the other means we were not allowed to look.
+        """
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +220,7 @@ def _read(
                 f"That page returned an error ({response.status}).",
                 code="HTTP_ERROR",
                 details=f"status={response.status}",
+                status=response.status,
             )
 
         content_type = response.getheader("Content-Type")
@@ -211,13 +229,16 @@ def _read(
                 "That link is not a web page we can read.",
                 code="UNSUPPORTED_CONTENT",
                 details=f"content_type={content_type}",
+                status=response.status,
             )
 
         # One byte over the limit is read deliberately, so a body at exactly the
         # limit is distinguishable from one that was truncated.
         raw = response.read(max_bytes + 1)
         if len(raw) > max_bytes:
-            raise FetchError("That page is too large to import.", code="TOO_LARGE")
+            raise FetchError(
+                "That page is too large to import.", code="TOO_LARGE", status=response.status
+            )
 
         body = _decode(raw, response.getheader("Content-Encoding"), content_type)
     finally:
