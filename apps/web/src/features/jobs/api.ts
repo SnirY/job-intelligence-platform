@@ -11,6 +11,7 @@ import {
   type JobMatchView,
   type JobSource,
   type JobSummary,
+  type PostingConcerns,
   type AlignmentDistribution,
   type BulkArchiveRequest,
   type BulkArchiveResult,
@@ -91,6 +92,22 @@ export function useJob(id: string, options?: { poll?: boolean }) {
     queryFn: () => api<Job>(`${API_ROUTES.jobs}/${id}`),
     refetchInterval: (result) =>
       result.state.data?.status === "FETCHING" || options?.poll ? POLL_INTERVAL_MS : false,
+  });
+}
+
+/**
+ * What we noticed about the posting itself.
+ *
+ * Its own query rather than a field on the job, mirroring the API: a concern is
+ * a reading, and the job payload carries only what the user typed or the source
+ * said.
+ */
+export function usePostingConcerns(id: string) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: [...jobKey(id), "concerns"],
+    queryFn: () => api<PostingConcerns>(`${API_ROUTES.jobs}/${id}/concerns`),
   });
 }
 

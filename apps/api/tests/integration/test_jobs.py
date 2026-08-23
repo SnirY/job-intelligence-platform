@@ -885,6 +885,68 @@ def test_a_queue_outage_is_reported_rather_than_recorded(
     assert after["closed_detected_at"] is None
 
 
+# --- what we noticed about the posting ----------------------------------------
+
+
+def test_an_ordinary_posting_raises_no_concerns(client: TestClient, factory: TokenFactory) -> None:
+    job = create(client, factory, paste())
+
+    body = client.get(f"{BASE}/{job['id']}/concerns", headers=auth(factory)).json()["data"]
+
+    assert body["concerns"] == []
+    assert body["rules_version"]
+
+
+def test_a_posting_asking_for_money_is_reported_with_its_own_words(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    job = create(
+        client,
+        factory,
+        paste(description=DESCRIPTION + " There is a one-time training fee of $250."),
+    )
+
+    concerns = client.get(f"{BASE}/{job['id']}/concerns", headers=auth(factory)).json()["data"][
+        "concerns"
+    ]
+
+    payment = next(c for c in concerns if c["type"] == "PAYMENT_REQUESTED")
+    assert payment["confidence"] == "NEAR_CERTAIN"
+    assert "training fee" in payment["evidence"]
+
+
+def test_concerns_are_not_on_the_job_payload(client: TestClient, factory: TokenFactory) -> None:
+    """`docs/05`: a reading is never served in the same shape as a fact.
+
+    The job payload carries what the user typed or what the source said, and a
+    concern is neither.
+    """
+    job = create(client, factory, paste(description=DESCRIPTION + " Pay a deposit to start."))
+
+    fetched = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()["data"]
+
+    assert "concerns" not in fetched
+    assert "legitimacy" not in fetched
+
+
+def test_reading_concerns_changes_nothing_about_the_job(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The acceptance criterion this slice was written around.
+
+    A concern is derived on read and stored nowhere, so asking for one cannot
+    move a score, a status, or anything else. Asserted on the whole payload
+    rather than on the fields that came to mind.
+    """
+    job = create(client, factory, paste(description=DESCRIPTION + " Pay a deposit to start."))
+
+    before = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()
+    client.get(f"{BASE}/{job['id']}/concerns", headers=auth(factory))
+    after = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()
+
+    assert before == after
+
+
 # --- ownership ----------------------------------------------------------------
 
 
@@ -905,6 +967,7 @@ def test_the_list_is_scoped_to_the_caller(client: TestClient, factory: TokenFact
         ("post", "/unarchive"),
         ("post", "/description"),
         ("post", "/retry-import"),
+        ("get", "/concerns"),
         ("post", "/liveness-check"),
         ("delete", ""),
     ],

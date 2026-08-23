@@ -22,6 +22,7 @@ from jip_api.api.dependencies import CurrentUser, DispatcherDep
 from jip_api.application.jobs import analysis_uc
 from jip_api.application.jobs import creation as creation_uc
 from jip_api.application.jobs import importing as importing_uc
+from jip_api.application.jobs import legitimacy as legitimacy_uc
 from jip_api.application.jobs import liveness as liveness_uc
 from jip_api.application.jobs import queries as queries_uc
 from jip_api.application.jobs import updates as updates_uc
@@ -37,6 +38,7 @@ from jip_api.domain.jobs.analysis import (
     RequirementType,
     RoleFamily,
 )
+from jip_api.domain.jobs.legitimacy import ConcernConfidence, PostingConcernType
 from jip_api.domain.jobs.models import (
     Job,
     JobImportMethod,
@@ -822,6 +824,72 @@ def remove_job(user: CurrentUser, session: SessionDep, job_id: uuid.UUID) -> Res
     updates_uc.delete_job(session, user.id, job_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- the posting itself -------------------------------------------------------
+
+
+class PostingConcernPayload(BaseModel):
+    """One thing noticed about the posting, and what in it caused that."""
+
+    type: PostingConcernType
+    confidence: ConcernConfidence
+    summary: str
+    evidence: str | None
+    """The posting's own words. Null where the rule measured rather than read —
+    there is no phrase to quote for "this posting is very short"."""
+
+
+class PostingConcernsPayload(BaseModel):
+    """`GET /jobs/{id}/concerns` — what we noticed about the listing itself.
+
+    **Its own endpoint rather than a field on `JobPayload`, and that is the
+    point.** That payload carries what the user typed or what the source said;
+    this is a reading, and `docs/05-ai-and-matching.md` requires the two to stay
+    apart. Serving a reading in the same shape as a fact is how the two stop
+    being distinguishable.
+
+    There is deliberately no score and no overall verdict. A number can be
+    averaged, weighted and eventually folded into the match; a list of named
+    concerns cannot be, without someone writing the code that does it.
+    """
+
+    job_id: uuid.UUID
+    rules_version: str
+    concerns: list[PostingConcernPayload]
+
+
+@router.get(
+    "/{job_id}/concerns",
+    response_model=DataResponse[PostingConcernsPayload],
+    summary="What we noticed about the posting itself",
+)
+def read_concerns(
+    user: CurrentUser, session: SessionDep, job_id: uuid.UUID
+) -> DataResponse[PostingConcernsPayload]:
+    """Concerns about the listing, never about the fit.
+
+    An empty list means **no rule fired**. It is not a statement that the
+    posting is trustworthy, and a screen may not render it as one.
+    """
+    job = queries_uc.get_job(session, user.id, job_id)
+    reading = legitimacy_uc.for_job(session, job)
+
+    return DataResponse(
+        data=PostingConcernsPayload(
+            job_id=job.id,
+            rules_version=legitimacy_uc.RULES_VERSION,
+            concerns=[
+                PostingConcernPayload(
+                    type=concern.type,
+                    confidence=concern.confidence,
+                    summary=concern.summary,
+                    evidence=concern.evidence,
+                )
+                for concern in reading.concerns
+            ],
+        )
+    )
 
 
 # --- analysis -----------------------------------------------------------------

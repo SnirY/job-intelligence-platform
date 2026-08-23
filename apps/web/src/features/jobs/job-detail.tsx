@@ -32,6 +32,7 @@ import { useApplications } from "@/features/applications/api";
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
 import { JobLiveness } from "@/features/jobs/job-liveness";
 import { JobMatchPanel } from "@/features/jobs/job-match";
+import { PostingConcerns } from "@/features/jobs/posting-concerns";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
 import { JobApplicationPanel } from "@/features/applications/job-application-panel";
 import { JobTailoringPanel } from "@/features/resumes/job-tailoring";
@@ -131,6 +132,15 @@ function JobView({ job }: { job: Job }) {
       {read && <JobMatchPanel job={job} />}
 
       <Reading>
+        {/* Below the match and never above it, which is the rule the whole
+            legitimacy slice turns on: a concern about the listing must not read
+            as part of the verdict about fit. Above the tailoring panel though,
+            because "this posting asks you for money" is worth knowing before
+            spending an evening writing a resume for it.
+
+            Renders nothing at all when no rule fired — see the component. */}
+        <PostingConcerns jobId={job.id} />
+
         {/* In that order deliberately: the resume strategy is built from the
             match, so seeing it above the score would invite tailoring towards
             a job before knowing whether it fits. */}

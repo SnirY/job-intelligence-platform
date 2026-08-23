@@ -733,3 +733,41 @@ export interface JobMatchView {
    */
   preference_fit: PreferenceFit[];
 }
+
+/** What was noticed about the posting itself, as distinct from the fit. */
+export type PostingConcernType =
+  "PAYMENT_REQUESTED" | "OFF_PLATFORM_CONTACT" | "THIN_DESCRIPTION" | "LONG_RUNNING";
+
+/**
+ * How much the rule that raised a concern can support.
+ *
+ * Deliberately not a number. A number can be averaged, weighted and eventually
+ * folded into the match score, and the one rule this feature keeps is that a
+ * concern never moves that score.
+ */
+export type ConcernConfidence = "OBSERVED" | "SUSPICIOUS" | "NEAR_CERTAIN";
+
+export interface PostingConcern {
+  type: PostingConcernType;
+  confidence: ConcernConfidence;
+  /** What was noticed, in words safe to show. An observation, never a verdict
+   * about the employer. */
+  summary: string;
+  /** The posting's own words. Null where the rule measured rather than read. */
+  evidence: string | null;
+}
+
+/**
+ * Payload of `GET /api/v1/jobs/{id}/concerns`.
+ *
+ * Its own endpoint rather than a field on `Job`, because a concern is a reading
+ * and `Job` carries only what the user typed or the source said.
+ *
+ * An empty `concerns` means **no rule fired**. It is not a statement that the
+ * posting is trustworthy, and no screen may render it as one.
+ */
+export interface PostingConcerns {
+  job_id: string;
+  rules_version: string;
+  concerns: PostingConcern[];
+}
