@@ -3,12 +3,13 @@
 import type { EmploymentType, PreferenceFit, Seniority } from "./career";
 
 /** How a job got into the workspace. From `docs/10-api-contracts.md`. */
-export type JobImportMethod = "PASTED_DESCRIPTION" | "URL" | "MANUAL";
+export type JobImportMethod = "PASTED_DESCRIPTION" | "URL" | "MANUAL" | "DISCOVERED";
 
 export const IMPORT_METHOD_LABELS: Record<JobImportMethod, string> = {
   PASTED_DESCRIPTION: "Pasted",
   URL: "From a link",
   MANUAL: "Added by hand",
+  DISCOVERED: "Found on a board",
 };
 
 /**
