@@ -9,3 +9,4 @@ export * from "./applications";
 export * from "./dashboard";
 export * from "./insights";
 export * from "./discovery";
+export * from "./cover-letters";

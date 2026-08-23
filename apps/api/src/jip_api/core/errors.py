@@ -30,6 +30,7 @@ from jip_api.application.resumes.authoring import (
     ResumeNotEditableError,
 )
 from jip_api.application.resumes.confirm import InvalidDecisionError
+from jip_api.application.resumes.cover_letters import CoverLetterNotPossibleError
 from jip_api.application.resumes.tailoring_service import StrategyNotPossibleError
 from jip_api.core.context import get_request_id
 from jip_api.core.responses import ErrorBody, ErrorResponse
@@ -230,6 +231,11 @@ _APPLICATION_ERROR_MAP: dict[type[ApplicationError], tuple[int, str]] = {
     # been met yet rather than a bad request — the same 409 Phase 6 returns for
     # matching a job that has never been analysed.
     StrategyNotPossibleError: (status.HTTP_409_CONFLICT, "CONFLICT"),
+    # A letter asked for from a job that has never been matched, or approval of
+    # a letter with no text. Both are the resource's current state refusing the
+    # move rather than the request being malformed, which is the same reading
+    # StrategyNotPossibleError gets directly above and for the same situation.
+    CoverLetterNotPossibleError: (status.HTTP_409_CONFLICT, "CONFLICT"),
     # A lifecycle move the record forbids. A conflict with the resource's
     # current state, the same reading as every other transition refusal
     # here — and the message is written to be shown to whoever tried it.

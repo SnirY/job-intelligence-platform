@@ -17,8 +17,11 @@ import uuid
 
 from jip_ai import AIError
 from jip_api.application.processing import jobs as jobs_uc
+from jip_api.application.resumes import cover_letters as cover_letters_uc
 from jip_api.application.resumes.pipeline import run_import
+from jip_api.domain.jobs.models import Job
 from jip_api.domain.processing.models import ProcessingJobStatus
+from jip_api.domain.resumes.cover_letters import CoverLetter, CoverLetterStatus
 from jip_api.infrastructure.ai import get_ai_provider, get_model_router
 from jip_api.infrastructure.db.session import new_session
 from jip_api.infrastructure.storage.s3 import get_object_storage
@@ -88,6 +91,75 @@ def run_resume_import(job_id: str) -> dict[str, object]:
             "status": "COMPLETED",
             "document_id": str(result.document_id),
             "candidates": result.candidate_count,
+        }
+    finally:
+        session.close()
+
+
+def run_cover_letter_draft(letter_id: str) -> dict[str, object]:
+    """Draft one cover letter.
+
+    Takes the *letter's* id rather than a processing job's. The row exists
+    before this runs, in DRAFTING, so the user has something to look at and
+    something that survives a failure — the same argument `importing.py` makes
+    for creating the job row before the fetch.
+
+    Never raises for an expected failure. A model that will not answer is an
+    outcome that belongs on the letter, where the person waiting for it is
+    looking.
+    """
+    settings = get_settings()
+    session = new_session()
+
+    try:
+        letter = session.get(CoverLetter, uuid.UUID(letter_id))
+        if letter is None:
+            logger.error("Cover letter not found", extra={"letter_id": letter_id})
+            return {"letter_id": letter_id, "status": "MISSING"}
+
+        if letter.status is not CoverLetterStatus.DRAFTING:
+            # A duplicate delivery, or a letter the user has already edited.
+            # Drafting again would overwrite what they wrote.
+            logger.info(
+                "Skipping cover letter draft, it is not awaiting one",
+                extra={"letter_id": letter_id, "status": str(letter.status)},
+            )
+            return {"letter_id": letter_id, "status": str(letter.status)}
+
+        job = session.get(Job, letter.job_id)
+        if job is None:
+            logger.error("Job gone for cover letter", extra={"letter_id": letter_id})
+            return {"letter_id": letter_id, "status": "MISSING"}
+
+        try:
+            outcome = cover_letters_uc.run_draft(
+                session,
+                get_ai_provider(),
+                get_model_router(),
+                letter=letter,
+                job=job,
+                max_attempts=settings.ai_max_attempts,
+            )
+        except Exception as exc:
+            # A defect, not a refused draft. The row keeps its angle so the user
+            # can try again, and the message stays generic because internal
+            # detail must not reach the browser (docs/10-api-contracts.md).
+            session.rollback()
+            logger.exception(
+                "Cover letter draft raised unexpectedly", extra={"letter_id": letter_id}
+            )
+            letter = session.get(CoverLetter, uuid.UUID(letter_id))
+            if letter is not None:
+                letter.status = CoverLetterStatus.FAILED
+                letter.error = "Something went wrong while writing that letter. Try again."
+            session.commit()
+            return {"letter_id": letter_id, "status": "FAILED", "error_code": type(exc).__name__}
+
+        session.commit()
+        return {
+            "letter_id": letter_id,
+            "status": str(outcome.letter.status),
+            "claims": len(outcome.report.claims) if outcome.report else 0,
         }
     finally:
         session.close()
