@@ -4,12 +4,13 @@ import {
   Home,
   LineChart,
   Send,
+  Radar,
   Settings,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 
-export const CURRENT_PHASE = 11;
+export const CURRENT_PHASE = 12;
 /** The last phase that has shipped.
  *
  * Exists because it was previously written out by hand on the landing page and
@@ -21,7 +22,7 @@ export const CURRENT_PHASE = 11;
  * One number, read by everything that describes progress, and asserted against
  * the destination table below. Bump it when a phase merges. */
 
-export const TOTAL_PHASES = 11;
+export const TOTAL_PHASES = 12;
 
 /** A destination in the main navigation. */
 export interface Destination {
@@ -60,6 +61,13 @@ export const DESTINATIONS: readonly Destination[] = [
     icon: Briefcase,
     availableInPhase: 4,
     landingSummary: "save jobs and have a posting read into its requirements",
+  },
+  {
+    href: "/discovery",
+    label: "Discover",
+    icon: Radar,
+    availableInPhase: 12,
+    landingSummary: "watch a company's job board and see what it opens",
   },
   {
     href: "/applications",
