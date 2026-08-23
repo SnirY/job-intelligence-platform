@@ -13,7 +13,7 @@ import logging
 import uuid
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
 from jip_ai import AIError, AIFailureCode
@@ -227,6 +227,41 @@ def mark_unexpected_failure(session: Session, job: ProcessingJob, exc: Exception
     )
 
 
+MAX_FAILURES = 50
+"""How many failures one request returns.
+
+An operational list, not a paged collection: past fifty the useful question
+stops being "which one" and becomes "what is systematically broken", and that is
+a different screen nobody has asked for.
+"""
+
+
+def list_failures(session: Session, user_id: uuid.UUID) -> list[ProcessingJob]:
+    """Background work that did not finish, newest first.
+
+    Phase 11 listed a dead-letter path and "any view across failures" as the
+    part of retry flows that did not exist. This is the second half: until now a
+    failed job was reachable only by its id, so the only way to find one was to
+    already know it had failed — which meant nobody ever did, unless they were
+    watching the screen it belonged to at the moment it broke.
+
+    Returns rows rather than a summary. Whether each one can be tried again is
+    `ProcessingJob.can_be_retried`, computed from the row, so the caller never
+    re-derives the rule.
+    """
+    return list(
+        session.scalars(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.user_id == user_id,
+                ProcessingJob.status == ProcessingJobStatus.FAILED,
+            )
+            .order_by(ProcessingJob.finished_at.desc().nullslast(), ProcessingJob.id.desc())
+            .limit(MAX_FAILURES)
+        )
+    )
+
+
 def prepare_retry(session: Session, job: ProcessingJob) -> ProcessingJob:
     """Reset a failed job so it can be dispatched again.
 
@@ -234,6 +269,9 @@ def prepare_retry(session: Session, job: ProcessingJob) -> ProcessingJob:
     so a frontend showing a retry button on a job that cannot be retried gets a
     409 instead of a silent no-op.
     """
+    # The three checks stay separate rather than calling `can_be_retried`,
+    # because each one has a different thing to tell the person who tried. The
+    # property answers "may I offer this?"; these answer "why not".
     if job.status is not ProcessingJobStatus.FAILED:
         raise JobNotRetriableError("Only a failed job can be retried.")
     if not job.is_retriable:

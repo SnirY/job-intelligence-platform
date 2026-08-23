@@ -126,5 +126,34 @@ class ProcessingJob(TimestampMixin, UserOwnedMixin, Base):
         CheckConstraint("max_attempts > 0", name="max_attempts_positive"),
     )
 
+    @property
+    def can_be_retried(self) -> bool:
+        """Whether trying again could plausibly work.
+
+        The rule lived only inside `prepare_retry` until 2026-08-24, which meant
+        the only way to learn whether a failure was worth another attempt was to
+        attempt it and read the 409. Three fields have to agree, and every caller
+        that wanted to know had to know all three.
+        """
+        return (
+            self.status is ProcessingJobStatus.FAILED
+            and self.is_retriable
+            and self.attempts < self.max_attempts
+        )
+
+    @property
+    def is_dead(self) -> bool:
+        """Failed, and no retry will change that.
+
+        The dead-letter question, answered in one place. Either the failure was
+        classified as permanent — a PDF with no text layer stays a PDF with no
+        text layer — or the attempts ran out.
+
+        Kept as a property rather than a column because it is derived from three
+        stored facts and a stored copy could disagree with them. What matters is
+        that the derivation exists once.
+        """
+        return self.status is ProcessingJobStatus.FAILED and not self.can_be_retried
+
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<ProcessingJob id={self.id} kind={self.kind} status={self.status}>"

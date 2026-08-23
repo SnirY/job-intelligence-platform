@@ -30,6 +30,35 @@ export interface ProcessingJob {
   /** Whether the retry endpoint will accept this job. Decided when the failure
    * was classified, so the button is only shown when it can actually help. */
   is_retriable: boolean;
+
+  /**
+   * Whether trying again could plausibly work.
+   *
+   * Sent by the API rather than derived here. Three fields have to agree —
+   * status, `is_retriable`, and attempts against the ceiling — and a screen
+   * that recomputed the rule would be a second place for it to drift from the
+   * endpoint that enforces it.
+   */
+  can_be_retried: boolean;
+
+  /** Failed, and no retry will change that. */
+  is_dead: boolean;
+
+  finished_at: string | null;
+}
+
+/**
+ * A failure, as the operational list shows it.
+ *
+ * `entity_label` is what the failed work was *called* — a filename, a job
+ * title. The id alone is a UUID nobody can act on, and resolving it per row
+ * from the screen would be one request each.
+ */
+export interface FailedProcessingJob extends ProcessingJob {
+  kind: string;
+  entity_type: string;
+  entity_id: string;
+  entity_label: string | null;
 }
 
 export interface SourceDocument {
