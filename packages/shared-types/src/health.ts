@@ -61,4 +61,5 @@ export const API_ROUTES = {
   discoveryScan: "/api/v1/discovery/scan",
   discoveryPostings: "/api/v1/discovery/postings",
   coverLetters: "/api/v1/cover-letters",
+  processingFailures: "/api/v1/processing-jobs/failures",
 } as const;

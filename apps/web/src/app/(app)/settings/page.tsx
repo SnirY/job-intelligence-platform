@@ -1,4 +1,5 @@
 import { PreferencesForm } from "@/features/career/preferences-form";
+import { FailedWork } from "@/features/system/failed-work";
 
 /**
  * Career preferences.
@@ -10,6 +11,10 @@ import { PreferencesForm } from "@/features/career/preferences-form";
  *
  * Account identity and sign-out stay in the avatar menu, where Clerk owns them.
  * Nothing here duplicates a control that already exists elsewhere.
+ *
+ * It also carries the one operational panel in the product: background work
+ * that did not finish. Phase 11 named "any view across failures" as the half of
+ * retry flows that did not exist, and this is where it lives.
  */
 export default function SettingsPage() {
   return (
@@ -23,6 +28,12 @@ export default function SettingsPage() {
       </header>
 
       <PreferencesForm />
+
+      {/* Below the preferences, and invisible until something has actually
+          failed. This screen is where operational trouble belongs — the
+          dashboard answers questions about a job search, and a stalled import
+          is not one of them. */}
+      <FailedWork />
     </div>
   );
 }

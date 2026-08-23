@@ -487,6 +487,92 @@ def test_a_document_with_no_text_is_not_offered_a_retry(
     assert retry.status_code == 409
 
 
+# --- the dead-letter view (Phase 11) -------------------------------------------
+
+
+def test_a_failure_can_be_found_without_knowing_its_id(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """The half of retry flows Phase 11 carried as missing.
+
+    Until this endpoint existed a failed job was reachable only by its id, so
+    the only person who ever saw one was somebody already watching the screen it
+    belonged to at the moment it broke.
+    """
+    data = upload(client, factory, data=pdf_without_text_layer())
+    with pytest.raises(AIError):
+        run_pipeline(storage, data["processing_job_id"])
+
+    failures = client.get("/api/v1/processing-jobs/failures", headers=auth(factory, ALICE)).json()[
+        "data"
+    ]
+
+    assert [row["id"] for row in failures] == [data["processing_job_id"]]
+
+
+def test_a_permanent_failure_is_reported_as_finished(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """A PDF with no text layer stays a PDF with no text layer.
+
+    The row appears in the list and is marked as over, so a screen can show it
+    without offering a button that would 409.
+    """
+    data = upload(client, factory, data=pdf_without_text_layer())
+    with pytest.raises(AIError):
+        run_pipeline(storage, data["processing_job_id"])
+
+    row = client.get("/api/v1/processing-jobs/failures", headers=auth(factory, ALICE)).json()[
+        "data"
+    ][0]
+
+    assert row["is_dead"] is True
+    assert row["can_be_retried"] is False
+
+
+def test_a_failure_carries_the_name_of_what_it_was_reading(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """A UUID is not something a person can act on."""
+    data = upload(client, factory, data=pdf_without_text_layer())
+    with pytest.raises(AIError):
+        run_pipeline(storage, data["processing_job_id"])
+
+    row = client.get("/api/v1/processing-jobs/failures", headers=auth(factory, ALICE)).json()[
+        "data"
+    ][0]
+
+    assert row["entity_label"]
+    assert row["entity_label"].endswith(".pdf")
+
+
+def test_an_account_with_nothing_broken_gets_an_empty_list(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """Not an error, and not a 404. Nothing has failed."""
+    response = client.get("/api/v1/processing-jobs/failures", headers=auth(factory, ALICE))
+
+    assert response.status_code == 200
+    assert response.json()["data"] == []
+
+
+def test_failures_are_scoped_to_the_caller(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    data = upload(client, factory, data=pdf_without_text_layer())
+    with pytest.raises(AIError):
+        run_pipeline(storage, data["processing_job_id"])
+
+    assert (
+        client.get("/api/v1/processing-jobs/failures", headers=auth(factory, BOB)).json()["data"]
+        == []
+    )
+
+
+def test_the_failures_route_rejects_an_anonymous_caller(client: TestClient) -> None:
+    assert client.get("/api/v1/processing-jobs/failures").status_code == 401
+
+
 def test_a_parse_failure_is_retriable_and_reuses_the_extracted_text(
     client: TestClient,
     factory: TokenFactory,
