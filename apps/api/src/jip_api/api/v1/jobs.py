@@ -23,6 +23,7 @@ from jip_api.application.jobs import analysis_uc
 from jip_api.application.jobs import creation as creation_uc
 from jip_api.application.jobs import importing as importing_uc
 from jip_api.application.jobs import legitimacy as legitimacy_uc
+from jip_api.application.jobs import liveness as liveness_uc
 from jip_api.application.jobs import queries as queries_uc
 from jip_api.application.jobs import updates as updates_uc
 from jip_api.application.processing import reaper
@@ -102,6 +103,14 @@ class JobPayload(BaseModel):
     salary_text: str | None
     fetch_error: str | None
     archived_at: dt.datetime | None
+
+    # What a liveness check observed, and only that. Both are null until one
+    # has concluded something, and a check that could not tell leaves them
+    # alone — so null means "not known", never "still open". A screen reading
+    # these has to say the same. See `application/jobs/liveness.py`.
+    last_seen_alive_at: dt.datetime | None
+    closed_detected_at: dt.datetime | None
+
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -780,6 +789,33 @@ def post_retry_import(
     return DataResponse(data=JobPayload.model_validate(job))
 
 
+@router.post(
+    "/{job_id}/liveness-check",
+    response_model=DataResponse[JobPayload],
+    summary="Check whether the posting is still open",
+)
+def post_liveness_check(
+    user: CurrentUser, session: SessionDep, dispatcher: DispatcherDep, job_id: uuid.UUID
+) -> DataResponse[JobPayload]:
+    """Queue a check of the job's URL.
+
+    Returns immediately with the job as it stands. The check is a remote fetch
+    and runs on the worker for the same reason the import does, so the two
+    timestamps on the payload are the ones from *before* it ran — the caller
+    polls, exactly as it already does for an import.
+
+    Nothing is cleared first, unlike `retry-import`. A check that cannot reach
+    the server must leave the previous observation intact rather than replacing
+    a known answer with a blank one.
+    """
+    job = queries_uc.get_job(session, user.id, job_id)
+    if not job.source_url:
+        raise _no_url_error()
+
+    _dispatch_liveness(dispatcher, job)
+    return DataResponse(data=JobPayload.model_validate(job))
+
+
 @router.delete(
     "/{job_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a job permanently"
 )
@@ -1049,6 +1085,26 @@ def _dispatch_fetch(session: Session, dispatcher: TaskDispatcher, job: Job) -> N
             error_code="DISPATCH_FAILED",
         )
         session.commit()
+
+
+def _dispatch_liveness(dispatcher: TaskDispatcher, job: Job) -> None:
+    """Queue the check, and say so plainly if the queue would not take it.
+
+    Deliberately unlike `_dispatch_fetch`, which records the outage on the job.
+    An import leaves the job sitting in FETCHING with nothing running, so the
+    row has to be corrected or the user waits forever. A liveness check leaves
+    the job in no state at all — it either ran or it did not — so there is
+    nothing to correct, and writing a timestamp to mark a check that never
+    happened would break the one rule `liveness.py` exists to hold.
+
+    So the failure goes back to the caller instead, where it is true.
+    """
+    try:
+        dispatcher.enqueue(liveness_uc.LIVENESS_TASK, str(job.id))
+    except Exception as exc:
+        from jip_api.core.errors import ServiceUnavailableError
+
+        raise ServiceUnavailableError("The check could not be started. Try again shortly.") from exc
 
 
 def _duplicate_error(exc: creation_uc.DuplicateJobError) -> Exception:

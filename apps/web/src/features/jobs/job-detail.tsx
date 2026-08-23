@@ -30,6 +30,7 @@ import {
 } from "@/features/jobs/api";
 import { useApplications } from "@/features/applications/api";
 import { JobIntelligence } from "@/features/jobs/job-intelligence";
+import { JobLiveness } from "@/features/jobs/job-liveness";
 import { JobMatchPanel } from "@/features/jobs/job-match";
 import { PostingConcerns } from "@/features/jobs/posting-concerns";
 import { ImportMethodBadge, JobStatusBadge } from "@/features/jobs/job-status-badge";
@@ -178,6 +179,11 @@ function JobView({ job }: { job: Job }) {
                 </a>
               </p>
             )}
+
+            {/* Beside the link rather than in a panel of its own: this is a
+              fact about that link, and it is the question a reader has the
+              moment they consider clicking it. */}
+            <JobLiveness job={job} />
           </CardContent>
         </Card>
 

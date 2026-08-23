@@ -819,6 +819,72 @@ def test_retrying_a_job_with_no_link_is_refused(client: TestClient, factory: Tok
     assert client.post(f"{BASE}/{job['id']}/retry-import", headers=auth(factory)).status_code == 409
 
 
+# --- liveness -----------------------------------------------------------------
+
+
+def test_a_fresh_job_has_never_been_checked(client: TestClient, factory: TokenFactory) -> None:
+    """Null on both, and null means never observed.
+
+    Not "still open" — nothing has looked yet, and a screen reading these has
+    to be able to tell those apart.
+    """
+    job = create(client, factory, paste())
+
+    assert job["last_seen_alive_at"] is None
+    assert job["closed_detected_at"] is None
+
+
+def test_requesting_a_check_queues_it(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher
+) -> None:
+    job = create(
+        client,
+        factory,
+        {"import_method": "URL", "source_url": "https://jobs.example.com/role/12"},
+    )
+    dispatcher.calls.clear()
+
+    response = client.post(f"{BASE}/{job['id']}/liveness-check", headers=auth(factory))
+
+    assert response.status_code == 200
+    assert len(dispatcher.calls) == 1
+    assert dispatcher.calls[0][0].endswith("run_job_liveness_check")
+
+
+def test_checking_a_job_with_no_link_is_refused(client: TestClient, factory: TokenFactory) -> None:
+    """A pasted job has nothing to check, and saying so beats queueing a no-op."""
+    job = create(client, factory, paste())
+
+    response = client.post(f"{BASE}/{job['id']}/liveness-check", headers=auth(factory))
+
+    assert response.status_code == 409
+
+
+def test_a_queue_outage_is_reported_rather_than_recorded(
+    client: TestClient, factory: TokenFactory, dispatcher: RecordingDispatcher
+) -> None:
+    """Unlike a failed import, nothing is written to the job.
+
+    A check that never ran has observed nothing, and marking the row would be
+    the module's one rule broken from the outside. The caller is told instead.
+    """
+    job = create(
+        client,
+        factory,
+        {"import_method": "URL", "source_url": "https://jobs.example.com/role/12"},
+    )
+    dispatcher.fail = True
+
+    response = client.post(f"{BASE}/{job['id']}/liveness-check", headers=auth(factory))
+
+    assert response.status_code == 503
+
+    dispatcher.fail = False
+    after = client.get(f"{BASE}/{job['id']}", headers=auth(factory)).json()["data"]
+    assert after["last_seen_alive_at"] is None
+    assert after["closed_detected_at"] is None
+
+
 # --- what we noticed about the posting ----------------------------------------
 
 
@@ -896,12 +962,13 @@ def test_the_list_is_scoped_to_the_caller(client: TestClient, factory: TokenFact
     [
         ("get", ""),
         ("get", "/source"),
-        ("get", "/concerns"),
         ("patch", ""),
         ("post", "/archive"),
         ("post", "/unarchive"),
         ("post", "/description"),
         ("post", "/retry-import"),
+        ("get", "/concerns"),
+        ("post", "/liveness-check"),
         ("delete", ""),
     ],
 )

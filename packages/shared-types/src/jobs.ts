@@ -66,6 +66,16 @@ export interface Job {
   /** Why a URL import failed, in words safe to show. */
   fetch_error: string | null;
   archived_at: string | null;
+  /**
+   * When a check last found the posting still answering.
+   *
+   * Null means no check has concluded anything — not that the posting is
+   * closed, and not that it is open. A check that could not reach the server
+   * writes nothing, so these two never carry a guess.
+   */
+  last_seen_alive_at: string | null;
+  /** When a check first found the posting gone. Not moved by later checks. */
+  closed_detected_at: string | null;
   created_at: string;
   updated_at: string;
 }
