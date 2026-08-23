@@ -22,6 +22,8 @@ it uniformly.
 
 from __future__ import annotations
 
+import statistics
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -400,3 +402,131 @@ def test_the_applications_list_does_not_pay_per_application(
             made.append(job_id)
 
     assert_flat(client, factory, "/api/v1/applications", grow, small=2, large=6, page_size=50)
+
+
+# --- how long it takes, which is a different question -------------------------
+
+
+LATENCY_SAMPLES = 5
+"""Readings per measurement. The median of five is taken, not the mean.
+
+Wall-clock timing on a developer machine has outliers — a garbage collection, a
+checkpoint, the laptop deciding to index something — and a mean carries them
+into the assertion. A median throws them away, which is the whole reason to take
+more than one reading.
+"""
+
+LATENCY_NOISE_FLOOR_MS = 20.0
+"""Below this, a difference is not a measurement.
+
+These endpoints answer in single-digit milliseconds against localhost, and the
+jitter between two identical calls is comfortably larger than the growth this
+test is looking for. Without a floor the assertion would fail on a busy machine
+and pass on a quiet one, which is worse than not having it.
+"""
+
+LATENCY_GROWTH_CEILING = 3.0
+"""How much slower a *paged* read may get when the table behind it triples.
+
+Generous on purpose. The number that matters is not 3 — it is that the ceiling
+is a constant while the data grows, so an endpoint whose cost tracks the table
+rather than the page eventually crosses it however loose it is.
+"""
+
+
+def latency_of(client: TestClient, factory: TokenFactory, path: str, **params: Any) -> float:
+    """Median milliseconds for one GET of `path`."""
+    readings: list[float] = []
+    for _ in range(LATENCY_SAMPLES):
+        started = time.perf_counter()
+        response = client.get(path, headers=auth(factory), params=params or None)
+        readings.append((time.perf_counter() - started) * 1000)
+        assert response.status_code == 200, response.text
+    return statistics.median(readings)
+
+
+def assert_paged_read_stays_flat(
+    client: TestClient,
+    factory: TokenFactory,
+    path: str,
+    grow: Any,
+    *,
+    small: int,
+    large: int,
+    **params: Any,
+) -> None:
+    """A paged read must not get slower as the table behind it grows.
+
+    **This is a different question from the query counts above**, and it is
+    worth saying which. Those catch an N+1: an endpoint issuing one statement
+    per row. This catches the case where the statement count is flat and the
+    statements themselves get slower — a sequential scan where an index was
+    expected, a sort over the whole table to return ten rows.
+
+    A page is a fixed amount of work to serialise. Whether the table behind it
+    holds twenty rows or twenty thousand, the same page comes back, so the time
+    should be roughly the same. When it is not, the query is reading more than
+    it returns, and that is the shape that stops being survivable at a size
+    nobody tested at.
+
+    Asserted as a ratio against a noise floor rather than a millisecond budget,
+    for the reason the query-count tests give about absolute numbers: a budget
+    is a figure somebody picks and later raises.
+    """
+    grow(small)
+    before = latency_of(client, factory, path, **params)
+
+    grow(large - small)
+    after = latency_of(client, factory, path, **params)
+
+    if after - before <= LATENCY_NOISE_FLOOR_MS:
+        return
+
+    assert after <= before * LATENCY_GROWTH_CEILING, (
+        f"{path} took {before:.1f}ms at {small} rows and {after:.1f}ms at {large} — "
+        f"{after / before:.1f} times slower for the same page. "
+        "The query is reading more than it returns; look for a scan where an "
+        "index was expected."
+    )
+
+
+def test_the_jobs_list_does_not_get_slower_as_the_library_grows(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The same page, against three times the rows.
+
+    `test_the_jobs_list_does_not_pay_per_job` already proves the statement count
+    is flat. This proves the statements are too.
+    """
+    add_skill(client, factory, "Python")
+    counter = {"made": 0}
+
+    def grow(n: int) -> None:
+        matched_jobs(client, factory, n, offset=counter["made"])
+        counter["made"] += n
+
+    assert_paged_read_stays_flat(client, factory, JOBS, grow, small=3, large=9, page_size=3)
+
+
+def test_the_applications_list_does_not_get_slower_as_the_tracker_grows(
+    client: TestClient, factory: TokenFactory
+) -> None:
+    """The tracker is the table that only ever grows: `docs/11` forbids deleting
+    application history, so this is the one read whose data has no ceiling."""
+    add_skill(client, factory, "Python")
+    made: list[str] = []
+
+    def grow(n: int) -> None:
+        for index in range(n):
+            job_id = plain_job(client, factory, f"Timed role {len(made) + index}")
+            response = client.post(
+                "/api/v1/applications",
+                headers=auth(factory),
+                json={"job_id": job_id, "status": "SAVED"},
+            )
+            assert response.status_code == 201, response.text
+            made.append(job_id)
+
+    assert_paged_read_stays_flat(
+        client, factory, "/api/v1/applications", grow, small=3, large=9, page_size=3
+    )
