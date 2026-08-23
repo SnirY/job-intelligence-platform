@@ -214,6 +214,26 @@ class Job(TimestampMixin, UserOwnedMixin, Base):
     fetch_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     """Why a URL import failed, in words safe to show. Cleared on success."""
 
+    last_seen_alive_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    """When a check last found the posting still answering."""
+
+    closed_detected_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    """When a check *first* found the posting gone. Not moved by later checks.
+
+    Both columns record observations, not state, and neither is authoritative
+    over `archived_at` — that stays a decision the user made. A posting can be
+    closed and unarchived at once, which is a normal and useful thing to see.
+
+    Null means never observed, which is deliberately distinct from observed and
+    inconclusive. A check that cannot tell writes nothing at all, so an
+    unreachable server never leaves a mark that reads like a verdict. See
+    `application/jobs/liveness.py`.
+    """
+
     __table_args__ = (
         CheckConstraint("length(trim(title)) > 0", name="title_not_blank"),
         CheckConstraint(
