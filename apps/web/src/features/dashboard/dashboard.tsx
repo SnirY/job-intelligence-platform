@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StateCard } from "@/components/ui/state-card";
 import { useDashboard } from "@/features/dashboard/api";
+import { WhereYouLeftOff } from "@/features/dashboard/resume-where-you-left-off";
 
 /**
  * The home screen.
@@ -70,9 +71,14 @@ export function DashboardScreen({ firstName }: { firstName: string | null }) {
         </p>
       </header>
 
-      {started && <CurrentState data={data} />}
+      {/* The thread they put down, before anything the product wants. A screen
+          opened without a task should start where the reader stopped, not with
+          a scoreboard. */}
+      <WhereYouLeftOff entry={data.activity[0] ?? null} />
 
       <NextActions actions={data.actions} hasJobs={data.state.jobs_saved > 0} />
+
+      {started && <CurrentState data={data} />}
 
       {data.opportunities.length > 0 && <Opportunities items={data.opportunities} />}
       {data.pipeline.length > 0 && <Pipeline stages={data.pipeline} />}
@@ -292,7 +298,13 @@ function SkillGaps({ gaps }: { gaps: SkillGap[] }) {
       <CardHeader>
         <CardTitle className="text-base">Asked for, and not on your profile</CardTitle>
         <CardDescription>
-          Counted across the jobs you saved — not the market, and not advice about what to learn.
+          {/* Kept on the screen rather than in a comment. The corpus is the
+              postings this account saved, and a count over it reads as a
+              market unless the sentence says otherwise — which is the same
+              fallacy as an average that moves because somebody saved different
+              jobs. */}
+          Counted across the postings you saved, which is not a market. Not advice about what to
+          learn.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
