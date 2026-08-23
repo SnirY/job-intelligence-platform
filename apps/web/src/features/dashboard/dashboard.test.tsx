@@ -312,7 +312,9 @@ describe("skill gaps", () => {
 
     expect(await screen.findByText("Kubernetes")).toBeInTheDocument();
     expect(screen.getByText("4 jobs")).toBeInTheDocument();
-    expect(screen.getByText(/Counted across the jobs you saved/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Counted across the postings you saved, which is not a market/),
+    ).toBeInTheDocument();
   });
 
   it("says one job in the singular", async () => {
