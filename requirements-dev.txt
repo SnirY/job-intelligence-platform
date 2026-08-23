@@ -14,6 +14,7 @@
 -e ./packages/config
 -e ./packages/ai-core
 -e ./packages/prompts
+-e ./packages/job-sources
 -e ./apps/api
 -e ./apps/worker
 

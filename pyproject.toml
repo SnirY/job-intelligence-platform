@@ -11,6 +11,7 @@ target-version = "py312"
 src = [
   "packages/config/src",
   "packages/ai-core/src",
+  "packages/job-sources/src",
   "packages/prompts/src",
   "apps/api/src",
   "apps/worker/src",
@@ -36,7 +37,7 @@ select = [
 "**/tests/**" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["jip_ai", "jip_api", "jip_config", "jip_prompts", "jip_worker"]
+known-first-party = ["jip_ai", "jip_api", "jip_config", "jip_prompts", "jip_sources", "jip_worker"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -50,6 +51,7 @@ show_error_codes = true
 mypy_path = [
   "packages/config/src",
   "packages/ai-core/src",
+  "packages/job-sources/src",
   "packages/prompts/src",
   "apps/api/src",
   "apps/worker/src",
@@ -59,6 +61,8 @@ files = [
   "packages/config/tests",
   "packages/ai-core/src",
   "packages/ai-core/tests",
+  "packages/job-sources/src",
+  "packages/job-sources/tests",
   "packages/prompts/src",
   "packages/prompts/tests",
   "apps/api/src",
@@ -94,6 +98,7 @@ minversion = "8.0"
 testpaths = [
   "packages/config/tests",
   "packages/ai-core/tests",
+  "packages/job-sources/tests",
   "packages/prompts/tests",
   "apps/api/tests",
   "apps/worker/tests",
