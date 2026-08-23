@@ -19,6 +19,7 @@ describe("navigation destinations", () => {
     expect(DESTINATIONS.map((destination) => destination.label)).toEqual([
       "Home",
       "Jobs",
+      "Discover",
       "Applications",
       "Resumes",
       "Career Profile",
@@ -55,6 +56,11 @@ describe("what the product claims about itself", () => {
       // DEV-035 — it sat in `upcoming` for eleven phases and nothing here could
       // tell that apart from a destination whose turn had not come.
       "Settings",
+      // Phase 12, and last here because this list is in phase order rather than
+      // the navigation's. The one capability an outside project had that this
+      // did not: the platform could evaluate postings well and could not find
+      // them.
+      "Discover",
     ]);
     expect(upcoming).toEqual([]);
   });

@@ -5,12 +5,17 @@
 ```text
 Home
 Jobs
+Discover
 Applications
 Resumes
 Career Profile
 Insights
 Settings
 ```
+
+Discover was added in Phase 12. It sits directly after Jobs because it is the
+other answer to the same question — where the next job comes from — and before
+Applications because nothing can be applied to until it is in the library.
 
 ## Flow 1 — First-time onboarding
 

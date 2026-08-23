@@ -338,6 +338,54 @@ types are stored, editable, and read by whatever claims to read them. A
 preference the product records and then ignores is worse than one it never
 offered, because the user believes it was taken into account.
 
+### Phase 12 — Job Discovery and Posting Trust
+
+Added 2026-08-23, after this roadmap had run to Phase 11. It is the first phase
+here that did not come from the specification documents: it came from
+`docs/development/career-ops-comparison-2026-08-23.md`, which compared this
+platform against the most-starred open-source project in the same space and
+found exactly one capability where it was unambiguously ahead.
+
+The finding, in one sentence: **the platform evaluated postings well and could
+not find them.** Import existed and was properly built — a person supplied a
+link or pasted text. Discovery did not exist at all.
+
+Focus:
+
+- reading public applicant-tracking boards
+- whether a saved posting is still open
+- whether a posting is what it claims to be
+
+Slices:
+
+- public-ATS ingestion, into a review list a person promotes from
+- liveness checking
+- posting legitimacy
+
+Three rules shaped it, and each is the reason a slice is built the way it is:
+
+**A discovered posting is a candidate, not a job.** Scans write to
+`discovered_postings`; only a person creates a `Job`. The job library is the one
+list whose contents mean "I am interested in this", and a scan writing there
+would change what every count on the dashboard means with nothing on screen
+saying so.
+
+**Unknown is not gone.** A liveness check admits only 404 and 410 as evidence a
+posting closed. A refusal, a timeout and a server fault all mean we could not
+look, and an inconclusive check writes nothing at all.
+
+**A concern never touches the score.** Legitimacy produces typed, evidenced
+concerns and no number, so there is nothing for a later change to average into
+the match. A role can be an excellent match and a suspicious posting at once.
+
+Exit criteria:
+
+A configured board returns real postings; a re-scan offers nothing already
+decided about; a closed posting is marked closed and an unreachable one is not;
+and a job can carry a legitimacy concern while its match score is unchanged.
+
+See `docs/development/tasks/phase-12-job-discovery.md`.
+
 ## Codex task size
 
 Do not assign giant tasks such as “Build Phase 6.”
