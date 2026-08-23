@@ -123,7 +123,9 @@ function Status({ job, busy }: { job: Job; busy: boolean }) {
     return (
       <>
         <CircleSlash aria-hidden className="size-4 text-destructive" />
-        <span>The link returned nothing on {formatDate(job.closed_detected_at)}</span>
+        <span>
+          The link returned nothing on <bdi>{formatDate(job.closed_detected_at)}</bdi>
+        </span>
       </>
     );
   }
@@ -132,7 +134,9 @@ function Status({ job, busy }: { job: Job; busy: boolean }) {
     return (
       <>
         <CircleCheck aria-hidden className="size-4 text-muted-foreground" />
-        <span>The link answered on {formatDate(job.last_seen_alive_at)}</span>
+        <span>
+          The link answered on <bdi>{formatDate(job.last_seen_alive_at)}</bdi>
+        </span>
       </>
     );
   }
@@ -141,6 +145,15 @@ function Status({ job, busy }: { job: Job; busy: boolean }) {
   return <span className="text-muted-foreground">This link has not been checked.</span>;
 }
 
+/**
+ * A date, in the reader's own locale.
+ *
+ * Always rendered inside `<bdi>`. The copy around it is English and the format
+ * is not: on a Hebrew locale this returns a right-to-left run, and dropping one
+ * into a left-to-right sentence without isolation reorders it — "The link
+ * answered on 23 2026 באוג׳" is what that looks like, and it was found by
+ * someone walking the screen rather than by any test.
+ */
 function formatDate(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())

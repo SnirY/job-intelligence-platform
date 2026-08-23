@@ -153,7 +153,7 @@ function PostingRow({ posting }: { posting: DiscoveredPosting }) {
             {[posting.company, posting.location].filter(Boolean).join(" · ") || "—"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {providerLabel(posting.provider)} · found {formatDate(posting.first_seen_at)}
+            {providerLabel(posting.provider)} · found <bdi>{formatDate(posting.first_seen_at)}</bdi>
             {!posting.has_description && " · no description on the board"}
           </p>
         </div>
@@ -252,9 +252,13 @@ function BoardRow({ board }: { board: WatchedBoard }) {
           <p className="text-xs text-destructive">{board.last_error}</p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {board.last_scanned_at
-              ? `Last read ${formatDate(board.last_scanned_at)}`
-              : "Not read yet"}
+            {board.last_scanned_at ? (
+              <>
+                Last read <bdi>{formatDate(board.last_scanned_at)}</bdi>
+              </>
+            ) : (
+              "Not read yet"
+            )}
           </p>
         )}
       </div>
@@ -313,7 +317,14 @@ function AddBoardForm() {
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-3 border-t pt-4 sm:grid-cols-[auto_1fr_1fr_auto]">
+    // `minmax(0, 1fr)`, not `1fr`. A bare `1fr` floors at the column's
+    // min-content width, and a text input's min-content is its default size —
+    // so the two inputs refused to shrink and squeezed the button column until
+    // "Watch" wrapped to one letter per line. Found on a real screen.
+    <form
+      onSubmit={submit}
+      className="grid gap-3 border-t pt-4 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto]"
+    >
       <div className="space-y-1">
         <Label htmlFor="board-provider">Source</Label>
         <select
@@ -330,7 +341,7 @@ function AddBoardForm() {
         </select>
       </div>
 
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1">
         <Label htmlFor="board-token">Board name</Label>
         <input
           id="board-token"
@@ -342,7 +353,7 @@ function AddBoardForm() {
         />
       </div>
 
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1">
         <Label htmlFor="board-label">Company (optional)</Label>
         <input
           id="board-label"
@@ -370,6 +381,13 @@ function AddBoardForm() {
   );
 }
 
+/**
+ * A date, in the reader's own locale, and always rendered inside `<bdi>`.
+ *
+ * The copy around it is English and the format is not. On a right-to-left
+ * locale this returns a right-to-left run, and dropping one into a
+ * left-to-right sentence without isolation reorders it on screen.
+ */
 function formatDate(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())

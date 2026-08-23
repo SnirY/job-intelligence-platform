@@ -346,9 +346,13 @@ def _matched_job(session: Session, user_id: uuid.UUID) -> str:
         user_id=user_id,
         job_id=job.id,
         version=1,
-        provider="seed",
-        model="none",
-        parse_prompt_version="seed",
+        # The job screen renders these as "Read by {model} using {prompt}", so
+        # they have to read as a sentence. The first version set provider="seed"
+        # and model="none" and produced "Read by none using seed", which is not
+        # wrong so much as meaningless to whoever is looking at it.
+        provider="seed script",
+        model="no model",
+        parse_prompt_version="a seeded analysis",
         input_hash="seed",
         payload={"seeded": True},
         role_family=RoleFamily.BACKEND,
