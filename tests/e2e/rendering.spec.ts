@@ -1,3 +1,4 @@
+import { goTo } from "./navigate";
 import { expect, test } from "./signed-in";
 
 /**
@@ -16,40 +17,22 @@ import { expect, test } from "./signed-in";
  * absent each test says so and skips rather than failing on an empty screen,
  * because "the seed was not run" and "the screen is wrong" are different
  * answers and a suite that confuses them wastes the morning.
+ *
+ * **The suite eats a discovery candidate per run.** Promoting one is the only
+ * way to reach a job that arrived from a board, and a promoted candidate leaves
+ * the review list for good. The seed lays down three; when `/discovery` runs
+ * dry, delete the `[seed]` rows and seed again.
  */
 
 const SEEDED_MATCHED = "[seed] Senior Backend Engineer (matched)";
 const SEEDED_SCAM = "[seed] Remote Data Entry Associate (looks wrong)";
+const SEEDED_LONG_CANDIDATE =
+  "[seed] Staff Platform Engineer, Developer Experience and Build Tooling";
 
-test.describe("a job that came from a board", () => {
-  test("says so, rather than wearing a blank badge", async ({ signedIn: page }) => {
-    /**
-     * DEV-079. `JobImportMethod.DISCOVERED` reached the Python enum and never
-     * the TypeScript contract, so the label lookup returned `undefined` and the
-     * badge rendered empty. `tsc` was satisfied — the union was exhaustive over
-     * a set that was already wrong.
-     *
-     * A parity test now guards the contract. This guards the pixel: whatever
-     * the enum does next, the badge on screen has words in it.
-     */
-    await page.goto("/discovery");
-
-    const firstAdd = page.getByRole("button", { name: /add to jobs/i }).first();
-    if ((await firstAdd.count()) === 0) {
-      test.skip(true, "No candidates to promote. Run a scan, or seed first.");
-    }
-
-    await firstAdd.click();
-    await page.waitForURL(/\/jobs\/[0-9a-f-]{36}/);
-
-    // Every badge in the header has to say something. An empty one is the
-    // defect, and it is invisible to anything that checks types.
-    const badges = page.locator("header").getByRole("generic").filter({ hasText: /\S/ });
-    await expect(badges.first()).toBeVisible();
-    await expect(page.getByText("Found on a board")).toBeVisible();
-  });
-});
-
+/**
+ * Read-only, and therefore first. The test below it promotes a candidate, and a
+ * measurement of a list should not depend on how many times the suite has run.
+ */
 test.describe("the discovery list", () => {
   test("puts the actions in the same place on every row", async ({ signedIn: page }) => {
     /**
@@ -64,13 +47,25 @@ test.describe("the discovery list", () => {
      * Measured rather than described: in a list of identical rows the actions
      * have to be at the same x on each one, because that position is how a
      * reader finds them without reading.
+     *
+     * **This needs a row long enough to have caused the wrap.** The seed used
+     * to lay down two candidates that were both "Remote", and against those
+     * this measurement passes whether the bug is fixed or not — two identical
+     * rows agree about everything. So it insists on the long one by name, and
+     * skips rather than going quietly green without it.
      */
-    await page.goto("/discovery");
+    await goTo(page, "/discovery");
 
     const dismissButtons = page.getByRole("button", { name: /dismiss/i });
     const rows = await dismissButtons.count();
-    if (rows < 3) {
-      test.skip(true, "Fewer than three candidates; alignment needs rows to compare.");
+    const hasLongRow = (await page.getByText(SEEDED_LONG_CANDIDATE).count()) > 0;
+
+    if (rows < 2 || !hasLongRow) {
+      test.skip(
+        true,
+        `Needs at least two candidates including "${SEEDED_LONG_CANDIDATE}", whose ` +
+          "length is what makes the measurement mean anything. Delete the [seed] rows and seed again.",
+      );
     }
 
     const positions: number[] = [];
@@ -88,6 +83,34 @@ test.describe("the discovery list", () => {
   });
 });
 
+test.describe("a job that came from a board", () => {
+  test("says so, rather than wearing a blank badge", async ({ signedIn: page }) => {
+    /**
+     * DEV-079. `JobImportMethod.DISCOVERED` reached the Python enum and never
+     * the TypeScript contract, so the label lookup returned `undefined` and the
+     * badge rendered empty. `tsc` was satisfied — the union was exhaustive over
+     * a set that was already wrong.
+     *
+     * A parity test now guards the contract. This guards the pixel: whatever
+     * the enum does next, the badge on screen has words in it.
+     */
+    await goTo(page, "/discovery");
+
+    const firstAdd = page.getByRole("button", { name: /add to jobs/i }).first();
+    if ((await firstAdd.count()) === 0) {
+      test.skip(true, "No candidates to promote. Run a scan, or seed first.");
+    }
+
+    await firstAdd.click();
+    await page.waitForURL(/\/jobs\/[0-9a-f-]{36}/);
+
+    // The badge itself, by the words that were missing. Checking that "some
+    // element in the header is non-empty" would have passed with the defect in
+    // place: the blank badge had siblings.
+    await expect(page.getByText("Found on a board")).toBeVisible();
+  });
+});
+
 test.describe("a posting we noticed something about", () => {
   test("shows the concerns below the match, never above it", async ({ signedIn: page }) => {
     /**
@@ -96,7 +119,7 @@ test.describe("a posting we noticed something about", () => {
      * the verdict about fit — which is a statement about vertical order, and
      * vertical order does not exist until something lays the page out.
      */
-    await page.goto("/jobs");
+    await goTo(page, "/jobs");
 
     const link = page.getByRole("link", { name: SEEDED_SCAM });
     if ((await link.count()) === 0) {
@@ -133,7 +156,7 @@ test.describe("a posting we noticed something about", () => {
      * The absence that matters. No rule firing is a fact about our rules, not a
      * finding about the world — so there is no card, and certainly no tick.
      */
-    await page.goto("/jobs");
+    await goTo(page, "/jobs");
 
     const link = page.getByRole("link", { name: SEEDED_MATCHED });
     if ((await link.count()) === 0) {

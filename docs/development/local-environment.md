@@ -95,6 +95,22 @@ server uses.
 
 `npx playwright install chromium` once, the first time.
 
+**The first run is slow, and that is the compiler rather than the app.** These
+run against `next dev`, which builds a route the first time anything asks for
+it. Before the first attempt at that, a `page.goto` could be cancelled outright:
+while the route compiles, Fast Refresh reloads the page you are still standing
+on, and that reload cancels the navigation to the new one — reported as
+`net::ERR_ABORTED; maybe frame was detached?`, which reads like a broken app and
+is not one. The fixture now walks every route once before any assertion runs, so
+that cost is paid where a wait is expected.
+
+**The suite consumes a discovery candidate per run.** Reaching a job that
+arrived from a board means promoting one, and a promoted candidate leaves the
+review list for good. The seed lays down three, one of them deliberately long,
+because a list where every row is the same length is a list where a wrapping
+defect cannot be seen. When `/discovery` runs dry, delete the `[seed]` rows and
+seed again.
+
 ## Checks
 
 ```bash

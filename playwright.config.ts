@@ -49,11 +49,18 @@ export default defineConfig({
   // rendering defect, and retrying until it passes is how a flaky suite gets
   // built one `retries: 2` at a time.
   retries: 0,
-  timeout: 30_000,
+  // 30s was not enough, and not because anything was slow to answer. These run
+  // against `next dev`, which compiles a route the first time something asks
+  // for it — so the first visit to a screen is a build, not a page load, and a
+  // budget sized for a page load reports a compiler as a broken app. `warmUp`
+  // in the fixture moves that cost out of the tests; this is the headroom for
+  // what it cannot move.
+  timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: BASE_URL,
+    navigationTimeout: 60_000,
     // On failure only: a trace per run would make the directory the largest
     // thing in the repository within a week.
     trace: "retain-on-failure",

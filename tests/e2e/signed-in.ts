@@ -1,6 +1,8 @@
 import { clerk } from "@clerk/testing/playwright";
 import { test as base, type Page } from "@playwright/test";
 
+import { goTo, warmUp } from "./navigate";
+
 /**
  * One signed-in page, for every test in this suite.
  *
@@ -19,8 +21,19 @@ import { test as base, type Page } from "@playwright/test";
  * somebody's actual job search.
  */
 
+/** Compiling every route is a cost the run pays once, not once per test. */
+let warmed = false;
+
+/**
+ * What the warm-up may take. Three cold Next compiles inside a container is
+ * not fast, and it is charged to whichever test happens to be first — so that
+ * test gets the extra budget rather than the whole suite getting a ceiling
+ * loose enough to hide a hang.
+ */
+const WARM_UP_BUDGET_MS = 120_000;
+
 export const test = base.extend<{ signedIn: Page }>({
-  signedIn: async ({ page }, use) => {
+  signedIn: async ({ page }, use, testInfo) => {
     const identifier = process.env.E2E_CLERK_USER_IDENTIFIER;
     const password = process.env.E2E_CLERK_USER_PASSWORD;
 
@@ -34,12 +47,20 @@ export const test = base.extend<{ signedIn: Page }>({
 
     // An unprotected page first: `clerk.signIn` needs Clerk already loaded in
     // the page, and a protected route would have redirected before it could be.
-    await page.goto("/");
+    await goTo(page, "/");
     await clerk.loaded({ page });
     await clerk.signIn({
       page,
       signInParams: { strategy: "password", identifier, password },
     });
+
+    if (!warmed) {
+      testInfo.setTimeout(testInfo.timeout + WARM_UP_BUDGET_MS);
+      await warmUp(page);
+      // Only after it worked. A warm-up that threw has warmed nothing, and the
+      // next test should pay the cost rather than inherit the problem.
+      warmed = true;
+    }
 
     await use(page);
   },

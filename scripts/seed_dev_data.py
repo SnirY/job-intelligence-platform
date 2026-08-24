@@ -21,7 +21,7 @@ What it makes, and which screen each part is for:
 | A job with a link | The liveness row in the job's Details card |
 | A job whose posting asks for money | The posting-concerns panel |
 | An analysis, requirements, and a real match | The cover letter panel, which refuses without one |
-| A watched board and two discovered postings | `/discovery` and its review list |
+| A watched board and three discovered postings | `/discovery` and its review list |
 
 Idempotent. Everything it writes is tagged, and a second run reports what is
 already there rather than making a second copy.
@@ -393,7 +393,7 @@ def _matched_job(session: Session, user_id: uuid.UUID) -> str:
 
 
 def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
-    """For `/discovery`. A real board plus two candidates already in the list,
+    """For `/discovery`. A real board plus three candidates already in the list,
     so the review screen has something on it before anything is scanned."""
     board = WatchedBoard(
         user_id=user_id,
@@ -404,7 +404,27 @@ def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
     session.add(board)
 
     now = dt.datetime.now(tz=dt.UTC)
-    for index, title in enumerate(("Backend Engineer", "Platform Engineer")):
+
+    # Two ordinary rows and one deliberately long one. DEV-082 was a row whose
+    # content pushed the action buttons onto their own line, and it is only
+    # visible beside rows that stayed put — a list where every row says "Remote"
+    # is a list where that bug cannot be seen, by a person or by a test.
+    #
+    # The long one is dated a day earlier so it sorts to the bottom (the review
+    # list is newest first), which keeps it clear of anything that takes the
+    # first row and promotes it.
+    candidates = (
+        ("Backend Engineer", "Remote", now),
+        ("Platform Engineer", "Remote", now),
+        (
+            "Staff Platform Engineer, Developer Experience and Build Tooling",
+            "Remote-Friendly (Travel Required) | San Francisco, CA "
+            "| Seattle, WA | New York City, NY",
+            now - dt.timedelta(days=1),
+        ),
+    )
+
+    for index, (title, location, first_seen) in enumerate(candidates):
         session.add(
             DiscoveredPosting(
                 user_id=user_id,
@@ -414,16 +434,16 @@ def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
                 title=f"{TAG} {title}",
                 url=f"https://example.com/seed/{index}",
                 company="Seeded Co",
-                location="Remote",
-                first_seen_at=now,
-                last_seen_at=now,
+                location=location,
+                first_seen_at=first_seen,
+                last_seen_at=first_seen,
                 description_text=REAL_POSTING,
             )
         )
     session.flush()
     return [
         "watched board: a real Greenhouse board, press Scan now",
-        "two candidates already waiting in the review list",
+        "three candidates waiting in the review list, one long enough to show a layout fault",
     ]
 
 
