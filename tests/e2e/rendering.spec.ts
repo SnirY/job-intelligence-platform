@@ -21,7 +21,7 @@ import { expect, test } from "./signed-in";
  * **The suite eats a discovery candidate per run.** Promoting one is the only
  * way to reach a job that arrived from a board, and a promoted candidate leaves
  * the review list for good. The seed lays down three; when `/discovery` runs
- * dry, delete the `[seed]` rows and seed again.
+ * dry, run `python scripts/seed_dev_data.py --reset`.
  */
 
 const SEEDED_MATCHED = "[seed] Senior Backend Engineer (matched)";
@@ -64,7 +64,7 @@ test.describe("the discovery list", () => {
       test.skip(
         true,
         `Needs at least two candidates including "${SEEDED_LONG_CANDIDATE}", whose ` +
-          "length is what makes the measurement mean anything. Delete the [seed] rows and seed again.",
+          "length is what makes the measurement mean anything. Run the seed with --reset.",
       );
     }
 

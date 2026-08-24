@@ -95,6 +95,8 @@ server uses.
 
 `npx playwright install chromium` once, the first time.
 
+Two things to expect once they do run.
+
 **The first run is slow, and that is the compiler rather than the app.** These
 run against `next dev`, which builds a route the first time anything asks for
 it. Before the first attempt at that, a `page.goto` could be cancelled outright:
@@ -108,8 +110,14 @@ that cost is paid where a wait is expected.
 arrived from a board means promoting one, and a promoted candidate leaves the
 review list for good. The seed lays down three, one of them deliberately long,
 because a list where every row is the same length is a list where a wrapping
-defect cannot be seen. When `/discovery` runs dry, delete the `[seed]` rows and
-seed again.
+defect cannot be seen. When `/discovery` runs dry:
+
+```bash
+python scripts/seed_dev_data.py --reset
+```
+
+which deletes the tagged rows for that account and writes them back. It touches
+nothing it did not write, and the career profile stays.
 
 ## Checks
 
