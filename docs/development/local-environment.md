@@ -80,18 +80,19 @@ looks like "the screen is wrong".
 **A test account is named**, in `.env.local` at the repository root:
 
 ```bash
-E2E_CLERK_USER_IDENTIFIER=the-test-account@example.com
-E2E_CLERK_USER_PASSWORD=...
+E2E_CLERK_USER_EMAIL=the-test-account@example.com
 ```
 
 **Not the account holding your real career profile.** These tests promote and
 dismiss rows; pointed at the wrong account they would edit an actual job search.
 
-Sign-in is programmatic, through `@clerk/testing`, which needs a strategy Clerk
-accepts headlessly — `password`, `email_code` or `phone_code`. An account
-created through Google alone has none of them and cannot be used here. The Clerk
-keys themselves are read from `apps/web/.env.local`, the same ones the dev
-server uses.
+No password, and not because it is being kept somewhere else. Sign-in asks
+Clerk's backend API for a single-use sign-in token and redeems it, using the
+`CLERK_SECRET_KEY` already in `apps/web/.env.local` for the running app. That is
+also the only route that works on an account with a second factor: passing a
+password to `@clerk/testing` returns `needs_client_trust` and no session on any
+account with MFA, and its password branch reports success anyway — which cost a
+full run reading like a routing bug.
 
 `npx playwright install chromium` once, the first time.
 

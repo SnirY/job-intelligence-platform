@@ -23,16 +23,17 @@ import { defineConfig, devices } from "@playwright/test";
  * A seeded account: `python scripts/seed_dev_data.py`. Without it the screens
  * are empty and every assertion is vacuous.
  *
- * And two environment variables naming a **test** account — never the one
+ * And one environment variable naming a **test** account — never the one
  * holding a real career profile, because these tests create and delete data:
  *
  * ```text
- * E2E_CLERK_USER_IDENTIFIER=...
- * E2E_CLERK_USER_PASSWORD=...
+ * E2E_CLERK_USER_EMAIL=...
  * ```
  *
- * Put them in `.env.local` at the repository root, which `.gitignore` already
- * excludes. They are read from the environment and never written down here.
+ * In `.env.local` at the repository root, which `.gitignore` already excludes.
+ * No password: sign-in mints a token through Clerk's backend API with the
+ * `CLERK_SECRET_KEY` the app already uses, which is also the only way past an
+ * account with a second factor. `tests/e2e/signed-in.ts` has the detail.
  */
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";

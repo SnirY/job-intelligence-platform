@@ -63,16 +63,34 @@ export async function goTo(page: Page, path: string): Promise<void> {
       continue;
     }
 
-    if (new URL(page.url()).pathname === path) return;
+    const arrived = new URL(page.url()).pathname;
+    if (arrived === path) return;
 
     // Arrived somewhere else. On the last attempt that is the finding, not a
     // reason to try again — and it is worth saying where, because "signed out
     // and bounced to /sign-in" and "the reload beat us" read identically from
     // a timeout.
     if (last) {
-      expect(new URL(page.url()).pathname, `Asked for ${path} and ended up elsewhere.`).toBe(path);
+      expect(arrived, explain(path, arrived)).toBe(path);
     }
   }
+}
+
+/**
+ * Landing on `/sign-in` is worth naming rather than reporting as a wrong URL.
+ *
+ * It is what a sign-in that only half worked looks like from here: Clerk is
+ * happy in the browser, the server sees no session, and `(app)/layout.tsx`
+ * redirects. It cost a whole run once, and read as a routing problem.
+ */
+function explain(wanted: string, arrived: string): string {
+  if (arrived === "/sign-in") {
+    return (
+      `Asked for ${wanted} and was sent to sign in. The browser has no session the ` +
+      "server can read, whatever the sign-in step reported — see tests/e2e/signed-in.ts."
+    );
+  }
+  return `Asked for ${wanted} and ended up on ${arrived}.`;
 }
 
 export async function warmUp(page: Page): Promise<void> {

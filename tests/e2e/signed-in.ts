@@ -11,12 +11,26 @@ import { goTo, warmUp } from "./navigate";
  * actually about. `@clerk/testing` signs in through Clerk's API instead, which
  * is what makes a browser suite practical here at all.
  *
- * It needs a strategy Clerk accepts headlessly — `password`, `email_code` or
- * `phone_code`. An account created through Google alone has none of them, and
- * there would be nothing left but driving Google's consent screen, which is the
- * thing test tooling cannot do reliably. This uses `password`.
+ * **By sign-in token, not by password.** The first version passed a password
+ * and every test landed on `/sign-in`. Clerk had answered the sign-in call with
+ * `status: "needs_client_trust"` and no session — the account carries an
+ * email-code second factor, a fresh browser context is an unrecognised device
+ * every run, and `@clerk/testing` says plainly of its strategy path: multi-
+ * factor is not supported. Worse, its `password` branch does not check the
+ * status the way its other branches do, so it called `setActive` with nothing,
+ * threw nothing, and reported success. The browser was signed out and said so
+ * only in a cookie: `__client_uat=0`.
  *
- * **Point it at a throwaway account.** These tests create and dismiss rows.
+ * Handing it an email address instead takes a different route entirely. It asks
+ * Clerk's backend API for a sign-in token and redeems that — server-minted
+ * trust, so no factor, no device check, and nothing to type. It also waits for
+ * `Clerk.user` to actually exist rather than assuming.
+ *
+ * So there is no password here and none is needed. `CLERK_SECRET_KEY` does the
+ * work, and it is already in `apps/web/.env.local` doing the same job for the
+ * running app.
+ *
+ * **Point it at a throwaway account.** These tests promote and dismiss rows.
  * Running them against the account holding a real career profile would edit
  * somebody's actual job search.
  */
@@ -34,25 +48,22 @@ const WARM_UP_BUDGET_MS = 120_000;
 
 export const test = base.extend<{ signedIn: Page }>({
   signedIn: async ({ page }, use, testInfo) => {
-    const identifier = process.env.E2E_CLERK_USER_IDENTIFIER;
-    const password = process.env.E2E_CLERK_USER_PASSWORD;
+    const emailAddress = process.env.E2E_CLERK_USER_EMAIL;
 
-    if (!identifier || !password) {
+    if (!emailAddress) {
       throw new Error(
-        "E2E_CLERK_USER_IDENTIFIER and E2E_CLERK_USER_PASSWORD are not set.\n" +
-          "Put them in .env.local at the repository root — a test account, not the " +
-          "one with your real profile in it.",
+        "E2E_CLERK_USER_EMAIL is not set.\n" +
+          "Put the email address of a test account in .env.local at the repository " +
+          "root — not the one with your real profile in it. No password is needed: " +
+          "sign-in is by token, using the CLERK_SECRET_KEY the app already has.",
       );
     }
 
-    // An unprotected page first: `clerk.signIn` needs Clerk already loaded in
-    // the page, and a protected route would have redirected before it could be.
+    // An unprotected page first: signing in needs Clerk already loaded in the
+    // page, and a protected route would have redirected before it could be.
     await goTo(page, "/");
     await clerk.loaded({ page });
-    await clerk.signIn({
-      page,
-      signInParams: { strategy: "password", identifier, password },
-    });
+    await clerk.signIn({ page, emailAddress });
 
     if (!warmed) {
       testInfo.setTimeout(testInfo.timeout + WARM_UP_BUDGET_MS);
