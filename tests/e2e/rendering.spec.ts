@@ -1,5 +1,5 @@
-import { goTo } from "./navigate";
-import { expect, test } from "./signed-in";
+import { countWhenLoaded, goTo } from "./navigate";
+import { expect, skipBecause, test } from "./signed-in";
 
 /**
  * What the screen says, and where it puts things.
@@ -57,12 +57,11 @@ test.describe("the discovery list", () => {
     await goTo(page, "/discovery");
 
     const dismissButtons = page.getByRole("button", { name: /dismiss/i });
-    const rows = await dismissButtons.count();
+    const rows = await countWhenLoaded(dismissButtons);
     const hasLongRow = (await page.getByText(SEEDED_LONG_CANDIDATE).count()) > 0;
 
     if (rows < 2 || !hasLongRow) {
-      test.skip(
-        true,
+      skipBecause(
         `Needs at least two candidates including "${SEEDED_LONG_CANDIDATE}", whose ` +
           "length is what makes the measurement mean anything. Run the seed with --reset.",
       );
@@ -96,12 +95,12 @@ test.describe("a job that came from a board", () => {
      */
     await goTo(page, "/discovery");
 
-    const firstAdd = page.getByRole("button", { name: /add to jobs/i }).first();
-    if ((await firstAdd.count()) === 0) {
-      test.skip(true, "No candidates to promote. Run a scan, or seed first.");
+    const addButtons = page.getByRole("button", { name: /add to jobs/i });
+    if ((await countWhenLoaded(addButtons)) === 0) {
+      skipBecause("No candidates to promote. Run a scan, or seed with --reset.");
     }
 
-    await firstAdd.click();
+    await addButtons.first().click();
     await page.waitForURL(/\/jobs\/[0-9a-f-]{36}/);
 
     // The badge itself, by the words that were missing. Checking that "some
@@ -122,8 +121,8 @@ test.describe("a posting we noticed something about", () => {
     await goTo(page, "/jobs");
 
     const link = page.getByRole("link", { name: SEEDED_SCAM });
-    if ((await link.count()) === 0) {
-      test.skip(true, `No "${SEEDED_SCAM}". Run the seed first.`);
+    if ((await countWhenLoaded(link)) === 0) {
+      skipBecause(`No "${SEEDED_SCAM}". Run the seed first.`);
     }
     await link.first().click();
 
@@ -159,8 +158,8 @@ test.describe("a posting we noticed something about", () => {
     await goTo(page, "/jobs");
 
     const link = page.getByRole("link", { name: SEEDED_MATCHED });
-    if ((await link.count()) === 0) {
-      test.skip(true, `No "${SEEDED_MATCHED}". Run the seed first.`);
+    if ((await countWhenLoaded(link)) === 0) {
+      skipBecause(`No "${SEEDED_MATCHED}". Run the seed first.`);
     }
     await link.first().click();
 

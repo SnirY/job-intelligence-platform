@@ -1,7 +1,7 @@
 import { clerk } from "@clerk/testing/playwright";
 import { test as base, type Page } from "@playwright/test";
 
-import { goTo, warmUp } from "./navigate";
+import { countWhenLoaded, goTo, warmUp } from "./navigate";
 
 /**
  * One signed-in page, for every test in this suite.
@@ -35,8 +35,14 @@ import { goTo, warmUp } from "./navigate";
  * somebody's actual job search.
  */
 
+/** Written into every title the seed script creates. */
+const SEED_TAG = "[seed]";
+
 /** Compiling every route is a cost the run pays once, not once per test. */
 let warmed = false;
+
+/** Whether the account turned out to be the one that was seeded. */
+let seedProblem: Error | undefined;
 
 /**
  * What the warm-up may take. Three cold Next compiles inside a container is
@@ -71,10 +77,64 @@ export const test = base.extend<{ signedIn: Page }>({
       // Only after it worked. A warm-up that threw has warmed nothing, and the
       // next test should pay the cost rather than inherit the problem.
       warmed = true;
+      seedProblem = await findSeedProblem(page);
     }
+
+    if (seedProblem) throw seedProblem;
 
     await use(page);
   },
 });
+
+/**
+ * Whether this account is the one the seed was run against.
+ *
+ * Easy to get wrong and, until this existed, silent: `seed_dev_data.py` takes
+ * the newest account when nothing tells it otherwise, and the account these
+ * tests sign in as is named by a different variable in a different file. Seed
+ * one, test the other, and every screen is empty — which reads as four skipped
+ * tests and no reason at all.
+ *
+ * A failure rather than a skip, because "the row this test wanted is gone" and
+ * "you tested an account with nothing in it" are not the same answer, and only
+ * one of them is a legitimate reason to report nothing and move on.
+ */
+async function findSeedProblem(page: Page): Promise<Error | undefined> {
+  await goTo(page, "/jobs");
+  const jobs = await countWhenLoaded(page.getByText(SEED_TAG));
+
+  await goTo(page, "/discovery");
+  const candidates = await countWhenLoaded(page.getByText(SEED_TAG));
+
+  if (jobs + candidates > 0) return undefined;
+
+  // The one thing that turns this from a puzzle into a command: the account is
+  // known here and nowhere else, and the seed matches on exactly this id.
+  const clerkUserId = await page.evaluate(() => window.Clerk?.user?.id ?? "");
+  const which = clerkUserId ? `--user ${clerkUserId}` : "--user <this account's Clerk id>";
+
+  return new Error(
+    `Signed in as ${process.env.E2E_CLERK_USER_EMAIL}, and that account has nothing ` +
+      `seeded — no ${SEED_TAG} jobs and no candidates.\n\n` +
+      "The seed takes the newest account unless told otherwise, so seeding one account " +
+      "and testing another is the ordinary mistake here. Seed this one:\n\n" +
+      `    python scripts/seed_dev_data.py --reset ${which}\n`,
+  );
+}
+
+/**
+ * Skip, and say why somewhere a person will see it.
+ *
+ * `test.skip(condition, description)` records the description and the list
+ * reporter prints a dash. Nothing else. So a suite built on the idea that "the
+ * seed was not run" must never look like "the screen is wrong" was reporting
+ * both as the same silent dash — which is how a run of four skips reads as a
+ * run of four passes.
+ */
+export function skipBecause(reason: string): never {
+  console.log(`\n  Skipped: ${reason}\n`);
+  test.skip(true, reason);
+  throw new Error("unreachable: test.skip throws");
+}
 
 export { expect } from "@playwright/test";

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Going to a page, on a dev server that compiles it while you wait.
@@ -97,4 +97,30 @@ export async function warmUp(page: Page): Promise<void> {
   for (const route of ROUTES) {
     await goTo(page, route);
   }
+}
+
+/** How long a list gets to arrive before we accept that it is empty. */
+const SETTLE_TIMEOUT_MS = 10_000;
+
+/**
+ * How many of these there are, once the screen has had the chance to have any.
+ *
+ * Every list in this app is fetched after the page loads, so counting straight
+ * after a navigation counts an empty screen that is still working. A test that
+ * does that decides the seed was never run and skips — and a skipped test that
+ * should have run is the worst outcome available here, because it reports as a
+ * clean run.
+ *
+ * So: wait for one to exist, then count. If none ever arrives the count is
+ * honestly zero, and it cost ten seconds to be sure rather than nothing to be
+ * wrong.
+ */
+export async function countWhenLoaded(locator: Locator): Promise<number> {
+  await locator
+    .first()
+    .waitFor({ state: "attached", timeout: SETTLE_TIMEOUT_MS })
+    .catch(() => {
+      // Nothing arrived. That is an answer, and the caller's to interpret.
+    });
+  return locator.count();
 }
