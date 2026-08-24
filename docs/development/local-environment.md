@@ -54,6 +54,47 @@ jip-worker
 npm run dev
 ```
 
+## End-to-end tests
+
+```bash
+npm run test:e2e
+```
+
+They drive a real browser against the running app. Everything else in this
+project asserts arithmetic; these assert what the screen says and where it puts
+things, which is the one class nothing else reaches — three of the four defects
+found walking Phase 12 by hand were rendering problems no unit or integration
+test could see.
+
+Three things have to be true before they will run.
+
+**The stack is up** — `docker compose up --build`. Same spirit as the
+integration tests needing real PostgreSQL: a browser against a mock proves
+nothing about layout.
+
+**The account is seeded** — `python scripts/seed_dev_data.py`. Without it the
+screens are empty and every assertion is vacuous. Each test says which seeded
+row it wanted and skips rather than failing, so "the seed was not run" never
+looks like "the screen is wrong".
+
+**A test account is named**, in `.env.local` at the repository root:
+
+```bash
+E2E_CLERK_USER_IDENTIFIER=the-test-account@example.com
+E2E_CLERK_USER_PASSWORD=...
+```
+
+**Not the account holding your real career profile.** These tests promote and
+dismiss rows; pointed at the wrong account they would edit an actual job search.
+
+Sign-in is programmatic, through `@clerk/testing`, which needs a strategy Clerk
+accepts headlessly — `password`, `email_code` or `phone_code`. An account
+created through Google alone has none of them and cannot be used here. The Clerk
+keys themselves are read from `apps/web/.env.local`, the same ones the dev
+server uses.
+
+`npx playwright install chromium` once, the first time.
+
 ## Checks
 
 ```bash
