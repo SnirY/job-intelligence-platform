@@ -54,6 +54,72 @@ jip-worker
 npm run dev
 ```
 
+## End-to-end tests
+
+```bash
+npm run test:e2e
+```
+
+They drive a real browser against the running app. Everything else in this
+project asserts arithmetic; these assert what the screen says and where it puts
+things, which is the one class nothing else reaches — three of the four defects
+found walking Phase 12 by hand were rendering problems no unit or integration
+test could see.
+
+Three things have to be true before they will run.
+
+**The stack is up** — `docker compose up --build`. Same spirit as the
+integration tests needing real PostgreSQL: a browser against a mock proves
+nothing about layout.
+
+**The account is seeded** — `python scripts/seed_dev_data.py`. Without it the
+screens are empty and every assertion is vacuous. Each test says which seeded
+row it wanted and skips rather than failing, so "the seed was not run" never
+looks like "the screen is wrong".
+
+**A test account is named**, in `.env.local` at the repository root:
+
+```bash
+E2E_CLERK_USER_EMAIL=the-test-account@example.com
+```
+
+**Not the account holding your real career profile.** These tests promote and
+dismiss rows; pointed at the wrong account they would edit an actual job search.
+
+No password, and not because it is being kept somewhere else. Sign-in asks
+Clerk's backend API for a single-use sign-in token and redeems it, using the
+`CLERK_SECRET_KEY` already in `apps/web/.env.local` for the running app. That is
+also the only route that works on an account with a second factor: passing a
+password to `@clerk/testing` returns `needs_client_trust` and no session on any
+account with MFA, and its password branch reports success anyway — which cost a
+full run reading like a routing bug.
+
+`npx playwright install chromium` once, the first time.
+
+Two things to expect once they do run.
+
+**The first run is slow, and that is the compiler rather than the app.** These
+run against `next dev`, which builds a route the first time anything asks for
+it. Before the first attempt at that, a `page.goto` could be cancelled outright:
+while the route compiles, Fast Refresh reloads the page you are still standing
+on, and that reload cancels the navigation to the new one — reported as
+`net::ERR_ABORTED; maybe frame was detached?`, which reads like a broken app and
+is not one. The fixture now walks every route once before any assertion runs, so
+that cost is paid where a wait is expected.
+
+**The suite consumes a discovery candidate per run.** Reaching a job that
+arrived from a board means promoting one, and a promoted candidate leaves the
+review list for good. The seed lays down three, one of them deliberately long,
+because a list where every row is the same length is a list where a wrapping
+defect cannot be seen. When `/discovery` runs dry:
+
+```bash
+python scripts/seed_dev_data.py --reset
+```
+
+which deletes the tagged rows for that account and writes them back. It touches
+nothing it did not write, and the career profile stays.
+
 ## Checks
 
 ```bash

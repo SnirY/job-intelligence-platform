@@ -36,9 +36,17 @@ requirements are written directly, and `run_match` is deterministic — it takes
 profile snapshot and a list of requirements and needs no provider at all.
 
 It makes one clean job, one job that trips every legitimacy rule, one job with a
-real link, a genuine match, a watched board, and two candidates already in the
-review list. Everything is tagged `[seed]` and a second run reports what is
-already there rather than making a second copy.
+real link, a genuine match, a watched board, and three candidates already in the
+review list. One of those three is deliberately long — a list where every row is
+the same length is a list where a wrapping fault cannot be seen, by a person or
+by the browser tests. Everything is tagged `[seed]` and a second run reports what
+is already there rather than making a second copy.
+
+`--reset` deletes the tagged rows for that account and writes them back, which is
+how a changed seed reaches an account that already holds the old one, and how a
+walkthrough gets its discovery candidates back after promoting them. The career
+profile stays: it is reused rather than rewritten, and may hold work that did not
+come from here.
 
 It picks the account you signed in with most recently and says which one, since
 signing in twice is normal here. Pass `--user` with any part of a Clerk id to

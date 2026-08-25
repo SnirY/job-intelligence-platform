@@ -62,3 +62,11 @@ tmp/
 
 # Personal, uncommitted notes
 *.local.md
+
+# --- Playwright ---
+# Traces and screenshots from a failed e2e run. Kept locally so a failure can be
+# opened, never committed: a trace is megabytes and describes one machine's run.
+test-results/
+playwright-report/
+blob-report/
+.playwright/

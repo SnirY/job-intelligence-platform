@@ -21,10 +21,16 @@ What it makes, and which screen each part is for:
 | A job with a link | The liveness row in the job's Details card |
 | A job whose posting asks for money | The posting-concerns panel |
 | An analysis, requirements, and a real match | The cover letter panel, which refuses without one |
-| A watched board and two discovered postings | `/discovery` and its review list |
+| A watched board and three discovered postings | `/discovery` and its review list |
 
 Idempotent. Everything it writes is tagged, and a second run reports what is
-already there rather than making a second copy.
+already there rather than making a second copy. To take a *changed* seed, or to
+put back rows a walkthrough used up:
+
+    python scripts/seed_dev_data.py --reset
+
+which deletes the tagged rows for that account and writes them again. It touches
+nothing it did not write.
 """
 
 from __future__ import annotations
@@ -111,6 +117,11 @@ def main() -> int:
             "Omit to take the one you signed in with most recently."
         ),
     )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Delete everything tagged [seed] for that account first, then seed it again.",
+    )
     args = parser.parse_args()
 
     try:
@@ -126,6 +137,9 @@ def main() -> int:
         user = _find_user(session, args.user)
         if user is None:
             return 1
+
+        if args.reset:
+            print(f"  {_unseed(session, user)}")
 
         made = _seed(session, user)
         session.commit()
@@ -211,6 +225,45 @@ def _list_users(users: list[User]) -> None:
         when = user.created_at.strftime("%Y-%m-%d %H:%M")
         newest = "  (newest)" if index == 0 else ""
         print(f"  {user.external_user_id}  first seen {when}{newest}")
+
+
+def _unseed(session: Session, user: User) -> str:
+    """Delete what this script wrote, so it can write it again.
+
+    `_seed` refuses when it finds its own work, which is right: a second run
+    should not quietly make a second copy. But that left no way to get a
+    *changed* seed onto an account that already holds the old one, and "delete
+    the [seed] rows and start over" is not an instruction anyone can follow
+    without a psql prompt and a list of tables.
+
+    Only tagged rows, and only for one account. Everything downstream of a job
+    — its analysis, requirements, matches, cover letters — is `ON DELETE
+    CASCADE` in the schema, so the database takes those with it.
+
+    **The career profile stays.** `_profile` reuses one it finds, and deleting
+    it would take skills and work history that need not have come from here.
+    The one experience row this script writes is tagged and does go, because
+    that is the one it would otherwise write a second copy of.
+    """
+    tagged = f"{TAG}%"
+    removed = 0
+
+    for statement in (
+        select(Job).where(Job.user_id == user.id, Job.title.like(tagged)),
+        select(DiscoveredPosting).where(
+            DiscoveredPosting.user_id == user.id, DiscoveredPosting.title.like(tagged)
+        ),
+        select(WatchedBoard).where(
+            WatchedBoard.user_id == user.id, WatchedBoard.label.like(tagged)
+        ),
+        select(Experience).where(Experience.user_id == user.id, Experience.title.like(tagged)),
+    ):
+        for row in session.scalars(statement):
+            session.delete(row)
+            removed += 1
+
+    session.flush()
+    return f"cleared {removed} rows tagged {TAG}"
 
 
 def _seed(session: Session, user: User) -> list[str]:
@@ -393,7 +446,7 @@ def _matched_job(session: Session, user_id: uuid.UUID) -> str:
 
 
 def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
-    """For `/discovery`. A real board plus two candidates already in the list,
+    """For `/discovery`. A real board plus three candidates already in the list,
     so the review screen has something on it before anything is scanned."""
     board = WatchedBoard(
         user_id=user_id,
@@ -404,7 +457,27 @@ def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
     session.add(board)
 
     now = dt.datetime.now(tz=dt.UTC)
-    for index, title in enumerate(("Backend Engineer", "Platform Engineer")):
+
+    # Two ordinary rows and one deliberately long one. DEV-082 was a row whose
+    # content pushed the action buttons onto their own line, and it is only
+    # visible beside rows that stayed put — a list where every row says "Remote"
+    # is a list where that bug cannot be seen, by a person or by a test.
+    #
+    # The long one is dated a day earlier so it sorts to the bottom (the review
+    # list is newest first), which keeps it clear of anything that takes the
+    # first row and promotes it.
+    candidates = (
+        ("Backend Engineer", "Remote", now),
+        ("Platform Engineer", "Remote", now),
+        (
+            "Staff Platform Engineer, Developer Experience and Build Tooling",
+            "Remote-Friendly (Travel Required) | San Francisco, CA "
+            "| Seattle, WA | New York City, NY",
+            now - dt.timedelta(days=1),
+        ),
+    )
+
+    for index, (title, location, first_seen) in enumerate(candidates):
         session.add(
             DiscoveredPosting(
                 user_id=user_id,
@@ -414,16 +487,16 @@ def _discovery(session: Session, user_id: uuid.UUID) -> list[str]:
                 title=f"{TAG} {title}",
                 url=f"https://example.com/seed/{index}",
                 company="Seeded Co",
-                location="Remote",
-                first_seen_at=now,
-                last_seen_at=now,
+                location=location,
+                first_seen_at=first_seen,
+                last_seen_at=first_seen,
                 description_text=REAL_POSTING,
             )
         )
     session.flush()
     return [
         "watched board: a real Greenhouse board, press Scan now",
-        "two candidates already waiting in the review list",
+        "three candidates waiting in the review list, one long enough to show a layout fault",
     ]
 
 
