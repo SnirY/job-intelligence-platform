@@ -5,7 +5,13 @@ verified career profile with traceable evidence, and writes a tailored résumé
 that cannot make a claim your profile does not support.**
 
 A personal full-stack project: FastAPI, Next.js, PostgreSQL, Redis, Docker.
-~46,000 lines, 101 REST endpoints, 1,784 automated tests in CI.
+~89,000 lines, 119 REST endpoints, 2,200+ automated tests.
+
+![A job's requirements: the posting's own wording on the left, the system's
+reading of it on the right, each one typed and weighted.](docs/images/job-match.png)
+
+*Every requirement, twice: what the posting said, and how the system read it.
+The reading is labelled as a reading — and the two are never merged.*
 
 ---
 
@@ -51,6 +57,21 @@ Build a profile  →  Save a job  →  Read the posting  →  Match with evidenc
 - **Applications and insights** — an append-only application history, and what
   the user's own saved jobs keep asking for.
 
+## What it looks like
+
+Captured from a demo account by
+[`scripts/capture_screenshots.mjs`](scripts/capture_screenshots.mjs), so these
+can be re-taken rather than going quietly stale. The postings behind them were
+real; every employer name was replaced and the posting prose dropped, which is
+why rows read `[demo]`.
+
+| | |
+|---|---|
+| ![The saved postings, with a distribution across alignment bands and a coverage bar per row.](docs/images/jobs.png) | **Every role you are considering.** The bands are the engine's, and two jobs sit outside them — *not compared yet, so they have no figure, not a low one* |
+| ![The home screen, listing suggested next actions each with the reason it was suggested.](docs/images/home.png) | **What to do next**, and what each suggestion is based on. A recommendation you can disagree with is one that told you why |
+| ![The career profile screen, showing skills, experience and the evidence behind them.](docs/images/career-profile.png) | **The profile every verdict traces back to.** Nothing here arrives without a person approving it |
+| ![The discovery screen listing postings scanned from public job boards, awaiting review.](docs/images/discovery.png) | **Scanned from public boards**, and waiting. A scan finds candidates; only a person turns one into a job |
+
 ## The parts worth reading
 
 If you are evaluating this as engineering work rather than as a product, these
@@ -67,20 +88,27 @@ are the files where the thinking is:
 
 ## Engineering
 
-**Tests.** 1,784 across three layers, all run in CI:
+**Tests.** 2,200+ across three layers:
 
 | | |
 |---|---|
-| Backend unit + offline AI evaluations | 934 |
-| Integration, against real PostgreSQL and Redis | 512 |
-| Frontend | 338 |
+| Backend unit + offline AI evaluations | 1,047 |
+| Integration, against real PostgreSQL and Redis | 615 |
+| Frontend | 571 |
 
 Plus a live-model evaluation suite that runs on request, because it costs money.
 
-**Checks.** `mypy --strict` over 260 files, TypeScript `strict` with
+**Checks.** `mypy --strict` over 315 files, TypeScript `strict` with
 `noUncheckedIndexedAccess`, ruff, eslint, prettier, an Alembic
 `upgrade head → downgrade base` round-trip, and a Docker Compose stack brought up
-from scratch. All on every pull request.
+from scratch. `python scripts/run_checks.py` runs the same set, in the same
+order, locally.
+
+They are defined as a GitHub Actions workflow on every pull request, and that
+workflow has not executed since 2026-08-15 — a billing setting on the account,
+not anything in this repository. Said here rather than left implied by a green
+badge: a check that cannot report is worth less than no check, because the
+habit of assuming green survives the outage.
 
 **AI is treated as an untrusted input**, not as a library call. Every operation
 has a typed output schema, schema validation, a versioned prompt, a persisted
@@ -102,6 +130,21 @@ docker compose up --build
 ```
 
 Web on `:3000`, API on `:8000`, API docs on `:8000/docs`.
+
+**Sign-in without registering anywhere.** Authentication is OIDC and normally
+goes to Clerk, which means an account before the first screen renders. Set both
+halves to skip that:
+
+```bash
+JIP_AUTH_PROVIDER=local          # and NEXT_PUBLIC_AUTH_PROVIDER=local for the web
+JIP_AUTH_LOCAL_SECRET=…          # and AUTH_LOCAL_SECRET, the same value
+```
+
+`/sign-in` then asks for a name instead of credentials, and the name becomes the
+profile. It verifies a real signature against a real expiry — only the key
+source changes. **The API refuses to build that verifier outside `local` and
+`test`**, so a demo convenience cannot reach a deployment.
+`python scripts/seed_dev_data.py` fills the account with enough to look at.
 
 The AI features need an API key in `.env`; everything else runs without one. For
 host-process development, the checks, and the Windows notes, see
