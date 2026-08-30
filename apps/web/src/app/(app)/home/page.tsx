@@ -1,6 +1,8 @@
 import { currentUser } from "@clerk/nextjs/server";
 
 import { DashboardScreen } from "@/features/dashboard/dashboard";
+import { isLocalAuth } from "@/lib/auth-mode";
+import { localSessionSubject } from "@/lib/local-session.server";
 
 /**
  * Home.
@@ -15,9 +17,13 @@ import { DashboardScreen } from "@/features/dashboard/dashboard";
  * connection indicator on a working home screen is noise.
  */
 export default async function HomePage() {
-  const user = await currentUser();
+  // In local mode the name is whatever was typed at sign-in, which is the whole
+  // of what this page wants from an identity provider.
+  const firstName = isLocalAuth
+    ? await localSessionSubject()
+    : ((await currentUser())?.firstName ?? null);
 
   // The name only. Whether the reader is returning is a question about their
   // data, and the dashboard is what holds it — see `greet` there.
-  return <DashboardScreen firstName={user?.firstName ?? null} />;
+  return <DashboardScreen firstName={firstName} />;
 }

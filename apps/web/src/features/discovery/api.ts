@@ -14,7 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetchPage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { useAuth } from "@clerk/nextjs";
+import { useSessionToken } from "@/lib/use-api";
 
 export const discoveryKey = ["discovery"] as const;
 export const boardsKey = [...discoveryKey, "boards"] as const;
@@ -105,7 +105,7 @@ export function useScan() {
  * the only signal is the list changing.
  */
 export function usePendingPostings(options?: { poll?: boolean }) {
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
 
   return useQuery({
     queryKey: postingsKey,
