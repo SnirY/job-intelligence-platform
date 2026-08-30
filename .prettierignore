@@ -1,6 +1,8 @@
 # Generated or vendored output
 node_modules/
 .next/
+# A second dev server's build directory — see `distDir` in next.config.ts.
+.next-*/
 out/
 coverage/
 .venv/
