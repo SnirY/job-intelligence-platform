@@ -15,6 +15,13 @@
  * The secret here is a development placeholder and is meant to be visible. It
  * has to match the API's `JIP_AUTH_LOCAL_SECRET` for a request to get past
  * authentication — see `.env.example`.
+ *
+ * One side effect worth knowing rather than rediscovering: Next rewrites the
+ * tracked `next-env.d.ts` to reference whichever build directory it last ran
+ * with, so this server leaves that file modified. It is harmless and
+ * `git checkout -- apps/web/next-env.d.ts` puts it back. The file stays tracked
+ * because a fresh clone typechecks before it ever builds, and would have
+ * nothing to reference otherwise.
  */
 
 import { spawn } from "node:child_process";
