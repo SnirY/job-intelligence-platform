@@ -192,7 +192,7 @@ def test_a_degree_guarantees_what_its_curriculum_contains() -> None:
     snapshot.education.append(
         EducationEvidence(
             id=uuid.uuid4(),
-            institution="[engineering college]",
+            institution="Example Institute of Technology",
             degree="B.Sc.",
             field_of_study="Software Engineering",
             end_date=None,
@@ -254,7 +254,7 @@ def test_an_unanswerable_education_requirement_is_unknown_not_a_gap() -> None:
     snapshot.education.append(
         EducationEvidence(
             id=uuid.uuid4(),
-            institution="[engineering college]",
+            institution="Example Institute of Technology",
             degree="B.Sc.",
             field_of_study="Software Engineering",
             end_date=None,

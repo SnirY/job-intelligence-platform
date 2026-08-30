@@ -461,7 +461,7 @@ def _strongest_per_skill(
     They are duplicates in the sense that matters: the matcher resolves both
     against the same profile skill and reaches the same verdict for both, so
     keeping the pair counts one piece of evidence twice, on both sides. The
-    Acme Networks posting's "C++ expertise on Linux" and "Linux environment, an
+    network-analytics posting's "C++ expertise on Linux" and "Linux environment, an
     Advantage" scored MATCH twice, adding 2.50 of weight for one skill against
     C++'s 2.00 in a C++ role.
 

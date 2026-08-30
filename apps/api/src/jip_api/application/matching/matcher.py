@@ -571,10 +571,10 @@ def _match_experience(
     #
     # PARTIAL_MATCH rather than GAP, and the difference matters more than it
     # looks: a GAP on a CORE requirement becomes a BLOCKER, the strongest claim
-    # this engine makes, and keyword absence does not justify it. [employer 1]'s "1-2
-    # years of experience in Data Science and/or AI Engineering" blocked a
-    # profile carrying three machine-learning projects, because none of them
-    # writes the words "data science".
+    # this engine makes, and keyword absence does not justify it. The
+    # AI-engineering posting's "1-2 years of experience in Data Science and/or
+    # AI Engineering" blocked a profile carrying three machine-learning
+    # projects, because none of them writes the words "data science".
     #
     # So: credit the years, deny the subject, and say both. The sentence carries
     # the doubt, which is where `docs/05` wants it — the reader may know better

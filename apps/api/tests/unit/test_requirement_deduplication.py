@@ -48,7 +48,7 @@ def draft(
 
 
 def test_the_stronger_of_two_mentions_survives() -> None:
-    """The exact pair from the Acme Networks posting."""
+    """The exact pair from the network-analytics posting."""
     required = draft("Linux environment familiarity", RequirementImportance.REQUIRED, order=0)
     preferred = draft(
         "Familiarity with Linux environment", RequirementImportance.PREFERRED, order=1
