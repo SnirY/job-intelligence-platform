@@ -58,8 +58,13 @@ const SUBJECT = process.env.DEMO_SUBJECT ?? "demo";
  */
 const JOB_TITLE = process.env.DEMO_JOB_TITLE ?? "Junior Software Engineer, C++";
 
-/** Wide enough that the sidebar and content both read at README width. */
-const VIEWPORT = { width: 1440, height: 900 };
+/**
+ * Narrow enough that the app's centred content column fills the frame.
+ *
+ * At 1440 the layout left a dead band between the sidebar and the content —
+ * measured, not guessed: two deciles of the image carried no ink at all.
+ */
+const VIEWPORT = { width: 1180, height: 820 };
 
 /**
  * Each capture names the screen and what it is meant to show, because "the

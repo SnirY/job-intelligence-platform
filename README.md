@@ -4,15 +4,24 @@
 verified career profile with traceable evidence, and writes a tailored résumé
 that cannot make a claim your profile does not support.**
 
-A personal full-stack project by one developer, July–August 2026: FastAPI,
-Next.js, PostgreSQL, Redis, Docker. ~89,000 lines, 119 REST endpoints, 2,233
-automated tests, 294 commits.
+Applying for a job means reading a posting, working out honestly whether you
+fit it, and rewriting your résumé without overstating yourself. This does those
+three things as one system, and refuses to invent anything along the way.
 
-**Short on time?** [`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py)
-is the scoring engine and has no model call in it;
-[`known-issues.md`](docs/development/known-issues.md) is every defect found and
-what was done about it. Those two say more about how this was built than the
-rest of this page.
+A personal project by one developer, July–August 2026.
+**FastAPI · Next.js · PostgreSQL · Redis · Docker**
+· 119 REST endpoints · 2,233 automated tests · 294 commits
+
+**If you have five minutes:** the [architecture](#architecture) below, then
+[`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) — the
+scoring engine, which contains no model call — and
+[`packages/ai-core`](packages/ai-core), the one place a model is spoken to.
+
+**If you have fifteen:** add [`docs/adr/`](docs/adr) for the decisions and the
+alternatives rejected, [`dev-011-results.md`](docs/development/dev-011-results.md)
+for the engine calibrated by hand against real postings, and
+[`known-issues.md`](docs/development/known-issues.md) for every defect found and
+what was done about it.
 
 ![A job's requirements: the posting's own wording on the left, the system's
 reading of it on the right, each one typed and weighted.](docs/images/job-match.png)
@@ -69,12 +78,34 @@ can be re-taken rather than going quietly stale. The postings behind them were
 real; every employer name was replaced and the posting prose dropped, which is
 why rows read `[demo]`.
 
-| | |
-|---|---|
-| ![The saved postings, with a distribution across alignment bands and a coverage bar per row.](docs/images/jobs.png) | **Every role you are considering.** The bands are the engine's, and two jobs sit outside them — *not compared yet, so they have no figure, not a low one* |
-| ![The home screen, listing suggested next actions each with the reason it was suggested.](docs/images/home.png) | **What to do next**, and what each suggestion is based on. A recommendation you can disagree with is one that told you why |
-| ![The career profile screen, showing skills, experience and the evidence behind them.](docs/images/career-profile.png) | **The profile every verdict traces back to.** Nothing here arrives without a person approving it |
-| ![The discovery screen listing postings scanned from public job boards, awaiting review.](docs/images/discovery.png) | **Scanned from public boards**, and waiting. A scan finds candidates; only a person turns one into a job |
+### Every role you are considering
+
+![The saved postings, with a distribution across alignment bands and a coverage bar per row.](docs/images/jobs.png)
+
+The bands come from the engine. Two of these jobs sit outside them — not
+compared yet, so they have no figure rather than a low one, which is a
+distinction most tools quietly lose.
+
+### What to do next, and why
+
+![The home screen, listing suggested next actions each with the reason it was suggested.](docs/images/home.png)
+
+Every suggestion carries what it was based on. A recommendation you can
+disagree with is one that told you why.
+
+### The profile every verdict traces back to
+
+![The career profile screen, showing skills, experience and the evidence behind them.](docs/images/career-profile.png)
+
+Skills, experience, education and the evidence behind each. Nothing arrives
+here without a person approving it, including anything a model proposed.
+
+### Postings found rather than pasted
+
+![The discovery screen listing postings scanned from public job boards, awaiting review.](docs/images/discovery.png)
+
+Public job boards, scanned into a review list. A scan finds candidates; only a
+person turns one into a job.
 
 ## Architecture
 
@@ -105,9 +136,13 @@ reaches the scoring engine: `matcher.py` takes a profile snapshot and a list of
 requirements, and returns the same verdicts every time.
 
 `apps/` holds `web`, `api` and `worker`; `packages/` holds `ai-core`,
-`shared-types`, `prompts` and `config`. `ai-core` is a separate package rather
-than a module so that the import direction is enforced by packaging rather than
-by discipline — the domain cannot reach a provider even by accident.
+`shared-types`, `prompts` and `config`.
+
+That the domain never imports `ai-core` is
+[a test](apps/api/tests/unit/test_domain_does_not_reach_a_provider.py), not a
+convention. It was written after this README claimed the boundary was enforced
+and a check found that nothing was enforcing it — it had simply been true so
+far, which is a different thing.
 
 ## The parts worth reading
 
@@ -135,17 +170,16 @@ are the files where the thinking is:
 
 Plus a live-model evaluation suite that runs on request, because it costs money.
 
-**Checks.** `mypy --strict` over 315 files, TypeScript `strict` with
-`noUncheckedIndexedAccess`, ruff, eslint, prettier, an Alembic
-`upgrade head → downgrade base` round-trip, and a Docker Compose stack brought up
-from scratch. `python scripts/run_checks.py` runs the same set, in the same
-order, locally.
+**Checks**, as a GitHub Actions workflow on every pull request, and as
+`python scripts/run_checks.py` locally — the same set in the same order, so a
+failure is found before the push rather than after it: `mypy --strict` over 315
+files, TypeScript `strict` with `noUncheckedIndexedAccess`, ruff, eslint,
+prettier, an Alembic `upgrade head → downgrade base` round-trip, and a Docker
+Compose stack brought up from scratch.
 
-They are defined as a GitHub Actions workflow on every pull request, and that
-workflow has not executed since 2026-08-15 — a billing setting on the account,
-not anything in this repository. Said here rather than left implied by a green
-badge: a check that cannot report is worth less than no check, because the
-habit of assuming green survives the outage.
+**Scale.** ~89,000 lines across the API, the web app, the worker, the shared
+packages, the tests and the tooling — reported as a fact about the surface, not
+as a claim about its quality.
 
 **AI is treated as an untrusted input**, not as a library call. Every operation
 has a typed output schema, schema validation, a versioned prompt, a persisted
@@ -205,15 +239,34 @@ accounts, because none of that has been measured.
 The two documents that say what is actually true are
 [`implementation-status.md`](docs/development/implementation-status.md) — what
 exists, and where it is thinner than it looks — and
-[`known-issues.md`](docs/development/known-issues.md), which is every defect
-found and what was done about it, including the ones that were embarrassing.
+[`known-issues.md`](docs/development/known-issues.md) — every defect found, its
+cause, the fix, and the test that now covers it.
+
+## How it was built
+
+Written with AI coding assistance, and worth saying plainly rather than leaving
+to be discovered.
+
+What that did **not** cover is the part this repository is mostly made of: the
+specifications came first and the architecture, the domain rules, the
+acceptance criteria and the verification were decided and written down before
+anything implemented them. The judgement calls are the documented ones —
+[`docs/adr/`](docs/adr) records what was rejected and why,
+[`dev-011-results.md`](docs/development/dev-011-results.md) is an engine
+disagreed with by hand nine times, and
+[`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
+is what a person walked and what it found.
+
+The tests are the load-bearing part of working this way. An assistant that can
+produce a plausible wrong answer quickly makes verification the bottleneck, not
+typing — which is why the boundary test above exists, and why a claim in this
+file gets checked before it gets written.
 
 ## Documentation
 
 Twelve specification documents were written **before** the code and maintained
 alongside it, plus seven architecture decisions and the development tracking.
-Indexed in [`docs/`](docs) — and they are the part of this repository I would
-point at first.
+Indexed in [`docs/`](docs).
 
 Building on this with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
 what to read, how to verify, and the four things that will catch you out.
