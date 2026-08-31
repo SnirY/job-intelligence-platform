@@ -20,12 +20,12 @@ import logging
 import re
 import zipfile
 from dataclasses import dataclass
-from enum import StrEnum
 from io import BytesIO
 from xml.etree import ElementTree
 
 from jip_ai import AIError, AIFailureCode
 from jip_api.application.documents.upload import DOCX, PDF
+from jip_api.domain.documents.models import TextSource
 from jip_api.infrastructure.extraction.ocr import OcrEngine, rasterise
 from jip_config import get_settings
 
@@ -44,19 +44,6 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 _BLANK_LINES = re.compile(r"\n{3,}")
 _TRAILING_SPACE = re.compile(r"[ \t]+\n")
-
-
-class TextSource(StrEnum):
-    """How the text was obtained, which is not a detail.
-
-    A text layer is what the document itself says its glyphs are: exact, by
-    construction. OCR is a reading of a picture, and a good reading is still a
-    reading. Anything that shows this text to a person has to be able to say
-    which of the two it got, because they deserve different amounts of trust.
-    """
-
-    TEXT_LAYER = "TEXT_LAYER"
-    OCR = "OCR"
 
 
 @dataclass(frozen=True, slots=True)

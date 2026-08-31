@@ -27,6 +27,7 @@ from jip_api.domain.documents.models import (
     CandidateDecision,
     CandidateType,
     DocumentStatus,
+    TextSource,
 )
 from jip_api.domain.processing.models import ProcessingJobStatus, ProcessingStep
 from jip_api.infrastructure.db.session import get_session
@@ -71,6 +72,8 @@ class DocumentPayload(BaseModel):
     size_bytes: int
     status: DocumentStatus
     extraction_error: str | None
+    text_source: TextSource | None
+    ocr_confidence: float | None
     created_at: Any
 
 

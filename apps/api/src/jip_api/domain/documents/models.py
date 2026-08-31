@@ -18,6 +18,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     SmallInteger,
@@ -61,6 +62,24 @@ class DocumentStatus(enum.StrEnum):
     FAILED = "FAILED"
 
 
+class TextSource(enum.StrEnum):
+    """How the text on a document was obtained.
+
+    A text layer is what the file itself declares its glyphs to be: exact, by
+    construction. OCR is a reading of a picture of a page, and a good reading is
+    still a reading. The two deserve different amounts of trust, and a person
+    confirming what a model found in them has a right to know which they got.
+
+    Domain rather than infrastructure. `extract_text` produces it, but this is
+    the layer that stores it, and an ORM column typed by an extractor's private
+    enum would put the schema at the mercy of a module that has no idea it is
+    persisted.
+    """
+
+    TEXT_LAYER = "TEXT_LAYER"
+    OCR = "OCR"
+
+
 class SourceDocument(TimestampMixin, UserOwnedMixin, Base):
     """An uploaded file and whatever text has been pulled out of it."""
 
@@ -102,9 +121,34 @@ class SourceDocument(TimestampMixin, UserOwnedMixin, Base):
     extraction_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     """Why extraction failed, when it did. Surfaced so a failure is actionable."""
 
+    text_source: Mapped[TextSource | None] = mapped_column(
+        StrEnumType(TextSource, 20), nullable=True
+    )
+    """Whether `extracted_text` came from the file or from reading a picture.
+
+    Nullable, and null means *not extracted yet* rather than *unknown*. Every
+    row written before OCR existed came from a text layer, but backfilling them
+    to `TEXT_LAYER` would invent a fact about documents nobody checked, which is
+    the same mistake as recording an absent date as an unknown one.
+    """
+
+    ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    """Mean confidence over the words the engine scored, 0 to 100.
+
+    Null when the text came from a text layer, because a text layer has no
+    confidence rather than perfect confidence. Storing 100 would make the two
+    indistinguishable to every query that comes later.
+    """
+
     __table_args__ = (
         CheckConstraint("size_bytes > 0", name="size_positive"),
         CheckConstraint("length(content_sha256) = 64", name="sha256_length"),
+        # A figure outside 0-100 is not a poor reading, it is a bug in whatever
+        # wrote it: a unit mix-up, or a fraction where a percentage was meant.
+        CheckConstraint(
+            "ocr_confidence IS NULL OR (ocr_confidence >= 0 AND ocr_confidence <= 100)",
+            name="ocr_confidence_range",
+        ),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid

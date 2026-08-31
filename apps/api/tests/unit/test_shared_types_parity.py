@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from jip_api.domain.applications.models import ApplicationSource, ApplicationStatus
+from jip_api.domain.documents.models import TextSource
 from jip_api.domain.jobs.models import JobImportMethod, JobProcessingStatus, WorkMode
 from jip_api.domain.resumes.cover_letters import CoverLetterStatus
 
@@ -50,6 +51,7 @@ def _sources() -> str:
         ApplicationStatus,
         ApplicationSource,
         CoverLetterStatus,
+        TextSource,
     ],
     ids=lambda e: e.__name__,
 )

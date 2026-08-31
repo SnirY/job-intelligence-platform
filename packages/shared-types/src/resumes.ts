@@ -61,6 +61,9 @@ export interface FailedProcessingJob extends ProcessingJob {
   entity_label: string | null;
 }
 
+/** How the text on a document was obtained. */
+export type TextSource = "TEXT_LAYER" | "OCR";
+
 export interface SourceDocument {
   id: string;
   original_filename: string;
@@ -68,6 +71,10 @@ export interface SourceDocument {
   size_bytes: number;
   status: DocumentStatus;
   extraction_error: string | null;
+  /** Null means not extracted yet, not "we do not know". */
+  text_source: TextSource | null;
+  /** 0-100, and null whenever the text came from a text layer. */
+  ocr_confidence: number | null;
   created_at: string;
 }
 

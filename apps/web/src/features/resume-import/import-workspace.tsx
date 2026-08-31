@@ -127,5 +127,5 @@ function ImportDetail({ documentId }: { documentId: string }) {
     );
   }
 
-  return <ReviewPanel documentId={documentId} extraction={extraction} />;
+  return <ReviewPanel sourceDocument={document} extraction={extraction} />;
 }
