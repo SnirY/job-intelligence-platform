@@ -1,4 +1,7 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+import { isLocalAuth } from "@/lib/auth-mode";
 
 /**
  * Attaches the Clerk auth context to every request.
@@ -17,8 +20,13 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
  * On Next.js 16 this file is renamed to `proxy.ts`. A middleware file Next does
  * not load provides no auth context at all, so that rename is a required step
  * of the upgrade.
+ *
+ * In local mode there is no Clerk instance to attach a context from, and the
+ * pass-through is honest rather than lossy: this file never decided access in
+ * the first place, so nothing is lost by it doing nothing. The gate in
+ * `(app)/layout.tsx` and the API's own verification both still run.
  */
-export default clerkMiddleware();
+export default isLocalAuth ? () => NextResponse.next() : clerkMiddleware();
 
 export const config = {
   matcher: [

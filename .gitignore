@@ -28,6 +28,9 @@ coverage.xml
 # --- Node / Next.js ---
 node_modules/
 .next/
+# A second dev server needs its own build directory or the two corrupt each
+# other's cache — see `distDir` in apps/web/next.config.ts.
+.next-*/
 out/
 .turbo/
 *.tsbuildinfo

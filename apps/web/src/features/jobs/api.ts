@@ -24,7 +24,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch, apiFetchPage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { useAuth } from "@clerk/nextjs";
+import { useSessionToken } from "@/lib/use-api";
 
 export const jobsKey = ["jobs"] as const;
 
@@ -54,7 +54,7 @@ function toSearchParams(query: JobListQuery): string {
 }
 
 export function useJobs(query: JobListQuery) {
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
 
   return useQuery({
     // The query is part of the key, so changing a filter fetches rather than
@@ -132,7 +132,7 @@ export function useJobSource(id: string, enabled: boolean) {
  * it cannot be used to change your mind.
  */
 export function useJobDistribution(query: JobListQuery) {
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
 
   // Everything that narrows the set, and nothing that pages or picks a band.
   const filters: JobListQuery = {
@@ -350,7 +350,7 @@ export const jobViewsKey = ["job-views"] as const;
  * wants: a row of chips is drawn whole or not at all.
  */
 export function useJobViews() {
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
   return useQuery({
     queryKey: jobViewsKey,
     queryFn: () => apiFetch<SavedJobView[]>(API_ROUTES.jobViews, { getToken }),
@@ -359,7 +359,7 @@ export function useJobViews() {
 
 export function useSaveJobView() {
   const client = useQueryClient();
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
   return useMutation({
     mutationFn: (body: SavedJobViewCreate) =>
       apiFetch<SavedJobView>(API_ROUTES.jobViews, {
@@ -374,7 +374,7 @@ export function useSaveJobView() {
 
 export function useRenameJobView() {
   const client = useQueryClient();
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       apiFetch<SavedJobView>(`${API_ROUTES.jobViews}/${id}`, {
@@ -389,7 +389,7 @@ export function useRenameJobView() {
 
 export function useDeleteJobView() {
   const client = useQueryClient();
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<null>(`${API_ROUTES.jobViews}/${id}`, { getToken, method: "DELETE" }),

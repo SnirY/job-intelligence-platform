@@ -11,7 +11,7 @@ import {
   type ResumeVersionDetail,
   type ResumeVersionStatus,
 } from "@jip/shared-types";
-import { useAuth } from "@clerk/nextjs";
+import { useSessionToken } from "@/lib/use-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { API_BASE_URL } from "@/lib/api";
@@ -136,7 +136,7 @@ export function useSetVersionStatus(versionId: string) {
  * window on the click itself and avoid the popup blocker.
  */
 export function useRenderVersion() {
-  const { getToken } = useAuth();
+  const { getToken } = useSessionToken();
   return useMutation({
     mutationFn: async (versionId: string) => {
       const token = await getToken();

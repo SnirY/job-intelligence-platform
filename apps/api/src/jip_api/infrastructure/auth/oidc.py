@@ -23,7 +23,7 @@ import jwt
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientError
 
-from jip_config import Settings, get_settings
+from jip_config import Environment, Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,34 @@ class JwksTokenVerifier:
 
 
 def build_verifier(settings: Settings) -> TokenVerifier:
-    """Construct the configured verifier."""
+    """Construct the configured verifier.
+
+    The local verifier is refused outside local and test environments. Doing it
+    here rather than trusting configuration is the point: this is the one
+    construction point every authenticated request passes through, so a
+    ``JIP_AUTH_PROVIDER=local`` that reaches staging or production stops the
+    process instead of accepting tokens anyone can mint.
+    """
+    if settings.uses_local_auth:
+        # Imported here rather than at module scope: `local` needs the identity
+        # types this module defines, so a top-level import in the other
+        # direction would close a cycle. A factory knowing its implementations
+        # is the expected shape; the implementations knowing each other is not.
+        from jip_api.infrastructure.auth.local import LocalTokenVerifier
+
+        if settings.environment not in (Environment.LOCAL, Environment.TEST):
+            raise ValueError(
+                "JIP_AUTH_PROVIDER=local verifies tokens against a shared secret and "
+                f"must never run in {settings.environment.value}. Configure a real "
+                "OIDC issuer via JIP_AUTH_ISSUER."
+            )
+        if not settings.auth_local_secret:
+            raise ValueError("JIP_AUTH_PROVIDER=local requires JIP_AUTH_LOCAL_SECRET to be set.")
+        return LocalTokenVerifier(
+            settings.auth_local_secret,
+            leeway_seconds=settings.auth_leeway_seconds,
+        )
+
     return JwksTokenVerifier(
         settings.resolved_auth_jwks_url,
         issuer=settings.auth_issuer,

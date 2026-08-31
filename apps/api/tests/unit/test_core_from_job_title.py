@@ -21,7 +21,7 @@ from jip_api.domain.jobs.analysis import (
 )
 from jip_api.domain.matching.rules import can_block
 
-Acme Networks_TITLE = "Acme Networks גיוס Junior Software Engineer C++ | עובדים Israel LinkedIn"
+NETWORK_ANALYTICS_TITLE = "Acme Networks גיוס Junior Software Engineer C++ | עובדים Israel LinkedIn"
 
 
 def draft(
@@ -46,7 +46,7 @@ def draft(
 def test_the_skill_in_the_title_becomes_core() -> None:
     """The exact case that closed DEV-028: a posting titled for C++ whose C++
     requirement came back REQUIRED, twice, on two separate runs."""
-    kept = _promote_title_skills([draft("C++")], Acme Networks_TITLE)
+    kept = _promote_title_skills([draft("C++")], NETWORK_ANALYTICS_TITLE)
 
     assert kept[0].importance is RequirementImportance.CORE
 
@@ -56,14 +56,14 @@ def test_promotion_makes_the_blocker_cap_reachable() -> None:
     had ever produced one, so a cap the documentation describes as protecting
     the user had never applied to anything."""
     before = draft("C++")
-    after = _promote_title_skills([before], Acme Networks_TITLE)[0]
+    after = _promote_title_skills([before], NETWORK_ANALYTICS_TITLE)[0]
 
     assert not can_block(before.importance)
     assert can_block(after.importance)
 
 
 def test_a_skill_absent_from_the_title_is_left_alone() -> None:
-    kept = _promote_title_skills([draft("Linux")], Acme Networks_TITLE)
+    kept = _promote_title_skills([draft("Linux")], NETWORK_ANALYTICS_TITLE)
 
     assert kept[0].importance is RequirementImportance.REQUIRED
 
@@ -72,7 +72,7 @@ def test_nothing_is_ever_moved_down() -> None:
     """Only promotes. A model that did mark something CORE keeps it, and a
     preference the title does not name stays a preference."""
     kept = _promote_title_skills(
-        [draft("Kubernetes", RequirementImportance.PREFERRED)], Acme Networks_TITLE
+        [draft("Kubernetes", RequirementImportance.PREFERRED)], NETWORK_ANALYTICS_TITLE
     )
 
     assert kept[0].importance is RequirementImportance.PREFERRED
@@ -81,7 +81,7 @@ def test_nothing_is_ever_moved_down() -> None:
 def test_a_requirement_with_no_resolved_skill_is_left_alone() -> None:
     """There is no name to look for, and matching the whole sentence against
     the title would promote on coincidence."""
-    kept = _promote_title_skills([draft(None)], Acme Networks_TITLE)
+    kept = _promote_title_skills([draft(None)], NETWORK_ANALYTICS_TITLE)
 
     assert kept[0].importance is RequirementImportance.REQUIRED
 
@@ -119,7 +119,7 @@ def test_a_later_occurrence_still_counts() -> None:
 
 
 def test_matching_ignores_case_and_surrounding_text() -> None:
-    assert _named_in_title("c++", Acme Networks_TITLE)
+    assert _named_in_title("c++", NETWORK_ANALYTICS_TITLE)
     assert _named_in_title("PYTHON", "Senior python developer, remote")
 
 

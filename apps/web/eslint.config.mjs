@@ -108,7 +108,18 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "coverage/**", "next-env.d.ts"],
+    ignores: [
+      "node_modules/**",
+      ".next/**",
+      // A second dev server builds into its own directory (`distDir` in
+      // next.config.ts). Without this, linting the repository walks generated
+      // output and reports hundreds of errors in code nobody wrote.
+      ".next-*/**",
+      "out/**",
+      "build/**",
+      "coverage/**",
+      "next-env.d.ts",
+    ],
   },
 ];
 
