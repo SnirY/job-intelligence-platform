@@ -400,7 +400,7 @@ describe("a suggestion that changes no words", () => {
     // A real REORDER from the walkthrough: the education line keeps its exact
     // wording and moves up the page. Rendered as a diff it read as
     // "delete this, then restore it".
-    const text = "B.Sc. in Software Engineering, [engineering college]";
+    const text = "B.Sc. in Software Engineering, Example Institute of Technology";
     vi.stubGlobal(
       "fetch",
       routes(

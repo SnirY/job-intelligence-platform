@@ -127,7 +127,18 @@ class Settings(BaseSettings):
     # belongs here. The API image deliberately carries no auth credential.
     auth_provider: str = Field(
         default="clerk",
-        description="Identifier stored on new users, recording which issuer vouched for them.",
+        description=(
+            "Identifier stored on new users, recording which issuer vouched for them. "
+            "Set to 'local' to verify tokens against auth_local_secret instead of a "
+            "JWKS, which is refused outside local/test environments."
+        ),
+    )
+    auth_local_secret: str | None = Field(
+        default=None,
+        description=(
+            "Shared secret for auth_provider='local'. Anyone holding it can mint a "
+            "token for any subject, so it is a demo convenience and never a credential."
+        ),
     )
     auth_issuer: str | None = Field(
         default=None,
@@ -374,7 +385,13 @@ class Settings(BaseSettings):
         return f"{self.auth_issuer.rstrip('/')}/.well-known/jwks.json"
 
     @property
+    def uses_local_auth(self) -> bool:
+        return self.auth_provider == "local"
+
+    @property
     def authentication_configured(self) -> bool:
+        if self.uses_local_auth:
+            return bool(self.auth_local_secret)
         return bool(self.auth_issuer or self.auth_jwks_url)
 
     @property

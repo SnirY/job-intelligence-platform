@@ -169,7 +169,7 @@ def test_a_jobs_listing_page_is_not_a_job_description() -> None:
     companies and real locations. It is *about* jobs without being one, and
     every word in it is plausible."""
     page = _page(
-        *["Sr. DevOps Engineer", "Harmonic", "Caesarea, Israel", "2 days ago"] * 9,
+        *["Sr. DevOps Engineer", "Cascade Broadcast", "Caesarea, Israel", "2 days ago"] * 9,
         "Al hacer clic en «Continuar» para unirte o iniciar sesión, aceptas las "
         "Condiciones de uso y la Política de cookies de LinkedIn.",
     )

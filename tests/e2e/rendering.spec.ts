@@ -101,12 +101,84 @@ test.describe("a job that came from a board", () => {
     }
 
     await addButtons.first().click();
+
+    // A board offering something already saved is a normal outcome, not an
+    // edge case -- and it is the ordinary one here, because a candidate the
+    // suite promoted on an earlier run is still saved. The screen asks rather
+    // than refusing, so the test answers. This is also the only place the
+    // `allow_duplicate` path is exercised at all; a manual walkthrough noted
+    // it had never been reached.
+    const addAnyway = page.getByRole("button", { name: "Add anyway" });
+    // Waited for rather than checked. The prompt appears only once the promote
+    // call has come back 409, and an immediate `isVisible` asks the question
+    // before the answer exists -- which is how this timed out on a screen that
+    // was, at that moment, showing the prompt.
+    await addAnyway.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
+      // No prompt. The posting was new and the click has already navigated.
+    });
+    if (await addAnyway.isVisible().catch(() => false)) {
+      await addAnyway.click();
+    }
+
     await page.waitForURL(/\/jobs\/[0-9a-f-]{36}/);
 
     // The badge itself, by the words that were missing. Checking that "some
     // element in the header is non-empty" would have passed with the defect in
     // place: the blank badge had siblings.
     await expect(page.getByText("Found on a board")).toBeVisible();
+  });
+});
+
+test.describe("the requirement field", () => {
+  test("gives every chip enough width to read a word", async ({ signedIn: page }) => {
+    /**
+     * DEV-083. Seven verdict lanes were laid out as
+     * `repeat(7, minmax(0, 1fr))` inside the middle column of a three-column
+     * page, and `minmax(0, …)` means a lane may shrink to nothing. At the `xl`
+     * breakpoint the three columns switch on with 320px and 400px already
+     * spoken for, which leaves the field about 528px — roughly eleven pixels
+     * of text per lane once the chip's own border, padding and icon are paid
+     * for. Eleven pixels is one character, and `break-words` duly put one
+     * character on each line. A requirement called `JSON` rendered as a
+     * four-storey tower.
+     *
+     * Nothing in the calculation was wrong and nothing threw. The screen just
+     * became unreadable, which is this suite's entire subject.
+     *
+     * Asserted by shape rather than by a pixel budget: a chip is a label, and
+     * a label is wider than it is tall. That holds whatever the lane width
+     * becomes later, and it fails the moment text starts reading downwards.
+     */
+    await goTo(page, "/jobs");
+
+    const link = page.getByRole("link", { name: SEEDED_MATCHED });
+    if ((await countWhenLoaded(link)) === 0) {
+      skipBecause(`No "${SEEDED_MATCHED}". Run the seed first.`);
+    }
+    await link.first().click();
+
+    const field = page.locator('section[aria-labelledby="requirement-field-heading"]');
+    // Every chip's accessible name is "<requirement> — <band>, <verdict>", which
+    // is the one thing that separates them from the view toggle beside them.
+    // Matching on the shape rather than on seeded names keeps this working
+    // when the seed changes.
+    const chips = field.getByRole("button", { name: /— .+,/ });
+    if ((await countWhenLoaded(chips)) === 0) {
+      skipBecause("No requirement chips on the seeded match. Run the seed with --reset.");
+    }
+
+    const total = await chips.count();
+    for (let index = 0; index < total; index += 1) {
+      const chip = chips.nth(index);
+      const box = await chip.boundingBox();
+      if (!box) continue;
+      const name = (await chip.getAttribute("aria-label")) ?? "a chip";
+      expect(
+        box.height,
+        `"${name}" is ${box.width.toFixed(0)}px wide and ${box.height.toFixed(0)}px tall. ` +
+          "Its lane is narrower than a word, so the label is reading downwards.",
+      ).toBeLessThanOrEqual(box.width);
+    }
   });
 });
 

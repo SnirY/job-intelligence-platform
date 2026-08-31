@@ -7,6 +7,7 @@ import {
   TOTAL_PHASES,
   destinationsByAvailability,
 } from "@/features/navigation/destinations";
+import { isLocalAuth } from "@/lib/auth-mode";
 
 /** Starts a sentence with a summary written to sit mid-sentence. */
 function capitalise(text: string): string {
@@ -48,21 +49,33 @@ export default function LandingPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {/* Clerk v7 replaced <SignedIn>/<SignedOut> with <Show when=…>. */}
-        <Show when="signed-out">
+        {isLocalAuth ? (
+          /* Local mode has no account to create and no signed-out widget to
+             ask. One button covers both states: /home redirects to /sign-in
+             when there is no session, which is the same journey with one fewer
+             decision on this page. */
           <Button asChild size="lg">
-            <Link href="/sign-up">Create an account</Link>
+            <Link href="/home">Open the workspace</Link>
           </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link href="/sign-in">Sign in</Link>
-          </Button>
-        </Show>
+        ) : (
+          <>
+            {/* Clerk v7 replaced <SignedIn>/<SignedOut> with <Show when=…>. */}
+            <Show when="signed-out">
+              <Button asChild size="lg">
+                <Link href="/sign-up">Create an account</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link href="/sign-in">Sign in</Link>
+              </Button>
+            </Show>
 
-        <Show when="signed-in">
-          <Button asChild size="lg">
-            <Link href="/home">Go to your workspace</Link>
-          </Button>
-        </Show>
+            <Show when="signed-in">
+              <Button asChild size="lg">
+                <Link href="/home">Go to your workspace</Link>
+              </Button>
+            </Show>
+          </>
+        )}
       </div>
 
       {/* Derived, not written out. This paragraph said "Phase 6" for two phases

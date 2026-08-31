@@ -5,11 +5,13 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
+import { LocalUserButton } from "@/features/auth/local-user-button";
 import { CommandPalette } from "@/features/navigation/command-palette";
 import { SidebarNav } from "@/features/navigation/sidebar-nav";
 import { ThemeToggle } from "@/features/navigation/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useModalFocus } from "@/components/ui/use-modal-focus";
+import { isLocalAuth } from "@/lib/auth-mode";
 
 /**
  * Authenticated application frame: fixed sidebar on desktop, drawer on mobile.
@@ -124,7 +126,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               v7 removed the per-component afterSignOutUrl prop. The middleware
               sends a signed-out visitor to /sign-in regardless.
             */}
-            <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />
+            {isLocalAuth ? (
+              <LocalUserButton />
+            ) : (
+              <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />
+            )}
           </div>
         </header>
 

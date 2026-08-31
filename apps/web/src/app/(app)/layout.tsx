@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/features/navigation/app-shell";
+import { isLocalAuth } from "@/lib/auth-mode";
+import { localSessionSubject } from "@/lib/local-session.server";
 
 /**
  * Layout for every authenticated route.
@@ -11,11 +13,15 @@ import { AppShell } from "@/features/navigation/app-shell";
  * duplication: it is the layer that survives a mistake in the middleware
  * matcher, and an unprotected page fails silently — it renders, serves data,
  * and reports nothing wrong.
+ *
+ * That duplication is what lets local mode drop the middleware entirely: this
+ * gate is the one that was doing the work, and it applies the same rule to
+ * whichever session type the build uses.
  */
 export default async function AuthenticatedLayout({ children }: { children: ReactNode }) {
-  const { userId } = await auth();
+  const signedIn = isLocalAuth ? await localSessionSubject() : (await auth()).userId;
 
-  if (!userId) {
+  if (!signedIn) {
     redirect("/sign-in");
   }
 

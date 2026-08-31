@@ -113,8 +113,27 @@ function ViewToggle({
   );
 }
 
-/** The grid template, shared by the header row and every band so they align. */
-const FIELD_GRID = "grid grid-cols-[104px_repeat(7,minmax(0,1fr))] gap-2";
+/**
+ * The grid template, shared by the header row and every band so they align.
+ *
+ * Eight tracks: the band label, then one lane per verdict.
+ *
+ * The lanes have a floor. They used to be `minmax(0,1fr)`, which permits a lane
+ * to shrink to nothing — and DEV-083 is what that permits in practice. The
+ * seven lanes divide whatever the middle column of the page has left, and at
+ * the `xl` breakpoint, with 320px and 400px already spoken for, that is about
+ * 528px. Once a chip’s border, padding and icon are paid for it leaves about
+ * eleven pixels of text per lane, `break-words` puts one character on each
+ * line, and a chip measures 18px wide by 134px tall. Nothing throws. The screen
+ * simply stops being readable, which is the only kind of defect this whole
+ * layer can have.
+ *
+ * 7.5rem is the narrowest lane that still holds an ordinary word. Seven of them
+ * need roughly 1000px, which the page does not always have, so the field
+ * scrolls sideways rather than collapsing — and the toggle to the posting’s
+ * own order is one click away for anyone who would rather not.
+ */
+const FIELD_GRID = "grid grid-cols-[104px_repeat(7,minmax(7.5rem,1fr))] gap-2";
 
 function Field({
   items,
@@ -128,8 +147,11 @@ function Field({
   onSelect: (id: string) => void;
 }) {
   return (
-    <>
-      <div className={`${FIELD_GRID} border-b px-5 pb-2.5`}>
+    // One scroller for the headings and the bands together. Two would drift
+    // apart the moment the field is wider than the panel, and a column heading
+    // that no longer sits above its column is worse than no heading.
+    <div className="min-h-0 flex-1 overflow-auto px-5">
+      <div className={`${FIELD_GRID} sticky top-0 z-10 border-b bg-card pb-2.5`}>
         <span />
         {VERDICT_COLUMNS.map((column) => {
           const Icon = VERDICT_ICONS[column.tone];
@@ -145,44 +167,42 @@ function Field({
         })}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-5">
-        {IMPORTANCE_BANDS.map((band) => {
-          const inBand = items.filter((item) => importanceOf(item) === band.key);
-          return (
-            <div key={band.key} className={`${FIELD_GRID} border-b py-3.5`}>
-              <div className="pt-0.5">
-                <p className="text-sm font-semibold leading-tight">{band.label}</p>
-                <p className="mt-0.5 font-mono text-xs text-muted-foreground">{inBand.length}</p>
-                <p className="mt-1.5 text-xs leading-snug text-foreground-faint">{band.note}</p>
-              </div>
-
-              {VERDICT_COLUMNS.map((column) => (
-                <div key={column.key} className="flex min-w-0 flex-col gap-1.5">
-                  {inBand
-                    .filter((item) => COLUMN_FOR_STATUS[item.status] === column)
-                    .map((item) => (
-                      <Chip
-                        key={item.id}
-                        item={item}
-                        column={column}
-                        band={band.label}
-                        selected={item.id === selectedId}
-                        onSelect={onSelect}
-                      />
-                    ))}
-                </div>
-              ))}
+      {IMPORTANCE_BANDS.map((band) => {
+        const inBand = items.filter((item) => importanceOf(item) === band.key);
+        return (
+          <div key={band.key} className={`${FIELD_GRID} border-b py-3.5`}>
+            <div className="pt-0.5">
+              <p className="text-sm font-semibold leading-tight">{band.label}</p>
+              <p className="mt-0.5 font-mono text-xs text-muted-foreground">{inBand.length}</p>
+              <p className="mt-1.5 text-xs leading-snug text-foreground-faint">{band.note}</p>
             </div>
-          );
-        })}
 
-        <p className="my-3.5 text-xs leading-relaxed text-foreground-faint">
-          Essential and required are the two bands a shortfall counts against. Preferred, optional
-          and unstated do not lower the figure. They are read as extras, exactly as the posting
-          worded them.
-        </p>
-      </div>
-    </>
+            {VERDICT_COLUMNS.map((column) => (
+              <div key={column.key} className="flex min-w-0 flex-col gap-1.5">
+                {inBand
+                  .filter((item) => COLUMN_FOR_STATUS[item.status] === column)
+                  .map((item) => (
+                    <Chip
+                      key={item.id}
+                      item={item}
+                      column={column}
+                      band={band.label}
+                      selected={item.id === selectedId}
+                      onSelect={onSelect}
+                    />
+                  ))}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      <p className="my-3.5 text-xs leading-relaxed text-foreground-faint">
+        Essential and required are the two bands a shortfall counts against. Preferred, optional and
+        unstated do not lower the figure. They are read as extras, exactly as the posting worded
+        them.
+      </p>
+    </div>
   );
 }
 
@@ -211,6 +231,7 @@ function Chip({
          told what sitting there means, which is the only way a form that
          carries meaning in position carries it to everyone. */
       aria-label={`${shortName(item)} — ${band}, ${MATCH_STATUS_LABELS[item.status]}`}
+      title={shortName(item)}
       className={
         selected
           ? "flex items-start gap-1.5 rounded-lg border border-primary bg-secondary px-2 py-1.5 text-left text-sm font-medium ring-1 ring-primary"
@@ -218,7 +239,12 @@ function Chip({
       }
     >
       <Icon aria-hidden className={`mt-0.5 size-3.5 shrink-0 ${VERDICT_TEXT[column.tone]}`} />
-      <span className="min-w-0 break-words">{shortName(item)}</span>
+      {/* Clamped rather than cut. The whole name stays in the DOM, in the
+          accessible name above and in the title, so nothing is lost — but a
+          requirement the parser read as a sentence, "Degree in Computer
+          Science, Software Engineering, or related field", would otherwise
+          stand twelve lines tall and push the lanes beside it off the screen. */}
+      <span className="line-clamp-3 min-w-0 break-words">{shortName(item)}</span>
     </button>
   );
 }
