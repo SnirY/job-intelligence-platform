@@ -24,6 +24,7 @@ from jip_api.domain.processing.models import ProcessingJobStatus
 from jip_api.domain.resumes.cover_letters import CoverLetter, CoverLetterStatus
 from jip_api.infrastructure.ai import get_ai_provider, get_model_router
 from jip_api.infrastructure.db.session import new_session
+from jip_api.infrastructure.extraction.ocr import get_ocr_engine
 from jip_api.infrastructure.storage.s3 import get_object_storage
 from jip_config import get_settings
 
@@ -62,6 +63,10 @@ def run_resume_import(job_id: str) -> dict[str, object]:
                 job=job,
                 max_input_chars=settings.ai_max_input_chars,
                 max_attempts=settings.ai_max_attempts,
+                # Resolved here with the rest of the infrastructure, and `None`
+                # when OCR is off or Tesseract is not installed. The pipeline
+                # gets an engine or nothing and needs no opinion about which.
+                ocr=get_ocr_engine(),
             )
         except jobs_uc.JobSupersededError:
             # Somebody already decided this job's fate — the reaper, after the

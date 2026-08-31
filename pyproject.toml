@@ -93,6 +93,13 @@ ignore_missing_imports = true
 module = ["anthropic.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# Neither ships type information. Both are imported lazily inside the OCR
+# adapters, which re-type their own boundary: rasterise yields `bytes` and the
+# engine returns an `OcrResult`, so the untyped surface stops at two functions.
+module = ["pypdfium2.*", "pytesseract.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = [

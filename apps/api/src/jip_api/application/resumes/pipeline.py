@@ -37,6 +37,7 @@ from jip_api.domain.documents.models import (
 )
 from jip_api.domain.processing.models import ProcessingJob, ProcessingStep
 from jip_api.infrastructure.extraction import extract_text
+from jip_api.infrastructure.extraction.ocr import OcrEngine
 from jip_api.infrastructure.storage.base import ObjectNotFoundError, ObjectStorage
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ def run_import(
     job: ProcessingJob,
     max_input_chars: int,
     max_attempts: int,
+    ocr: OcrEngine | None = None,
 ) -> PipelineResult:
     """Take a job from queued to parsed.
 
@@ -75,7 +77,7 @@ def run_import(
             "The document for this job no longer exists.",
         )
 
-    text = _ensure_text(session, storage, job=job, document=document)
+    text = _ensure_text(session, storage, job=job, document=document, ocr=ocr)
 
     # DEV-020. Between having the text and paying for a call on it: a document
     # that is not a resume produces a review screen full of real quotations from
@@ -136,12 +138,15 @@ def _ensure_text(
     *,
     job: ProcessingJob,
     document: SourceDocument,
+    ocr: OcrEngine | None = None,
 ) -> str:
     """Return the document's text, extracting it if this is the first attempt.
 
     Reusing already-extracted text on a retry is not just an optimisation: it
     means a retry after an AI outage does not re-download the file or re-run a
-    parser that already succeeded.
+    parser that already succeeded. That mattered before OCR and matters more
+    with it, since recognising a ten-page scan is seconds of processor time
+    rather than milliseconds.
     """
     if document.extracted_text:
         return document.extracted_text
@@ -166,7 +171,7 @@ def _ensure_text(
         ) from exc
 
     try:
-        extracted = extract_text(data, content_type=document.content_type)
+        extracted = extract_text(data, content_type=document.content_type, ocr=ocr)
     except AIError as error:
         # Recorded on the document as well as the job: the job may be trimmed
         # later, and the user still needs to know why this file never worked.
@@ -182,7 +187,14 @@ def _ensure_text(
 
     logger.info(
         "Extracted document text",
-        extra={"document_id": str(document.id), "characters": len(extracted.text)},
+        extra={
+            "document_id": str(document.id),
+            "characters": len(extracted.text),
+            # Logged now, stored in the next slice. Which of the two paths ran
+            # is the first thing anybody asks when a parse comes back strange.
+            "source": str(extracted.source),
+            "confidence": extracted.confidence,
+        },
     )
     return extracted.text
 

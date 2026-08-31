@@ -27,6 +27,13 @@ dependencies = [
   # format whose parsing cannot reasonably be written here. DOCX needs no
   # dependency — it is a ZIP of XML, handled with the standard library.
   "pypdf>=5.1,<7",
+  # OCR, for PDFs that carry a picture of a page instead of its text. pypdfium2
+  # binds the PDF engine Chrome renders with and ships wheels; pytesseract is a
+  # thin wrapper over the `tesseract-ocr` binary, which the image installs and
+  # pip cannot. See ADR-0008.
+  "pypdfium2>=4.30,<6",
+  "pytesseract>=0.3.13,<1",
+  "pillow>=10.4,<12",
 ]
 
 [tool.hatch.build.targets.wheel]
