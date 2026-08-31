@@ -174,6 +174,51 @@ class Settings(BaseSettings):
     is read into memory to hash and scan it before anything is stored.
     """
 
+    # --- OCR ---
+    # For a document with no text layer: a scan, or a photograph of a printout.
+    # ADR-0008 chose Tesseract behind an interface, and these are its knobs.
+    ocr_enabled: bool = True
+    """Whether to try reading a scan at all.
+
+    Switching it off returns the pipeline to refusing such documents with a
+    clear message, which is exactly what it did before OCR existed. A missing
+    Tesseract binary has the same effect without needing this.
+    """
+
+    ocr_dpi: int = 300
+    """Resolution to render pages at.
+
+    The long-standing target for document OCR. Below roughly 200 the strokes of
+    small type stop being separable and accuracy falls away sharply; far above
+    300 costs memory and time for very little, because the recogniser was
+    trained on scans of about this density.
+    """
+
+    ocr_languages: str = "eng+heb"
+    """Passed to the engine as-is. Tesseract reads this as two language packs.
+
+    Hebrew is here because the users are, and because it is the reason ADR-0008
+    chose Tesseract over the alternative that installs more cleanly. Both packs
+    must be present in the image or the engine refuses the whole request.
+    """
+
+    ocr_max_pages: int = 10
+    """A bound, not a preference.
+
+    Recognition costs seconds of processor time per page in a worker that has
+    other work waiting. A resume running past this is either not a resume, or
+    not one whose eleventh page decides anything.
+    """
+
+    ocr_min_confidence: float = 45.0
+    """Below this the read is refused rather than passed on.
+
+    **A first guess, and marked as one.** Tesseract's mean word confidence on a
+    reasonable scan sits well above this and on noise well below it, but the gap
+    has not been measured on real resumes yet. Phase 14's third slice calibrates
+    it; until then it is set where it can only reject the obviously unusable.
+    """
+
     # --- AI ---
     # Model routing is configuration, not code (docs/05-ai-and-matching.md), so
     # a cost or quality decision can be revisited without a deploy.

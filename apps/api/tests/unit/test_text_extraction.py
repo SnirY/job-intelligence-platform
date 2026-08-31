@@ -14,7 +14,8 @@ import pytest
 
 from jip_ai import AIError, AIFailureCode
 from jip_api.application.documents.upload import DOCX, PDF
-from jip_api.infrastructure.extraction import extract_text
+from jip_api.infrastructure.extraction import TextSource, extract_text
+from jip_api.infrastructure.extraction.ocr import OcrPage, OcrResult
 from tests.document_fixtures import (
     RESUME_LINES,
     docx_bytes,
@@ -141,3 +142,133 @@ def test_whitespace_is_normalised_without_changing_content() -> None:
 
     assert "\n\n\n" not in text
     assert "First line" in text and "Second line after many blanks" in text
+
+
+# --- Falling back to OCR ------------------------------------------------------
+
+
+class RecordingEngine:
+    """An engine that says what it was asked to do.
+
+    The point of most of these tests is *whether* it was called, so it counts.
+    It also drains the iterable it is handed, because that iterable is the
+    rasteriser and a test that never consumed it would pass without a single
+    page ever being rendered.
+    """
+
+    name = "recording"
+
+    def __init__(self, text: str = "", confidence: float = 90.0) -> None:
+        self.calls = 0
+        self.pages: list[bytes] = []
+        self.languages: str | None = None
+        self._page = OcrPage(text=text, confidence=confidence)
+
+    def read(self, pages: object, *, languages: str) -> OcrResult:
+        self.calls += 1
+        self.pages = list(pages)  # type: ignore[call-overload]
+        self.languages = languages
+        return OcrResult(pages=(self._page,))
+
+
+SCANNED_TEXT = "MAYA OKONKWO\nBackend Engineer, Lisbon\nBuilt REST endpoints in FastAPI."
+
+
+def test_a_pdf_with_a_text_layer_never_reaches_the_engine() -> None:
+    """Asserted, not assumed.
+
+    A text layer is exact and free; recognition is a guess that costs seconds
+    per page. Reaching for the engine speculatively would be slower and worse at
+    the same time, and nothing about the returned text would reveal it had
+    happened.
+    """
+    engine = RecordingEngine(text=SCANNED_TEXT)
+
+    extracted = extract_text(pdf_bytes(RESUME_LINES), content_type=PDF, ocr=engine)
+
+    assert engine.calls == 0
+    assert extracted.source is TextSource.TEXT_LAYER
+    assert extracted.confidence is None
+    assert "MAYA OKONKWO" in extracted.text
+
+
+def test_a_scan_is_read_with_ocr() -> None:
+    engine = RecordingEngine(text=SCANNED_TEXT, confidence=88.0)
+
+    extracted = extract_text(pdf_without_text_layer(), content_type=PDF, ocr=engine)
+
+    assert engine.calls == 1
+    assert extracted.source is TextSource.OCR
+    assert extracted.confidence == 88.0
+    assert "MAYA OKONKWO" in extracted.text
+    # The pages really were rendered, rather than an empty generator being
+    # handed over and quietly ignored.
+    assert len(engine.pages) == 1
+    assert engine.pages[0].startswith(b"\x89PNG")
+
+
+def test_the_configured_languages_reach_the_engine() -> None:
+    engine = RecordingEngine(text=SCANNED_TEXT)
+
+    extract_text(pdf_without_text_layer(), content_type=PDF, ocr=engine)
+
+    assert engine.languages == "eng+heb"
+
+
+def test_a_scan_ocr_cannot_read_does_not_suggest_a_step_already_taken() -> None:
+    """The message has to change once we have tried.
+
+    "Upload a text-based PDF instead" was true while extraction was the only
+    path. After rendering the pages and reading them it is advice to repeat work
+    the platform has done, which is worse than saying nothing.
+    """
+    engine = RecordingEngine(text="")
+
+    with pytest.raises(AIError) as caught:
+        extract_text(pdf_without_text_layer(), content_type=PDF, ocr=engine)
+
+    message = str(caught.value)
+    assert caught.value.code is AIFailureCode.CONTENT_UNAVAILABLE
+    assert not caught.value.is_retriable
+    assert "text-based PDF" not in message
+    assert "read this as a scan" in message
+
+
+def test_a_scan_read_too_poorly_is_refused_rather_than_passed_on() -> None:
+    """What comes next is a model call on text nobody has read.
+
+    A review screen full of confident sentences built from a bad transcript is
+    more convincing and less useful than an error.
+    """
+    engine = RecordingEngine(text=SCANNED_TEXT, confidence=12.0)
+
+    with pytest.raises(AIError, match="too unclear to use"):
+        extract_text(pdf_without_text_layer(), content_type=PDF, ocr=engine)
+
+
+def test_an_engine_that_raises_is_reported_not_crashed() -> None:
+    class BrokenEngine:
+        name = "broken"
+
+        def read(self, pages: object, *, languages: str) -> OcrResult:
+            raise RuntimeError("tesseract is not installed")
+
+    with pytest.raises(AIError) as caught:
+        extract_text(pdf_without_text_layer(), content_type=PDF, ocr=BrokenEngine())
+
+    assert caught.value.code is AIFailureCode.CONTENT_UNAVAILABLE
+    assert "could not be read as a scan" in str(caught.value)
+
+
+def test_a_docx_with_no_text_is_not_sent_to_ocr() -> None:
+    """OCR reads pictures of pages, and a DOCX has no pages until it is rendered.
+
+    Rasterising one would mean laying it out first, which is a different problem
+    and a different dependency.
+    """
+    engine = RecordingEngine(text=SCANNED_TEXT)
+
+    with pytest.raises(AIError, match="No readable text"):
+        extract_text(docx_bytes([""]), content_type=DOCX, ocr=engine)
+
+    assert engine.calls == 0

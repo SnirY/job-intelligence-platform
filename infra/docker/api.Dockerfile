@@ -7,6 +7,23 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Tesseract, for documents that carry a picture of a page instead of its text.
+# A system package and not a pip one: `pytesseract` is a thin wrapper that
+# shells out to this binary, and without it every scanned resume is refused.
+#
+# Above the COPY layers on purpose. It changes far less often than the code, so
+# an ordinary build reuses this layer instead of reinstalling it.
+#
+# `heb` alongside `eng` because Hebrew is the reason ADR-0008 chose Tesseract
+# over the engine that installs more cleanly. A request naming a pack that is
+# not installed fails outright, so both belong here or neither does.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-heb \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Dependency metadata first so an application-code change does not invalidate

@@ -27,7 +27,10 @@ coverage.xml
 
 # --- Node / Next.js ---
 node_modules/
-.next/
+# Any build directory, not only the default one. A run with a custom distDir
+# left 160 files of `.next-local-auth` sitting untracked, and `git add apps`
+# duly staged all of them.
+.next*/
 out/
 .turbo/
 *.tsbuildinfo

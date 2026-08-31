@@ -7,8 +7,11 @@ it. Accepting an upload we cannot read would be the worst of both, since the
 user learns it failed only after waiting.
 
 A document with no text layer — a scan, a photo of a printout — is a real and
-common case. It is reported as ``CONTENT_UNAVAILABLE`` and never retried: the
-bytes will not grow words on a second attempt.
+common case. It used to be reported as ``CONTENT_UNAVAILABLE`` and never
+retried, with a message asking the user to go and find a different file. It is
+now read with OCR when an engine is available, and refused only when that also
+comes back empty. The refusal stays permanent: the bytes will not grow words on
+a second attempt.
 """
 
 from __future__ import annotations
@@ -17,11 +20,14 @@ import logging
 import re
 import zipfile
 from dataclasses import dataclass
+from enum import StrEnum
 from io import BytesIO
 from xml.etree import ElementTree
 
 from jip_ai import AIError, AIFailureCode
 from jip_api.application.documents.upload import DOCX, PDF
+from jip_api.infrastructure.extraction.ocr import OcrEngine, rasterise
+from jip_config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,19 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 _TRAILING_SPACE = re.compile(r"[ \t]+\n")
 
 
+class TextSource(StrEnum):
+    """How the text was obtained, which is not a detail.
+
+    A text layer is what the document itself says its glyphs are: exact, by
+    construction. OCR is a reading of a picture, and a good reading is still a
+    reading. Anything that shows this text to a person has to be able to say
+    which of the two it got, because they deserve different amounts of trust.
+    """
+
+    TEXT_LAYER = "TEXT_LAYER"
+    OCR = "OCR"
+
+
 @dataclass(frozen=True, slots=True)
 class ExtractedText:
     """Text recovered from a document."""
@@ -49,13 +68,34 @@ class ExtractedText:
     """Pages, where the format has them. Null for DOCX, which has no fixed
     pagination until it is rendered."""
 
+    source: TextSource = TextSource.TEXT_LAYER
+    confidence: float | None = None
+    """Mean confidence, 0 to 100, when the text came from OCR. Null otherwise.
 
-def extract_text(data: bytes, *, content_type: str) -> ExtractedText:
+    Null rather than 100, because a text layer has no confidence rather than
+    perfect confidence. Writing 100 would make the two indistinguishable to
+    everything downstream — the same mistake as recording an absent date as an
+    unknown one.
+    """
+
+
+def extract_text(
+    data: bytes,
+    *,
+    content_type: str,
+    ocr: OcrEngine | None = None,
+) -> ExtractedText:
     """Extract text from ``data``.
 
     Raises :class:`~jip_ai.AIError` — the shared classified-failure type, so the
     pipeline handles an extraction failure and a parsing failure through one
     path rather than two.
+
+    ``ocr`` is reached for **only** when the document turns out to have no
+    usable text layer. Recognition costs seconds of processor time per page and
+    a text layer is exact, so trying an engine speculatively would be slower and
+    worse at once. With no engine supplied, the behaviour is what it was before
+    OCR existed.
     """
     if content_type == PDF:
         extracted = _extract_pdf(data)
@@ -71,15 +111,85 @@ def extract_text(data: bytes, *, content_type: str) -> ExtractedText:
         )
 
     cleaned = _normalize(extracted.text)
-    if len(cleaned.strip()) < MINIMUM_USEFUL_CHARS:
+    if len(cleaned.strip()) >= MINIMUM_USEFUL_CHARS:
+        return ExtractedText(text=cleaned, page_count=extracted.page_count)
+
+    if content_type == PDF and ocr is not None:
+        return _read_with_ocr(data, ocr, page_count=extracted.page_count)
+
+    raise AIError(
+        AIFailureCode.CONTENT_UNAVAILABLE,
+        "No readable text was found in this document. If it is a scan or a "
+        "photo, upload a text-based PDF or a DOCX instead.",
+        details=f"recovered {len(cleaned.strip())} characters",
+    )
+
+
+def _read_with_ocr(data: bytes, ocr: OcrEngine, *, page_count: int | None) -> ExtractedText:
+    """Read the pages as pictures, because the file had nothing else to give.
+
+    Every failure below is ``CONTENT_UNAVAILABLE`` and therefore permanent, for
+    the reason the module opens with: a retry reads the same bytes.
+
+    **None of these messages may suggest uploading a text-based PDF.** That
+    sentence was true while this was the only path. Now that the pages have been
+    rendered and read, telling somebody to take a step already taken is worse
+    than saying nothing.
+    """
+    settings = get_settings()
+
+    try:
+        result = ocr.read(
+            rasterise(data, dpi=settings.ocr_dpi, max_pages=settings.ocr_max_pages),
+            languages=settings.ocr_languages,
+        )
+    except Exception as exc:
         raise AIError(
             AIFailureCode.CONTENT_UNAVAILABLE,
-            "No readable text was found in this document. If it is a scan or a "
-            "photo, upload a text-based PDF or a DOCX instead.",
-            details=f"recovered {len(cleaned.strip())} characters",
+            "This document could not be read as a scan.",
+            details=f"{type(exc).__name__}: {exc}",
+        ) from exc
+
+    cleaned = _normalize(result.text)
+    recovered = len(cleaned.strip())
+
+    if recovered < MINIMUM_USEFUL_CHARS:
+        raise AIError(
+            AIFailureCode.CONTENT_UNAVAILABLE,
+            "We read this as a scan and found no text on the pages. If they are "
+            "photographs, a straighter and sharper scan usually works.",
+            details=f"ocr recovered {recovered} characters",
         )
 
-    return ExtractedText(text=cleaned, page_count=extracted.page_count)
+    if result.confidence < settings.ocr_min_confidence:
+        # Refused rather than passed on with a warning. What comes next is a
+        # model call on text nobody has read, and a review screen full of
+        # confident sentences built from a bad transcript is more convincing and
+        # less useful than an error — the argument DEV-020 already makes about
+        # documents that are not resumes.
+        raise AIError(
+            AIFailureCode.CONTENT_UNAVAILABLE,
+            "We read this as a scan, and what came back was too unclear to use. "
+            "A sharper scan, or the original file if you still have it, would "
+            "work better.",
+            details=f"ocr confidence {result.confidence:.1f} over {recovered} characters",
+        )
+
+    logger.info(
+        "Recovered document text with OCR",
+        extra={
+            "engine": ocr.name,
+            "characters": recovered,
+            "confidence": round(result.confidence, 1),
+            "pages": len(result.pages),
+        },
+    )
+    return ExtractedText(
+        text=cleaned,
+        page_count=page_count,
+        source=TextSource.OCR,
+        confidence=result.confidence,
+    )
 
 
 def _extract_pdf(data: bytes) -> ExtractedText:
