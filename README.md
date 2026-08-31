@@ -131,18 +131,13 @@ flowchart TD
 ```
 
 **The dotted path is the point.** Model output enters through one boundary,
-arrives validated against a schema, and stops in a review table. Nothing on it
-reaches the scoring engine: `matcher.py` takes a profile snapshot and a list of
-requirements, and returns the same verdicts every time.
-
-`apps/` holds `web`, `api` and `worker`; `packages/` holds `ai-core`,
-`shared-types`, `prompts` and `config`.
+arrives schema-validated, and stops in a review table. None of it reaches the
+scoring engine.
 
 That the domain never imports `ai-core` is
 [a test](apps/api/tests/unit/test_domain_does_not_reach_a_provider.py), not a
-convention. It was written after this README claimed the boundary was enforced
-and a check found that nothing was enforcing it — it had simply been true so
-far, which is a different thing.
+convention — written after this file claimed the boundary was enforced and a
+check found that nothing was enforcing it.
 
 ## The parts worth reading
 
@@ -151,12 +146,18 @@ are the files where the thinking is:
 
 | | |
 |---|---|
-| [`application/matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine. **Deterministic and versioned — no model call anywhere in it.** Eight verdicts, including `NO_EVIDENCE`, which is excluded from the average rather than scored zero: an incomplete profile must not quietly lower the number. At **6.0.0**: nine real postings were read against it and moved it five majors, every one a defect rather than a rule change |
-| [`dev-011-results.md`](docs/development/dev-011-results.md) | Those nine postings, scored by the engine and by a person, and what came out of every disagreement |
-| [`application/resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, and classifies risk |
-| [`packages/ai-core`](packages/ai-core) | The provider boundary: JSON-schema constrained decoding, schema validation, retry classified by failure type, and a trace per attempt with token cost |
-| [`docs/adr/`](docs/adr) | Seven architecture decisions, each with the alternative that was rejected and why |
-| [`docs/development/known-issues.md`](docs/development/known-issues.md) | Every defect found, what caused it, and what was done. Including the ones that were embarrassing |
+| [`matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine, at 6.0.0. **Deterministic and versioned — no model call anywhere in it**, and eight verdicts rather than a percentage |
+| [`dev-011-results.md`](docs/development/dev-011-results.md) | Nine real postings, scored by the engine and by a person, and what came out of every disagreement |
+| [`resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, classifies risk |
+| [`packages/ai-core`](packages/ai-core) | The provider boundary: schema-constrained decoding, validation on the way back, retry by failure type, a trace per attempt with cost |
+| [`docs/adr/`](docs/adr) | Seven architecture decisions, each with the alternative that was rejected |
+| [`known-issues.md`](docs/development/known-issues.md) | Every defect found, its cause, the fix, and the test that now covers it |
+
+Two details from the matcher worth the click. `NO_EVIDENCE` is **excluded from
+the average rather than scored zero** — an incomplete profile must not quietly
+lower the number. And the nine calibration postings moved the engine five major
+versions without changing a single weight, cap or threshold: every one was a
+defect in the code rather than a rule that turned out to be wrong.
 
 ## Engineering
 
@@ -186,14 +187,14 @@ has a typed output schema, schema validation, a versioned prompt, a persisted
 run trace, and an evaluation fixture. Failures are classified: a permanent one
 is never retried, and a retry is never offered where it cannot work.
 
-**Verification that automated tests cannot do** is written down rather than
-assumed. [`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
-records what a person walked, on what date, and what it found: 95 checks so far.
+**Verification automated tests cannot do** is written down rather than assumed:
+[`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
+records what a person walked, when, and what it found — 95 checks so far.
 
-One run of it is the reason the file exists. Twelve stages were walked in a
-sitting and eleven turned up a defect the suite had missed — nearly every one a
-screen saying the wrong thing about a calculation that was correct. No unit or
-integration test can see that class of fault. A browser can, which is also why
+One sitting is why the file exists. Twelve stages walked, eleven turned up a
+defect the suite had missed, nearly every one a screen saying the wrong thing
+about a calculation that was right. No unit or integration test sees that class
+of fault. A browser does, which is also why
 [`tests/e2e`](tests/e2e) exists.
 
 ## Running it
@@ -231,42 +232,37 @@ build a profile, save a posting, read it into requirements, match it with
 evidence, tailor a résumé against the match, and track what happened. Fourteen
 screens, and every capability listed above is built rather than planned.
 
-**What is deliberately not claimed.** It is not deployed, and it has one user.
-It was built to be correct rather than to scale: there is no load testing, no
-multi-region anything, and no evidence about how it behaves with a thousand
-accounts, because none of that has been measured.
+**What is deliberately not claimed.** It is not deployed and it has one user.
+It was built to be correct rather than to scale: no load testing, and no
+evidence about how it behaves with a thousand accounts, because none of that
+has been measured.
 
-The two documents that say what is actually true are
-[`implementation-status.md`](docs/development/implementation-status.md) — what
-exists, and where it is thinner than it looks — and
-[`known-issues.md`](docs/development/known-issues.md) — every defect found, its
-cause, the fix, and the test that now covers it.
+[`implementation-status.md`](docs/development/implementation-status.md) says
+what exists and where it is thinner than it looks.
 
 ## How it was built
 
 Written with AI coding assistance, and worth saying plainly rather than leaving
 to be discovered.
 
-What that did **not** cover is the part this repository is mostly made of: the
-specifications came first and the architecture, the domain rules, the
-acceptance criteria and the verification were decided and written down before
-anything implemented them. The judgement calls are the documented ones —
-[`docs/adr/`](docs/adr) records what was rejected and why,
-[`dev-011-results.md`](docs/development/dev-011-results.md) is an engine
-disagreed with by hand nine times, and
-[`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
-is what a person walked and what it found.
+**The specifications came first**, which is checkable rather than asserted: the
+first commit in this repository is twelve specification documents, and the
+first domain model arrives three hours later. The architecture, the domain
+rules and the acceptance criteria were decided before anything implemented
+them, and the judgement calls are the documented ones —
+[`docs/adr/`](docs/adr) for what was rejected and why,
+[`dev-011-results.md`](docs/development/dev-011-results.md) for an engine
+disagreed with by hand nine times.
 
-The tests are the load-bearing part of working this way. An assistant that can
-produce a plausible wrong answer quickly makes verification the bottleneck, not
-typing — which is why the boundary test above exists, and why a claim in this
-file gets checked before it gets written.
+The tests are what makes working this way safe. An assistant that produces a
+plausible wrong answer quickly moves the bottleneck from typing to
+verification, which is why the boundary test above exists and why the claims on
+this page were checked before they were written.
 
 ## Documentation
 
-Twelve specification documents were written **before** the code and maintained
-alongside it, plus seven architecture decisions and the development tracking.
-Indexed in [`docs/`](docs).
+Twelve specification documents, seven architecture decisions, and the
+development tracking — indexed in [`docs/`](docs).
 
 Building on this with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
 what to read, how to verify, and the four things that will catch you out.
