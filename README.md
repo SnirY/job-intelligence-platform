@@ -4,8 +4,15 @@
 verified career profile with traceable evidence, and writes a tailored résumé
 that cannot make a claim your profile does not support.**
 
-A personal full-stack project: FastAPI, Next.js, PostgreSQL, Redis, Docker.
-~89,000 lines, 119 REST endpoints, 2,200+ automated tests.
+A personal full-stack project by one developer, July–August 2026: FastAPI,
+Next.js, PostgreSQL, Redis, Docker. ~89,000 lines, 119 REST endpoints, 2,233
+automated tests, 294 commits.
+
+**Short on time?** [`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py)
+is the scoring engine and has no model call in it;
+[`known-issues.md`](docs/development/known-issues.md) is every defect found and
+what was done about it. Those two say more about how this was built than the
+rest of this page.
 
 ![A job's requirements: the posting's own wording on the left, the system's
 reading of it on the right, each one typed and weighted.](docs/images/job-match.png)
@@ -14,9 +21,6 @@ reading of it on the right, each one typed and weighted.](docs/images/job-match.
 The reading is labelled as a reading — and the two are never merged.*
 
 ---
-
-> **Working on this with an AI agent?** Start at [`AGENTS.md`](AGENTS.md) —
-> what to read, how to verify, and the four things that will catch you out.
 
 ## The idea
 
@@ -72,6 +76,39 @@ why rows read `[demo]`.
 | ![The career profile screen, showing skills, experience and the evidence behind them.](docs/images/career-profile.png) | **The profile every verdict traces back to.** Nothing here arrives without a person approving it |
 | ![The discovery screen listing postings scanned from public job boards, awaiting review.](docs/images/discovery.png) | **Scanned from public boards**, and waiting. A scan finds candidates; only a person turns one into a job |
 
+## Architecture
+
+A modular monolith, layered so that the rules can be tested without a database
+and the model can be swapped without touching them.
+
+```mermaid
+flowchart TD
+    Web["Next.js web · 14 screens"] --> API["FastAPI · 119 endpoints<br/>no business logic"]
+    API --> App["Application · use cases"]
+    App --> Dom["Domain · matcher, truth guard, rules<br/>deterministic and versioned"]
+    Dom --> Inf["Infrastructure · persistence, storage, auth"]
+    Inf --> DB[("PostgreSQL")]
+    Inf --> Obj[("S3 / MinIO")]
+
+    App --> Queue["Redis + RQ"]
+    Queue --> Worker["worker"]
+    Worker --> App
+
+    App -. "typed request" .-> Core["packages/ai-core<br/>schema-constrained decoding, validation,<br/>retry by failure type, traced with cost"]
+    Core -. "a proposal, never a fact" .-> Review["review tables"]
+    Review -. "only a person promotes one" .-> Dom
+```
+
+**The dotted path is the point.** Model output enters through one boundary,
+arrives validated against a schema, and stops in a review table. Nothing on it
+reaches the scoring engine: `matcher.py` takes a profile snapshot and a list of
+requirements, and returns the same verdicts every time.
+
+`apps/` holds `web`, `api` and `worker`; `packages/` holds `ai-core`,
+`shared-types`, `prompts` and `config`. `ai-core` is a separate package rather
+than a module so that the import direction is enforced by packaging rather than
+by discipline — the domain cannot reach a provider even by accident.
+
 ## The parts worth reading
 
 If you are evaluating this as engineering work rather than as a product, these
@@ -79,11 +116,11 @@ are the files where the thinking is:
 
 | | |
 |---|---|
-| [`application/matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine. **Deterministic and versioned — no model call anywhere in it.** Eight verdicts, including `NO_EVIDENCE`, which is excluded from the average rather than scored zero: an incomplete profile must not quietly lower the number. At **5.0.0**: ten real postings were read against it over two days and moved it five majors, every one a defect rather than a rule |
-| [`dev-011-results.md`](docs/development/dev-011-results.md) | Those ten postings, scored by the engine and by a person, with the fifteen things that came out of the disagreement |
+| [`application/matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine. **Deterministic and versioned — no model call anywhere in it.** Eight verdicts, including `NO_EVIDENCE`, which is excluded from the average rather than scored zero: an incomplete profile must not quietly lower the number. At **6.0.0**: nine real postings were read against it and moved it five majors, every one a defect rather than a rule change |
+| [`dev-011-results.md`](docs/development/dev-011-results.md) | Those nine postings, scored by the engine and by a person, and what came out of every disagreement |
 | [`application/resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, and classifies risk |
 | [`packages/ai-core`](packages/ai-core) | The provider boundary: JSON-schema constrained decoding, schema validation, retry classified by failure type, and a trace per attempt with token cost |
-| [`docs/adr/`](docs/adr) | Six architecture decisions, each with the alternative that was rejected and why |
+| [`docs/adr/`](docs/adr) | Seven architecture decisions, each with the alternative that was rejected and why |
 | [`docs/development/known-issues.md`](docs/development/known-issues.md) | Every defect found, what caused it, and what was done. Including the ones that were embarrassing |
 
 ## Engineering
@@ -117,10 +154,13 @@ is never retried, and a retry is never offered where it cannot work.
 
 **Verification that automated tests cannot do** is written down rather than
 assumed. [`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
-records what a person walked, on what date, and what it found. Twelve stages have
-been walked and eleven found a defect the suite did not — nearly all of them a
-screen saying the wrong thing about a correct calculation. That ratio is why the
-file exists.
+records what a person walked, on what date, and what it found: 95 checks so far.
+
+One run of it is the reason the file exists. Twelve stages were walked in a
+sitting and eleven turned up a defect the suite had missed — nearly every one a
+screen saying the wrong thing about a calculation that was correct. No unit or
+integration test can see that class of fault. A browser can, which is also why
+[`tests/e2e`](tests/e2e) exists.
 
 ## Running it
 
@@ -150,55 +190,30 @@ The AI features need an API key in `.env`; everything else runs without one. For
 host-process development, the checks, and the Windows notes, see
 [`local-environment.md`](docs/development/local-environment.md).
 
-## Layout
-
-```text
-apps/
-    web/        Next.js 15 · TypeScript · Tailwind · shadcn/ui
-    api/        FastAPI · SQLAlchemy · Alembic
-    worker/     RQ background worker
-packages/
-    config/         shared settings and logging
-    shared-types/   TypeScript API contracts
-    ai-core/        provider abstraction, routing, retry, tracing
-    prompts/        versioned prompt registry
-docs/           specification, ADRs, and development tracking
-tests/evals/    AI evaluation fixtures, offline by default
-```
-
 ## Status
 
-The full loop works end to end. Phases 0–10 are complete; Phase 11, production
-hardening, is in progress.
+**The whole chain works end to end**, on a real profile against real postings:
+build a profile, save a posting, read it into requirements, match it with
+evidence, tailor a résumé against the match, and track what happened. Fourteen
+screens, and every capability listed above is built rather than planned.
 
-Deliberately not claimed: this is not deployed and has one user. It is a
-personal project built to be correct rather than to scale, and the tracking
-documents say plainly what is unverified —
-[`implementation-status.md`](docs/development/implementation-status.md) for
-capability, [`known-issues.md`](docs/development/known-issues.md) for what is
-still open.
+**What is deliberately not claimed.** It is not deployed, and it has one user.
+It was built to be correct rather than to scale: there is no load testing, no
+multi-region anything, and no evidence about how it behaves with a thousand
+accounts, because none of that has been measured.
+
+The two documents that say what is actually true are
+[`implementation-status.md`](docs/development/implementation-status.md) — what
+exists, and where it is thinner than it looks — and
+[`known-issues.md`](docs/development/known-issues.md), which is every defect
+found and what was done about it, including the ones that were embarrassing.
 
 ## Documentation
 
-Twelve specification documents were written before the code and have been
-maintained alongside it. They are the part of this repository I would point at
-first.
+Twelve specification documents were written **before** the code and maintained
+alongside it, plus seven architecture decisions and the development tracking.
+Indexed in [`docs/`](docs) — and they are the part of this repository I would
+point at first.
 
-- [`00-product-vision.md`](docs/00-product-vision.md) — vision and differentiation
-- [`01-product-requirements.md`](docs/01-product-requirements.md) — scope and MVP
-- [`02-user-flows.md`](docs/02-user-flows.md) — journeys
-- [`03-domain-model.md`](docs/03-domain-model.md) — entities and data rules
-- [`04-system-architecture.md`](docs/04-system-architecture.md) — architecture
-- [`05-ai-and-matching.md`](docs/05-ai-and-matching.md) — AI boundaries and the matching model
-- [`06-resume-engine.md`](docs/06-resume-engine.md) — career truth and tailoring
-- [`07-applications-and-career-intelligence.md`](docs/07-applications-and-career-intelligence.md) — tracker and analytics
-- [`08-ui-ux.md`](docs/08-ui-ux.md) — UI direction
-- [`09-mvp-roadmap.md`](docs/09-mvp-roadmap.md) — phased plan
-- [`10-api-contracts.md`](docs/10-api-contracts.md) — API contracts
-- [`11-engineering-standards.md`](docs/11-engineering-standards.md) — coding and testing rules
-- [`12-project-tracking.md`](docs/12-project-tracking.md) — continuity process
-
-Two written for a redesign, and useful on their own:
-[`ui-invariants.md`](docs/development/ui-invariants.md) — the rules a screen must
-keep no matter how it looks — and
-[`screen-inventory.md`](docs/development/screen-inventory.md).
+Building on this with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
+what to read, how to verify, and the four things that will catch you out.
