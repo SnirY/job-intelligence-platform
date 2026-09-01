@@ -138,6 +138,12 @@ class SourceDocument(TimestampMixin, UserOwnedMixin, Base):
     Null when the text came from a text layer, because a text layer has no
     confidence rather than perfect confidence. Storing 100 would make the two
     indistinguishable to every query that comes later.
+
+    **Diagnostic, and not shown to anybody.** DEV-084: the figure rises as the
+    read gets worse, because it averages the words the engine emitted and the
+    ones it abandoned never enter it. Kept because it is real data about a real
+    run and useful when investigating one; not displayed, because a reader would
+    take it for a quality score and it is not one.
     """
 
     __table_args__ = (

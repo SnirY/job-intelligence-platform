@@ -180,6 +180,48 @@ def test_mean_confidence_is_not_a_proxy_for_accuracy(engine: TesseractEngine) ->
     )
 
 
+def test_a_confident_read_can_be_one_that_gave_up(engine: TesseractEngine) -> None:
+    """Why the mean lies, measured rather than reasoned about.
+
+    The page holds 40 words. Under two amounts of damage:
+
+        skew 2.5° blur 3.5    CER 0.4549    confidence 86.9    25 words emitted
+        skew 3.5° blur 4.5    CER 0.1979    confidence 53.4    40 words emitted
+
+    The first **dropped fifteen words and was confident about the rest**. The
+    second kept every word and was unsure of many. Character error counts the
+    fifteen as deletions; the confidence average never sees them, because a word
+    the engine abandoned produces no row to average.
+
+    A probe of the raw word table confirmed there is no second signal hiding
+    there: Tesseract emits no row at all for a region it failed to read, so the
+    loss is invisible to every statistic computed over what it did emit. The
+    only evidence of missing content is how little came back — which is what
+    `MINIMUM_USEFUL_CHARS` already is, crudely.
+
+    This is the mechanism behind DEV-084, and it is asserted so that a future
+    reader who wants to display the confidence figure has to argue with a
+    failing test rather than with a comment.
+    """
+    confident = read_at(engine, 300, skew_degrees=2.5, blur_radius=3.5)
+    unsure = read_at(engine, 300, skew_degrees=3.5, blur_radius=4.5)
+
+    truth_words = len(TRUTH.split())
+    confident_words = len(confident.text.split())
+    unsure_words = len(unsure.text.split())
+
+    print(f"\n  truth {truth_words} words")
+    print(f"  confident read  conf {confident.confidence:.1f}  {confident_words} words emitted")
+    print(f"  unsure read     conf {unsure.confidence:.1f}  {unsure_words} words emitted")
+
+    assert confident.confidence > unsure.confidence
+    assert confident_words < unsure_words, (
+        "The more confident read no longer emits fewer words, so the explanation "
+        "for why mean confidence misleads no longer holds on this fixture. "
+        "DEV-084 and the docstring on `ocr_confidence` need revisiting."
+    )
+
+
 def test_the_gate_still_accepts_a_badly_scanned_resume(engine: TesseractEngine) -> None:
     """The risk this phase named in advance, and the answer is no.
 
