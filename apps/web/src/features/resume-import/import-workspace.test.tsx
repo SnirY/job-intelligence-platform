@@ -296,11 +296,16 @@ describe("review", () => {
     expect(screen.queryByText(/scan of the pages/i)).not.toBeInTheDocument();
   });
 
-  it("says the text came from a scan, and how clear it was", async () => {
+  it("says the text came from a scan, and never quotes a confidence at it", async () => {
     /**
      * Beside the model line, not above it as a warning. Which of the two paths
      * produced this text is provenance, and the person confirming these
      * proposals is the one who needs it.
+     *
+     * DEV-084: the percentage is deliberately absent. The engine's mean word
+     * confidence rises as the read gets worse, because it averages the words
+     * that were emitted and a word the engine gave up on never enters it. A
+     * figure of 87 is on the page it read worst.
      */
     vi.stubGlobal(
       "fetch",
@@ -313,7 +318,8 @@ describe("review", () => {
     renderWorkspace(<ImportWorkspace />);
 
     expect(await screen.findByText(/scan of the pages/i)).toBeInTheDocument();
-    expect(screen.getByText(/82% clear/)).toBeInTheDocument();
+    expect(screen.queryByText(/82/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/clear/i)).not.toBeInTheDocument();
     // Still says which model read it. The two facts are different questions
     // and one does not replace the other.
     expect(screen.getByText(/Read from test-model/)).toBeInTheDocument();

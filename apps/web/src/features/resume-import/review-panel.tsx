@@ -113,14 +113,19 @@ export function ReviewPanel({ sourceDocument, extraction }: ReviewPanelProps) {
               came from is provenance, in the same voice as which model read it
               — and the person confirming these proposals is the one who needs
               it. An icon as well as the words, because colour alone carries
-              nothing for a reader who cannot see it (docs/08-ui-ux.md). */}
+              nothing for a reader who cannot see it (docs/08-ui-ux.md).
+
+              DEV-084: this used to end "82% clear", from the engine's mean word
+              confidence. Measurement showed that figure is highest exactly when
+              the read is worst — it averages the words the engine emitted, so
+              the ones it gave up on never enter it. A number a reader takes for
+              a quality score, which rises as quality falls, is worse than no
+              number. It is still stored; it is no longer quoted. */}
             {sourceDocument.text_source === "OCR" && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <ScanLine aria-hidden className="size-3.5" />
-                Read from a scan of the pages
-                {sourceDocument.ocr_confidence !== null &&
-                  `, ${Math.round(sourceDocument.ocr_confidence)}% clear`}
-                . Numbers and names are where a scan goes wrong.
+                Read from a scan of the pages, not from text inside the file. Numbers and names are
+                where a scan goes wrong.
               </p>
             )}
           </div>
