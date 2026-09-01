@@ -115,6 +115,7 @@ addopts = "-ra --strict-markers --strict-config"
 markers = [
   "integration: requires live PostgreSQL and/or Redis (see docs/development/local-environment.md)",
   "live_ai: calls a real model provider; skipped unless JIP_RUN_AI_EVALS=1 (see tests/evals/README.md)",
+  "ocr: needs the tesseract binary, which the API image installs and a host usually does not",
 ]
 filterwarnings = ["error"]
 
