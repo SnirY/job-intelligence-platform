@@ -6,8 +6,9 @@ import {
   type ConfirmDecision,
   type Extraction,
   type ExtractionItem,
+  type SourceDocument,
 } from "@jip/shared-types";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, ScanLine } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,8 @@ import {
 import { childrenOf, isDecided, topLevelOfType } from "@/features/resume-import/candidates";
 
 interface ReviewPanelProps {
-  documentId: string;
+  /** Named in full rather than `document`, which would shadow the global. */
+  sourceDocument: SourceDocument;
   extraction: Extraction;
 }
 
@@ -32,8 +34,8 @@ interface ReviewPanelProps {
  * `docs/10-api-contracts.md` means by "AI extraction must not write verified
  * profile data directly".
  */
-export function ReviewPanel({ documentId, extraction }: ReviewPanelProps) {
-  const confirm = useConfirmExtraction(documentId);
+export function ReviewPanel({ sourceDocument, extraction }: ReviewPanelProps) {
+  const confirm = useConfirmExtraction(sourceDocument.id);
   const pending = useMemo(
     () => extraction.items.filter((item) => !isDecided(item)),
     [extraction.items],
@@ -106,6 +108,21 @@ export function ReviewPanel({ documentId, extraction }: ReviewPanelProps) {
               <Info aria-hidden className="size-3.5" />
               Read from {extraction.model} using {extraction.prompt_version}.
             </p>
+
+            {/* Beside the model line, not above it as a warning. Where the text
+              came from is provenance, in the same voice as which model read it
+              — and the person confirming these proposals is the one who needs
+              it. An icon as well as the words, because colour alone carries
+              nothing for a reader who cannot see it (docs/08-ui-ux.md). */}
+            {sourceDocument.text_source === "OCR" && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ScanLine aria-hidden className="size-3.5" />
+                Read from a scan of the pages
+                {sourceDocument.ocr_confidence !== null &&
+                  `, ${Math.round(sourceDocument.ocr_confidence)}% clear`}
+                . Numbers and names are where a scan goes wrong.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

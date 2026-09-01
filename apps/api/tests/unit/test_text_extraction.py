@@ -14,7 +14,8 @@ import pytest
 
 from jip_ai import AIError, AIFailureCode
 from jip_api.application.documents.upload import DOCX, PDF
-from jip_api.infrastructure.extraction import TextSource, extract_text
+from jip_api.domain.documents.models import TextSource
+from jip_api.infrastructure.extraction import extract_text
 from jip_api.infrastructure.extraction.ocr import OcrPage, OcrResult
 from tests.document_fixtures import (
     RESUME_LINES,

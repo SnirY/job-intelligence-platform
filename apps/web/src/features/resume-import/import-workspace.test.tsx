@@ -27,6 +27,8 @@ function document(overrides: Record<string, unknown> = {}) {
     size_bytes: 1024,
     status: "PARSED",
     extraction_error: null,
+    text_source: "TEXT_LAYER",
+    ocr_confidence: null,
     created_at: "2026-07-26T00:00:00Z",
     ...overrides,
   };
@@ -279,6 +281,43 @@ describe("review", () => {
       }),
     ]),
   };
+
+  it("says nothing about scanning when the text came from the file itself", async () => {
+    /**
+     * The absence that matters. A text layer is exact, so there is nothing to
+     * caveat — and a provenance line on every import is a line people stop
+     * reading before the one import where it counts.
+     */
+    vi.stubGlobal("fetch", routes(review));
+
+    renderWorkspace(<ImportWorkspace />);
+
+    expect(await screen.findByText(/Read from test-model/)).toBeInTheDocument();
+    expect(screen.queryByText(/scan of the pages/i)).not.toBeInTheDocument();
+  });
+
+  it("says the text came from a scan, and how clear it was", async () => {
+    /**
+     * Beside the model line, not above it as a warning. Which of the two paths
+     * produced this text is provenance, and the person confirming these
+     * proposals is the one who needs it.
+     */
+    vi.stubGlobal(
+      "fetch",
+      routes({
+        ...review,
+        document: document({ text_source: "OCR", ocr_confidence: 82.4 }),
+      }),
+    );
+
+    renderWorkspace(<ImportWorkspace />);
+
+    expect(await screen.findByText(/scan of the pages/i)).toBeInTheDocument();
+    expect(screen.getByText(/82% clear/)).toBeInTheDocument();
+    // Still says which model read it. The two facts are different questions
+    // and one does not replace the other.
+    expect(screen.getByText(/Read from test-model/)).toBeInTheDocument();
+  });
 
   it("presents candidates as proposals rather than profile data", async () => {
     vi.stubGlobal("fetch", routes(review));

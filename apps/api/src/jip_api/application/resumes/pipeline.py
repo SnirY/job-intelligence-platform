@@ -181,6 +181,8 @@ def _ensure_text(
         raise
 
     document.extracted_text = extracted.text
+    document.text_source = extracted.source
+    document.ocr_confidence = extracted.confidence
     document.extraction_error = None
     document.status = DocumentStatus.EXTRACTED
     session.commit()
