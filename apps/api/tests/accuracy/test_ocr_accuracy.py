@@ -78,7 +78,7 @@ def engine() -> TesseractEngine:
     except Exception as error:  # pragma: no cover - depends on the host
         pytest.skip(f"tesseract is not installed here: {error}")
 
-    return TesseractEngine()
+    return TesseractEngine(budget_seconds=120.0)
 
 
 def read_at(engine: TesseractEngine, dpi: int, **damage: float) -> OcrResult:

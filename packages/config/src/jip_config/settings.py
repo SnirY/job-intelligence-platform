@@ -211,6 +211,20 @@ class Settings(BaseSettings):
     Hebrew is here because the users are, and because it is the reason ADR-0008
     chose Tesseract over the alternative that installs more cleanly. Both packs
     must be present in the image or the engine refuses the whole request.
+
+    **Both, and in this order, because a real Hebrew CV was measured against the
+    alternatives.** With `heb` alone the Latin on the page is destroyed --
+    `<address> | Linkedin | GitHub` came back as
+    `ח60. !3 טוח | סטושוס`, because every glyph is forced through a Hebrew
+    model. With both packs that line is exact. The Hebrew character count looks
+    higher for `heb` alone only because the mangled Latin is counted as Hebrew.
+
+    Known limitation, from the same measurement: **line order inside an RTL
+    paragraph is unreliable.** The sentences come back complete and the entities
+    survive, but their vertical order can reverse, and no page segmentation mode
+    changed it. The consumer here is a language model extracting skills, dates
+    and employers, which tolerates that; a feature needing the prose in order
+    would not.
     """
 
     ocr_max_pages: int = 10
@@ -219,6 +233,33 @@ class Settings(BaseSettings):
     Recognition costs seconds of processor time per page in a worker that has
     other work waiting. A resume running past this is either not a resume, or
     not one whose eleventh page decides anything.
+    """
+
+    ocr_budget_seconds: float = 120.0
+    """Total processor time recognition may spend on one document.
+
+    **Measured, after a photograph took 823 seconds to produce four
+    characters.** Four real scans read at 300 DPI:
+
+        two-column CV, 2 pages     4.9s
+        flatbed scan, 1 page       3.2s
+        Hebrew CV, 1 page          4.4s
+        phone photograph, 2 pages  823.0s  ->  "HAAN"
+
+    A page Tesseract cannot segment does not fail. It searches, and it searches
+    for as long as it is allowed to -- roughly seven minutes for one page here,
+    on work that was always going to be refused. Nothing bounded it: DEV-085.
+
+    120 seconds is twenty-five times the worst honest reading above and a fifth
+    of what that photograph cost. Spent across pages rather than per page, so a
+    document cannot multiply it by ten; when it runs out the engine returns what
+    it has, and `MINIMUM_USEFUL_CHARS` decides whether that was enough.
+
+    **Approximate, not exact.** Killing the subprocess takes its own time, and
+    the overshoot is a fixed cost rather than a proportional one: the same
+    photograph finished in 121.9s against this budget and 40.3s against a
+    30-second one. Size the number for the ceiling you want, not for a deadline
+    you need met to the second. A good scan is untouched -- 2.1s, unchanged.
     """
 
     ocr_min_confidence: float = 45.0

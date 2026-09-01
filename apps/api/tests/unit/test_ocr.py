@@ -13,7 +13,13 @@ from io import BytesIO
 
 import pytest
 
-from jip_api.infrastructure.extraction.ocr import OcrPage, OcrResult, get_ocr_engine, rasterise
+from jip_api.infrastructure.extraction.ocr import (
+    OcrPage,
+    OcrResult,
+    TesseractEngine,
+    get_ocr_engine,
+    rasterise,
+)
 from tests.document_fixtures import RESUME_LINES, pdf_bytes
 
 # --- The document-level confidence figure --------------------------------------
@@ -112,3 +118,53 @@ def test_no_engine_when_ocr_is_switched_off(monkeypatch: pytest.MonkeyPatch) -> 
     get_settings.cache_clear()
 
     assert get_ocr_engine() is None
+
+
+# --- The time budget ------------------------------------------------------------
+
+NOT_AN_IMAGE = b"this is not a png"
+"""Handed to the engine on purpose.
+
+Anything that actually opens it raises, which is how the tests below tell
+"stopped without looking" from "looked and found nothing".
+"""
+
+
+def test_a_spent_budget_stops_before_the_engine_is_touched() -> None:
+    """DEV-085. A page Tesseract cannot segment does not fail, it searches.
+
+    A photograph of a CV spent 823 seconds across two pages and produced four
+    characters. Nothing bounded it. The budget is checked before any work on a
+    page, and the proof is that bytes which are not an image come back as an
+    empty result rather than as the error that opening them would raise.
+    """
+    result = TesseractEngine(budget_seconds=0).read([NOT_AN_IMAGE], languages="eng")
+
+    assert result.pages == ()
+    assert result.text == ""
+    assert result.confidence == 0.0
+
+
+def test_with_time_left_it_really_does_try() -> None:
+    """The other half, without which the test above passes for the wrong reason.
+
+    A budget check that always fired would look identical from the outside, so
+    this asserts the same input is attempted when there is time — and fails on
+    the image, which is where it should fail.
+    """
+    from PIL import UnidentifiedImageError
+
+    with pytest.raises(UnidentifiedImageError):
+        TesseractEngine(budget_seconds=60).read([NOT_AN_IMAGE], languages="eng")
+
+
+def test_the_budget_covers_the_document_not_each_page() -> None:
+    """Spent across pages, so ten of them cannot multiply it by ten.
+
+    Two pages, no time: neither is attempted, and the result is empty rather
+    than half-read. A per-page timeout would have allowed a ten-page document
+    ten times the budget, which is the shape of the failure being bounded.
+    """
+    result = TesseractEngine(budget_seconds=0).read([NOT_AN_IMAGE, NOT_AN_IMAGE], languages="eng")
+
+    assert result.pages == ()
