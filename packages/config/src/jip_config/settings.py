@@ -224,10 +224,25 @@ class Settings(BaseSettings):
     ocr_min_confidence: float = 45.0
     """Below this the read is refused rather than passed on.
 
-    **A first guess, and marked as one.** Tesseract's mean word confidence on a
-    reasonable scan sits well above this and on noise well below it, but the gap
-    has not been measured on real resumes yet. Phase 14's third slice calibrates
-    it; until then it is set where it can only reject the obviously unusable.
+    **A backstop against a page of noise, not a quality gate**, and measurement
+    is why. `tests/accuracy/test_ocr_accuracy.py` read the same page under two
+    amounts of damage:
+
+        skew 2.5° blur 3.5    CER 0.4549    confidence 86.9
+        skew 3.5° blur 4.5    CER 0.1979    confidence 53.4
+
+    The worse read reported the higher confidence, and not by accident. Mean
+    word confidence averages the words the engine chose to emit; when it is
+    badly confused it drops the hard ones entirely, and a dropped word wrecks
+    the error rate while never entering the average. **It measures the words
+    kept, not the words lost.**
+
+    So this number cannot rank a good read against a mediocre one, and raising
+    it would reject usable scans as readily as bad ones. It stays where it can
+    only catch a page that came back as noise. The real protection is
+    `MINIMUM_USEFUL_CHARS` above it and the review screen below it; a future
+    version wanting a genuine signal should count the words *below* a threshold
+    rather than average all of them.
     """
 
     # --- AI ---
