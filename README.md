@@ -58,7 +58,11 @@ Build a profile  →  Save a job  →  Read the posting  →  Match with evidenc
 ```
 
 - **Career profile** — skills, experience, projects, education, preferences,
-  built by hand or imported from a résumé PDF and reviewed proposal by proposal.
+  built by hand or imported from a résumé and reviewed proposal by proposal.
+- **Document ingestion** — a PDF's text layer where there is one, and OCR where
+  there is not, so a scan or a phone photograph is read rather than refused.
+  Which path ran is stored and shown, because text recognised from a picture is
+  not the same evidence as text lifted from a file.
 - **Job intelligence** — a posting parsed into typed requirements with an
   importance the model must not overstate, plus role family and seniority.
 - **Matching** — requirement-level verdicts, each linked to the evidence behind
@@ -125,6 +129,9 @@ flowchart TD
     Queue --> Worker["worker"]
     Worker --> App
 
+    App --> Extract["extraction · text layer,<br/>else OcrEngine → Tesseract"]
+    Extract --> App
+
     App -. "typed request" .-> Core["packages/ai-core<br/>schema-constrained decoding, validation,<br/>retry by failure type, traced with cost"]
     Core -. "a proposal, never a fact" .-> Review["review tables"]
     Review -. "only a person promotes one" .-> Dom
@@ -133,6 +140,11 @@ flowchart TD
 **The dotted path is the point.** Model output enters through one boundary,
 arrives schema-validated, and stops in a review table. None of it reaches the
 scoring engine.
+
+OCR sits behind the same kind of seam
+([ADR-0008](docs/adr/0008-ocr-behind-an-engine-interface.md)): an `OcrEngine`
+protocol takes page bitmaps and returns text, and the pipeline does not know
+which engine it has. Tesseract is the first implementation, not the design.
 
 That the domain never imports `ai-core` is
 [a test](apps/api/tests/unit/test_domain_does_not_reach_a_provider.py), not a
@@ -150,7 +162,8 @@ are the files where the thinking is:
 | [`dev-011-results.md`](docs/development/dev-011-results.md) | Nine real postings, scored by the engine and by a person, and what came out of every disagreement |
 | [`resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, classifies risk |
 | [`packages/ai-core`](packages/ai-core) | The provider boundary: schema-constrained decoding, validation on the way back, retry by failure type, a trace per attempt with cost |
-| [`docs/adr/`](docs/adr) | Seven architecture decisions, each with the alternative that was rejected |
+| [`tests/accuracy/test_ocr_accuracy.py`](apps/api/tests/accuracy/test_ocr_accuracy.py) | OCR measured rather than asserted — character and word error rates against generated ground truth, and the finding that retired a shipped number |
+| [`docs/adr/`](docs/adr) | Eight architecture decisions, each with the alternative that was rejected |
 | [`known-issues.md`](docs/development/known-issues.md) | Every defect found, its cause, the fix, and the test that now covers it |
 
 Two details from the matcher worth the click. `NO_EVIDENCE` is **excluded from
@@ -161,19 +174,21 @@ defect in the code rather than a rule that turned out to be wrong.
 
 ## Engineering
 
-**Tests.** 2,200+ across three layers:
+**Tests.** 2,300+ across three layers:
 
 | | |
 |---|---|
-| Backend unit + offline AI evaluations | 1,047 |
-| Integration, against real PostgreSQL and Redis | 615 |
-| Frontend | 571 |
+| Backend unit + offline AI evaluations | 1,118 |
+| Integration, against real PostgreSQL and Redis | 618 |
+| Frontend | 573 |
 
-Plus a live-model evaluation suite that runs on request, because it costs money.
+Plus a live-model evaluation suite that runs on request, because it costs
+money, and an OCR accuracy suite that needs the Tesseract binary and skips with
+a reason where it is absent.
 
 **Checks**, as a GitHub Actions workflow on every pull request, and as
 `python scripts/run_checks.py` locally — the same set in the same order, so a
-failure is found before the push rather than after it: `mypy --strict` over 315
+failure is found before the push rather than after it: `mypy --strict` over 327
 files, TypeScript `strict` with `noUncheckedIndexedAccess`, ruff, eslint,
 prettier, an Alembic `upgrade head → downgrade base` round-trip, and a Docker
 Compose stack brought up from scratch.
@@ -186,6 +201,27 @@ as a claim about its quality.
 has a typed output schema, schema validation, a versioned prompt, a persisted
 run trace, and an evaluation fixture. Failures are classified: a permanent one
 is never retried, and a retry is never offered where it cannot work.
+
+**Measured, and it changed the answer.** The OCR path shipped a line on the
+review screen reading *"82% clear"*, taken from the engine's mean word
+confidence. Building the accuracy suite showed the figure does not mean that:
+
+| condition | character error rate | mean confidence | words emitted |
+|---|---|---|---|
+| skew 2.5°, blur 3.5 | 0.45 | 86.9 | 25 of 40 |
+| skew 3.5°, blur 4.5 | 0.20 | 53.4 | 40 of 40 |
+
+**The worse read reported the higher confidence.** A mean averages the words
+the engine emitted, and a badly confused engine abandons the hard ones — an
+abandoned word lands in the error rate as a deletion and nowhere in the mean.
+The figure measured the words kept, not the words lost. No statistic over that
+output can see the loss, so the number was removed rather than replaced.
+
+Two more things the measurement produced. Accuracy does not degrade with
+resolution, it falls off a cliff — flawless from 300 DPI down to 100, then 0.54
+at 50 and nothing at 40. And the first version of the accuracy test measured
+nothing at all: it compared 300 DPI against 120, both scored perfectly, and it
+failed as `0.0 > 0.0`.
 
 **Verification automated tests cannot do** is written down rather than assumed:
 [`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
