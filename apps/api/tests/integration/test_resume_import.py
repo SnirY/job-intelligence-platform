@@ -32,6 +32,7 @@ from jip_api.domain.documents.models import DocumentStatus, SourceDocument
 from jip_api.domain.processing.models import ProcessingJob, ProcessingJobStatus
 from jip_api.infrastructure.auth.oidc import reset_verifier_cache
 from jip_api.infrastructure.db.session import new_session, reset_engine_cache
+from jip_api.infrastructure.extraction.ocr import OcrPage, OcrResult
 from jip_api.infrastructure.tasks.dispatcher import reset_task_caches
 from jip_config import get_settings
 from tests.auth_fixtures import AUTHORIZED_PARTY, ISSUER, TokenFactory, serve_jwks
@@ -196,11 +197,16 @@ def run_pipeline(
     storage: InMemoryStorage,
     job_id: str,
     responses: list[Any] | None = None,
+    ocr: Any = None,
 ) -> Any:
     """Drive the pipeline directly, as the worker would.
 
     A separate session, because the worker gets one — which is also what makes
     the commit-per-step behaviour observable.
+
+    `ocr` is what `run_resume_import` resolves from `get_ocr_engine()`. Left as
+    `None` here by default, which is exactly what a machine without Tesseract
+    installed gets, and therefore what most of these tests should exercise.
     """
     provider = FakeLLMProvider(responses if responses is not None else parse_sections())
     router = build_router(
@@ -221,6 +227,7 @@ def run_pipeline(
                 job=job,
                 max_input_chars=60_000,
                 max_attempts=1,
+                ocr=ocr,
             )
         except AIError as error:
             session.rollback()
@@ -348,6 +355,119 @@ def test_the_pipeline_extracts_parses_and_stores(
     # The set of four, since DEV-017. Each `ai_runs` row still names the
     # section prompt that produced it — asserted in `test_ai_runs_are_recorded`.
     assert review["extraction"]["prompt_version"] == "resume_sections_v1"
+
+
+class FakeOcrEngine:
+    """Reads whatever it was told to read, and remembers being asked.
+
+    Tesseract is a system binary and is not installed on most machines that run
+    this suite, so the real one cannot be a condition of the chain being
+    tested. What matters at this level is not how well a page is recognised —
+    `tests/accuracy` measures that against the real engine — but that the
+    string it produces travels the whole way: through the resume gate, through
+    the parser, into candidates, onto the review payload, and that where it
+    came from is recorded beside it.
+    """
+
+    name = "fake"
+
+    def __init__(self, text: str, confidence: float = 91.5) -> None:
+        self.text = text
+        self.confidence = confidence
+        self.pages: list[bytes] = []
+
+    def read(self, pages: Any, *, languages: str) -> OcrResult:
+        # Drained on purpose: the iterable is the rasteriser, and a test that
+        # never consumed it would pass without a page ever being rendered.
+        self.pages = list(pages)
+        return OcrResult(pages=(OcrPage(text=self.text, confidence=self.confidence),))
+
+
+def test_a_scanned_resume_reaches_the_review_screen(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """Phase 14, acceptance criterion 1, and the only test that covers the chain.
+
+    Everything else about OCR is measured in isolation: the engine reads a page,
+    the metrics say how well. None of it establishes that a document with no
+    text layer survives upload, storage, the queue, extraction, the resume gate,
+    the parser and the review endpoint — which is the thing a user actually
+    does.
+
+    Nothing in the pipeline treats OCR text differently once it exists; that was
+    the point of putting the whole feature behind one branch. This is the test
+    that says so out loud, and would fail if a later change stopped threading
+    the engine through.
+    """
+    data = upload(client, factory, data=pdf_without_text_layer())
+    engine = FakeOcrEngine("\n".join(RESUME_LINES))
+
+    result = run_pipeline(storage, data["processing_job_id"], ocr=engine)
+
+    # The pages were really rendered rather than an empty generator handed over.
+    assert engine.pages, "the rasteriser was never drained"
+    assert engine.pages[0].startswith(b"\x89PNG")
+
+    # And the same five candidates a text-layer resume produces.
+    assert result.candidate_count == 5
+
+    review = client.get(
+        f"{BASE}/imports/{data['source_document_id']}/extraction", headers=auth(factory, ALICE)
+    ).json()["data"]
+
+    assert review["document"]["status"] == "PARSED"
+    assert review["job"]["status"] == ProcessingJobStatus.COMPLETED
+    assert review["extraction"]["items"], "a review screen with nothing on it"
+
+
+def test_the_review_payload_says_the_text_came_from_a_scan(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """Provenance survives the whole journey, not just the extraction step.
+
+    Slice 2 wrote these two columns and slice 4 decided what the screen does
+    with them. This is the join between: the value the pipeline stored is the value
+    the endpoint serves, so the review screen is deciding on a fact rather than
+    on a default.
+    """
+    data = upload(client, factory, data=pdf_without_text_layer())
+
+    run_pipeline(
+        storage,
+        data["processing_job_id"],
+        ocr=FakeOcrEngine("\n".join(RESUME_LINES), confidence=88.25),
+    )
+
+    document = client.get(
+        f"{BASE}/imports/{data['source_document_id']}/extraction", headers=auth(factory, ALICE)
+    ).json()["data"]["document"]
+
+    assert document["text_source"] == "OCR"
+    assert document["ocr_confidence"] == 88.25
+
+
+def test_a_text_layer_is_recorded_as_one_even_with_an_engine_available(
+    client: TestClient, factory: TokenFactory, storage: InMemoryStorage
+) -> None:
+    """The other half, without which the test above proves only that a column exists.
+
+    A confidence of null rather than 100 is the distinction the column was added
+    for: a text layer has no confidence, it is not confident. Anything reading
+    this later to ask "which documents were we unsure about" gets a different
+    and correct answer because of it.
+    """
+    data = upload(client, factory)
+    engine = FakeOcrEngine("\n".join(RESUME_LINES))
+
+    run_pipeline(storage, data["processing_job_id"], ocr=engine)
+
+    document = client.get(
+        f"{BASE}/imports/{data['source_document_id']}/extraction", headers=auth(factory, ALICE)
+    ).json()["data"]["document"]
+
+    assert engine.pages == [], "a readable text layer must never reach the engine"
+    assert document["text_source"] == "TEXT_LAYER"
+    assert document["ocr_confidence"] is None
 
 
 def test_every_candidate_type_is_reviewable(
