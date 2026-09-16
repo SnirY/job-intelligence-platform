@@ -342,7 +342,7 @@ offered, because the user believes it was taken into account.
 
 Added 2026-08-23, after this roadmap had run to Phase 11. It is the first phase
 here that did not come from the specification documents: it came from
-`docs/development/career-ops-comparison-2026-08-23.md`, which compared this
+the career-ops comparison, which compared this
 platform against the most-starred open-source project in the same space and
 found exactly one capability where it was unambiguously ahead.
 

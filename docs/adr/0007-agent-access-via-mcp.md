@@ -8,7 +8,7 @@ Date:
 
 Relates to:
 ADR-0001 (package boundaries), ADR-0004 and ADR-0005 (identity). Prompted by
-[the career-ops comparison](../development/career-ops-comparison-2026-08-23.md).
+the career-ops comparison.
 
 ## Context
 

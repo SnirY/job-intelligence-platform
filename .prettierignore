@@ -17,5 +17,3 @@ package-lock.json
 docs/
 *.md
 
-# Emitted by the bootstrap bundle, not maintained here
-MANIFEST.json
