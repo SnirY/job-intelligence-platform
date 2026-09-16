@@ -8,9 +8,9 @@ Applying for a job means reading a posting, working out honestly whether you
 fit it, and rewriting your résumé without overstating yourself. This does those
 three things as one system, and refuses to invent anything along the way.
 
-A personal project by one developer, July–August 2026.
+A personal project by one developer, July–September 2026.
 **FastAPI · Next.js · PostgreSQL · Redis · Docker**
-· 119 REST endpoints · 2,233 automated tests · 294 commits
+· 119 REST endpoints · 2,300+ automated tests · 300+ commits
 
 **If you have five minutes:** the [architecture](#architecture) below, then
 [`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) — the
@@ -193,9 +193,11 @@ files, TypeScript `strict` with `noUncheckedIndexedAccess`, ruff, eslint,
 prettier, an Alembic `upgrade head → downgrade base` round-trip, and a Docker
 Compose stack brought up from scratch.
 
-**Scale.** ~89,000 lines across the API, the web app, the worker, the shared
-packages, the tests and the tooling — reported as a fact about the surface, not
-as a claim about its quality.
+**Scale.** ~108,000 lines of code across the API, the web app, the worker, the
+shared packages, the tests and the tooling, and ~25,000 more of documentation —
+every tracked file except the lockfile and the images, counted with `wc -l`, so
+the figure can be reproduced rather than taken. Reported as a fact about the
+surface, not as a claim about its quality.
 
 **AI is treated as an untrusted input**, not as a library call. Every operation
 has a typed output schema, schema validation, a versioned prompt, a persisted

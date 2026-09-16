@@ -213,10 +213,11 @@ class Settings(BaseSettings):
     must be present in the image or the engine refuses the whole request.
 
     **Both, and in this order, because a real Hebrew CV was measured against the
-    alternatives.** With `heb` alone the Latin on the page is destroyed --
-    `<address> | Linkedin | GitHub` came back as
+    alternatives.** With `heb` alone the Latin on the page is destroyed -- a
+    contact line reading `<address> | Linkedin | GitHub` came back as
     `ח60. !3 טוח | סטושוס`, because every glyph is forced through a Hebrew
-    model. With both packs that line is exact. The Hebrew character count looks
+    model. With both packs that line is exact. The address is redacted here and
+    was a real one; what it demonstrates is unchanged by which. The Hebrew character count looks
     higher for `heb` alone only because the mangled Latin is counted as Hebrew.
 
     Known limitation, from the same measurement: **line order inside an RTL
