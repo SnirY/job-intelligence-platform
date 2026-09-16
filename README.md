@@ -302,5 +302,5 @@ this page were checked before they were written.
 Twelve specification documents, seven architecture decisions, and the
 development tracking — indexed in [`docs/`](docs).
 
-Building on this with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
+Working in this repository with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
 what to read, how to verify, and the four things that will catch you out.
