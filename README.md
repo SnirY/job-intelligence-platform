@@ -179,7 +179,7 @@ defect in the code rather than a rule that turned out to be wrong.
 | | |
 |---|---|
 | Backend unit + offline AI evaluations | 1,118 |
-| Integration, against real PostgreSQL and Redis | 618 |
+| Integration, against real PostgreSQL and Redis | 615 |
 | Frontend | 573 |
 
 Plus a live-model evaluation suite that runs on request, because it costs
