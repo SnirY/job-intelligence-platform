@@ -29,7 +29,7 @@ function failure(overrides: Record<string, unknown> = {}) {
     step: "PARSING",
     entity_type: "source_document",
     entity_id: "doc-1",
-    entity_label: "snir-cv.pdf",
+    entity_label: "resume.pdf",
     attempts: 1,
     max_attempts: 5,
     error_code: "PROVIDER_ERROR",
@@ -81,7 +81,7 @@ describe("a failure that can be tried again", () => {
     server([failure()]);
     renderWithQuery(<FailedWork />);
 
-    expect(await screen.findByText("snir-cv.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("resume.pdf")).toBeInTheDocument();
     expect(screen.queryByText("doc-1")).not.toBeInTheDocument();
   });
 
@@ -113,7 +113,7 @@ describe("a failure that is over", () => {
     server([failure({ can_be_retried: false, is_dead: true, is_retriable: false })]);
     renderWithQuery(<FailedWork />);
 
-    await screen.findByText("snir-cv.pdf");
+    await screen.findByText("resume.pdf");
     expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
   });
 
