@@ -43,8 +43,12 @@ services:
   # S3-compatible object storage for uploaded documents. Real S3 semantics
   # locally — signed URLs and content types behave as they will in production,
   # which a filesystem shortcut would not.
+  # Pulled from quay.io and pinned. Docker Hub began refusing `minio/minio`
+  # with "pull access denied ... repository does not exist", which took the
+  # Compose job down on code that had not changed. `:latest` on somebody else's
+  # image is an unpinned dependency in a project that pins everything else.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${JIP_STORAGE_ACCESS_KEY:-jip_local_dev_only}
@@ -64,7 +68,7 @@ services:
   # alternative is every developer creating it by hand and CI failing until
   # someone remembers.
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy

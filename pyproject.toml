@@ -117,7 +117,18 @@ markers = [
   "live_ai: calls a real model provider; skipped unless JIP_RUN_AI_EVALS=1 (see tests/evals/README.md)",
   "ocr: needs the tesseract binary, which the API image installs and a host usually does not",
 ]
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  # Starlette's TestClient imports the `anyio.abc.BlockingPortal` alias, which
+  # anyio has deprecated in favour of `anyio.from_thread.BlockingPortal`. The
+  # warning fires while `apps/api/tests/conftest.py` is being imported, so
+  # "error" turns somebody else's deprecation schedule into a collection
+  # failure: pytest exits 4 and not one test runs.
+  #
+  # Named exactly rather than broadly, so this stops ignoring the day the
+  # message changes. Remove it when starlette imports the new path.
+  "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true
