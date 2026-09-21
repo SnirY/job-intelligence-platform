@@ -1,6 +1,6 @@
 # Documentation
 
-Twelve specification documents, written before the code and maintained
+Thirteen specification documents, written before the code and maintained
 alongside it. They are numbered in reading order: 00 explains what the product
 is for, and each one after it narrows.
 
@@ -22,19 +22,11 @@ is for, and each one after it narrows.
 
 ## Decisions
 
-[`adr/`](adr) — seven architecture decisions, each recording the alternative
-that was rejected and why. A decision argued once and never written down gets
-re-argued.
+[`adr/`](adr) — eight architecture decisions, each recording the alternative
+that was rejected and why.
 
-## Development
+## Running it
 
-The tracking files, which describe what is true rather than what was planned:
-
-| | |
-|---|---|
-| [`development/implementation-status.md`](development/implementation-status.md) | What exists, and where it is thinner than it looks |
-| [`development/known-issues.md`](development/known-issues.md) | Every defect found, its cause, and what was done |
-| [`development/dev-011-results.md`](development/dev-011-results.md) | The matching engine calibrated against real postings, by hand |
-| [`development/manual-verification-checklist.md`](development/manual-verification-checklist.md) | What a person walked, on what date, and what it found |
-| [`development/ui-invariants.md`](development/ui-invariants.md) | The rules a screen keeps no matter how it looks |
-| [`development/screen-inventory.md`](development/screen-inventory.md) | Every screen, and what it is responsible for |
+[`development/local-environment.md`](development/local-environment.md) —
+running the stack on the host rather than in Docker, running the checks, and
+notes for Windows.

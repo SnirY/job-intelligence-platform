@@ -20,53 +20,17 @@
  *
  * `.claude/launch.json` carries both servers if you drive them from there.
  *
- * ## Why the demo account and not yours
+ * ## Why a demo account
  *
- * These images are for a public README, and an image cannot be grepped. A real
- * account's jobs and matches would put named employers and this reader's scores
- * against them into a file no later sweep can find — which is the exact problem
- * the 2026-08-30 anonymisation pass existed to fix.
+ * These images are public, so they are taken from a demo account rather than a
+ * real one. Its postings keep their parsed requirements — genuine model output
+ * — but every employer name is replaced and the posting text itself is not
+ * stored. Rows are tagged `[demo]` and `[seed]`, so a reader can see the data is
+ * a fixture.
  *
- * The demo account's postings began as real ones and keep their parsed
- * requirements, which is what makes these screens worth looking at: the
- * structured reading is genuine model output over genuine postings. What was
- * replaced is every employer name, and what was dropped is the posting prose
- * itself — unscrubbable free text, and the employers' writing rather than ours.
- *
- * Rows are tagged `[demo]` and `[seed]`, visible in the captures, and that is
- * honest rather than unfortunate: a reader can see the data is a fixture.
- *
- * ## The demo account is not in this repository, and cannot be rebuilt from it
- *
- * Recorded 2026-09-06, because the paragraph above this one promises that a
- * screenshot need not go stale and that promise currently depends on one
- * machine.
- *
- * `seed_dev_data.py` writes the `[seed]` rows and any clone can run it. The
- * `[demo]` rows are a different thing: 17 postings, 18 analyses and 249
- * requirements produced by real model calls over real postings, then
- * anonymised by hand on 2026-08-30 — employer names replaced with invented
- * ones, descriptions regenerated from the parsed requirements and labelled as
- * such in their own text, the career profile fictional throughout. None of that
- * is scripted. It exists only as rows in the local Postgres volume.
- *
- * So `docker volume rm` and the five images in `docs/images/` can never be
- * re-taken, only deleted. Two ways out, neither done:
- *
- *   1. `pg_dump` the account to `../job-intelligence-personal-data-backup/`,
- *      which is where the calibration originals already live. Minutes, and it
- *      only preserves — a restore still needs that one machine's stack.
- *   2. Extend `seed_dev_data.py` to write the `[demo]` rows as literal data and
- *      run the real matcher over them, the way it already writes an analysis
- *      and its requirements without calling a model. Then any clone can take
- *      these captures.
- *
- * One residue to fix on the way, wherever it is fixed: a LOCATION requirement's
- * `source_text` still quotes a real site by name ("our Upper Galilee site in
- * the [site]"). The 2026-08-30 pass replaced `jobs.company` and
- * regenerated descriptions; it did not reach `job_requirements.source_text`,
- * which is the column the job-match capture puts on screen. The postings behind
- * the five committed images were checked and carry no employer or place name.
+ * The demo account's data lives in a local database and is not part of this
+ * repository. `seed_dev_data.py` creates a smaller sample account that any
+ * clone can capture from.
  */
 
 import { mkdir } from "node:fs/promises";

@@ -8,7 +8,7 @@ Date:
 
 Relates to:
 ADR-0001 (package boundaries), ADR-0003 (work the API does not do itself).
-Implemented by [Phase 14](../development/tasks/phase-14-scanned-document-ingestion.md).
+Implemented in Phase 14, scanned document ingestion.
 
 ## Context
 

@@ -157,5 +157,5 @@ already has to offer, and because it works across agents rather than one.
 The honest default while Phase 11 is open. Nothing here is urgent, and the
 credential work is real. This ADR is Proposed for that reason: the decision is
 worth having written down before it is needed, and worth revisiting only once
-[Phase 12](../development/tasks/phase-12-job-discovery.md) makes bulk operations
+Phase 12, job discovery, makes bulk operations
 common enough for driving by hand to become the bottleneck.

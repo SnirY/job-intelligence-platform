@@ -384,8 +384,6 @@ A configured board returns real postings; a re-scan offers nothing already
 decided about; a closed posting is marked closed and an unreachable one is not;
 and a job can carry a legitimacy concern while its match score is unchanged.
 
-See `docs/development/tasks/phase-12-job-discovery.md`.
-
 ## Codex task size
 
 Do not assign giant tasks such as “Build Phase 6.”

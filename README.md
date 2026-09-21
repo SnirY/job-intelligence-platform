@@ -1,120 +1,66 @@
 # Job Intelligence Platform
 
-**Reads a job posting into structured requirements, matches it against a
-verified career profile with traceable evidence, and writes a tailored résumé
-that cannot make a claim your profile does not support.**
+A job-search platform that reads a job posting, compares it with your career
+profile — showing the evidence behind every verdict — and helps you tailor your
+résumé without ever claiming something your profile doesn't support.
 
-Applying for a job means reading a posting, working out honestly whether you
-fit it, and rewriting your résumé without overstating yourself. This does those
-three things as one system, and refuses to invent anything along the way.
+**Python · FastAPI · Next.js · TypeScript · PostgreSQL · Redis · Docker**
+A personal project, built July–September 2026.
 
-A personal project by one developer, July–September 2026.
-**FastAPI · Next.js · PostgreSQL · Redis · Docker**
-· 119 REST endpoints · 2,300+ automated tests · 300+ commits
+![The job match screen: each requirement from the posting, the system's reading of it, and the verdict.](docs/images/job-match.png)
 
-**If you have five minutes:** the [architecture](#architecture) below, then
-[`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) — the
-scoring engine, which contains no model call — and
-[`packages/ai-core`](packages/ai-core), the one place a model is spoken to.
+*Each requirement from the posting, how the system read it, and the verdict with
+the evidence behind it.*
 
-**If you have fifteen:** add [`docs/adr/`](docs/adr) for the decisions and the
-alternatives rejected, [`dev-011-results.md`](docs/development/dev-011-results.md)
-for the engine calibrated by hand against real postings, and
-[`known-issues.md`](docs/development/known-issues.md) for every defect found and
-what was done about it.
-
-![A job's requirements: the posting's own wording on the left, the system's
-reading of it on the right, each one typed and weighted.](docs/images/job-match.png)
-
-*Every requirement, twice: what the posting said, and how the system read it.
-The reading is labelled as a reading — and the two are never merged.*
-
----
-
-## The idea
-
-Most job tools score a résumé against a posting and hand back a number. This one
-is built on the assumption that **the number is the least useful part**.
-
-What matters is *why*. Every verdict here is traceable to a specific row of the
-user's own career data — this role, that project, this bullet — and anything the
-system cannot evidence, it says so about rather than guessing.
-
-Three rules shaped almost every technical decision:
-
-1. **Never fabricate.** A generated résumé line containing a figure that appears
-   nowhere in the user's data is blocked, quoted back, and shown for review.
-2. **AI never controls verified facts.** Model output lands in a review table and
-   stops there. Only a person turns a proposal into a career fact.
-3. **Separate what was said from what we concluded.** The posting's own words are
-   preserved and quoted; every judgement is labelled as a reading and carries its
-   reasoning.
+**Short on time?** Look at the [architecture](#architecture) and at
+[`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py), the
+scoring engine.
 
 ## What it does
 
 ```text
-Build a profile  →  Save a job  →  Read the posting  →  Match with evidence
-                                        →  Tailor a résumé  →  Apply  →  Track
+Build a profile → Save a job → Analyse the posting → Match with evidence → Tailor a résumé → Track applications
 ```
 
-- **Career profile** — skills, experience, projects, education, preferences,
-  built by hand or imported from a résumé and reviewed proposal by proposal.
-- **Document ingestion** — a PDF's text layer where there is one, and OCR where
-  there is not, so a scan or a phone photograph is read rather than refused.
-  Which path ran is stored and shown, because text recognised from a picture is
-  not the same evidence as text lifted from a file.
-- **Job intelligence** — a posting parsed into typed requirements with an
-  importance the model must not overstate, plus role family and seniority.
-- **Matching** — requirement-level verdicts, each linked to the evidence behind
-  it, with a recommendation stored separately from the score so the two can
-  disagree.
-- **Résumé tailoring** — strategy, then suggestions, then truth validation, then
-  a review, then a version. Five stages, five requests, never one call rewriting
-  a document.
-- **Applications and insights** — an append-only application history, and what
-  the user's own saved jobs keep asking for.
+- **Career profile** — skills, experience, projects and education, entered by
+  hand or imported from a résumé and reviewed item by item.
+- **Résumé import** — reads PDF and Word files, including scanned PDFs through
+  OCR.
+- **Job analysis** — turns a posting into typed requirements (skills,
+  experience, education, and so on), each with its importance.
+- **Matching** — a verdict for every requirement, linked to the part of your
+  profile that supports it.
+- **Résumé tailoring** — suggests changes for a specific job, and checks every
+  suggestion against your profile before you see it.
+- **Job discovery** — scans public job boards (Greenhouse, Ashby, Lever) into a
+  review list.
+- **Tracking and insights** — your application history, and which skills your
+  saved jobs ask for most.
 
-## What it looks like
+## Design principles
 
-Captured from a demo account by
-[`scripts/capture_screenshots.mjs`](scripts/capture_screenshots.mjs), so these
-can be re-taken rather than going quietly stale. The postings behind them were
-real; every employer name was replaced and the posting prose dropped, which is
-why rows read `[demo]`.
+1. **Never invent facts.** A suggested résumé line containing a figure that
+   isn't in your profile is blocked; new terminology is flagged for review.
+2. **AI suggests, a person decides.** Model output goes into a review queue.
+   Nothing becomes part of your profile until you approve it.
+3. **Evidence over scores.** Every verdict points to the role, project or skill
+   it's based on. When there is no evidence, the system says so instead of
+   guessing.
 
-### Every role you are considering
+## Screenshots
 
-![The saved postings, with a distribution across alignment bands and a coverage bar per row.](docs/images/jobs.png)
+| | |
+|---|---|
+| ![Saved jobs](docs/images/jobs.png)<br>**Saved jobs** — grouped by how well they fit, with requirement coverage for each. | ![Home](docs/images/home.png)<br>**Home** — suggested next steps, each with the reason behind it. |
+| ![Career profile](docs/images/career-profile.png)<br>**Career profile** — the data every verdict traces back to. | ![Discovery](docs/images/discovery.png)<br>**Discovery** — postings found on public job boards, waiting for review. |
 
-The bands come from the engine. Two of these jobs sit outside them — not
-compared yet, so they have no figure rather than a low one, which is a
-distinction most tools quietly lose.
-
-### What to do next, and why
-
-![The home screen, listing suggested next actions each with the reason it was suggested.](docs/images/home.png)
-
-Every suggestion carries what it was based on. A recommendation you can
-disagree with is one that told you why.
-
-### The profile every verdict traces back to
-
-![The career profile screen, showing skills, experience and the evidence behind them.](docs/images/career-profile.png)
-
-Skills, experience, education and the evidence behind each. Nothing arrives
-here without a person approving it, including anything a model proposed.
-
-### Postings found rather than pasted
-
-![The discovery screen listing postings scanned from public job boards, awaiting review.](docs/images/discovery.png)
-
-Public job boards, scanned into a review list. A scan finds candidates; only a
-person turns one into a job.
+Taken from a demo account: employer names are replaced and rows are marked
+`[demo]`.
 
 ## Architecture
 
-A modular monolith, layered so that the rules can be tested without a database
-and the model can be swapped without touching them.
+A modular monolith with clear layers, so the business rules can be tested
+without a database and the AI provider can be swapped without touching them.
 
 ```mermaid
 flowchart TD
@@ -132,175 +78,91 @@ flowchart TD
     App --> Extract["extraction · text layer,<br/>else OcrEngine → Tesseract"]
     Extract --> App
 
-    App -. "typed request" .-> Core["packages/ai-core<br/>schema-constrained decoding, validation,<br/>retry by failure type, traced with cost"]
+    App -. "typed request" .-> Core["packages/ai-core<br/>schema validation, retries,<br/>traced with cost"]
     Core -. "a proposal, never a fact" .-> Review["review tables"]
     Review -. "only a person promotes one" .-> Dom
 ```
 
-**The dotted path is the point.** Model output enters through one boundary,
-arrives schema-validated, and stops in a review table. None of it reaches the
-scoring engine.
+The scoring engine never calls a model. AI output enters through a single
+package, [`packages/ai-core`](packages/ai-core), is validated against a schema,
+and stops in a review table. A
+[test](apps/api/tests/unit/test_domain_does_not_reach_a_provider.py) enforces
+that the domain layer never imports it.
 
-OCR sits behind the same kind of seam
-([ADR-0008](docs/adr/0008-ocr-behind-an-engine-interface.md)): an `OcrEngine`
-protocol takes page bitmaps and returns text, and the pipeline does not know
-which engine it has. Tesseract is the first implementation, not the design.
+## Engineering highlights
 
-That the domain never imports `ai-core` is
-[a test](apps/api/tests/unit/test_domain_does_not_reach_a_provider.py), not a
-convention — written after this file claimed the boundary was enforced and a
-check found that nothing was enforcing it.
+- **A deterministic, versioned matching engine** —
+  [`matcher.py`](apps/api/src/jip_api/application/matching/matcher.py). No model
+  calls, and every match keeps the engine version that produced it. Missing
+  evidence is left out of the average rather than scored as zero, so an
+  incomplete profile doesn't quietly lower the result.
+- **A fabrication guard** —
+  [`truth.py`](apps/api/src/jip_api/application/resumes/truth.py) checks each
+  suggested résumé line against your data before you see it.
+- **AI treated as an untrusted input** — every model call has a typed schema,
+  validation on the way back, a versioned prompt, retries that depend on the
+  kind of failure, and a stored trace with its cost.
+- **OCR, measured rather than assumed** — scanned résumés are read with
+  Tesseract behind an interface
+  ([ADR-0008](docs/adr/0008-ocr-behind-an-engine-interface.md)). Measuring
+  accuracy showed something unexpected: the engine's confidence went *up* as
+  the reading got *worse*, because a confused engine drops the hard words and
+  they never count against it. The percentage was removed from the UI.
 
-## The parts worth reading
+  | condition | error rate | confidence |
+  |---|---|---|
+  | skew 2.5°, blur 3.5 | 0.45 | 86.9 |
+  | skew 3.5°, blur 4.5 | 0.20 | 53.4 |
 
-If you are evaluating this as engineering work rather than as a product, these
-are the files where the thinking is:
+- **Tested at every layer** — 2,300+ automated tests: backend unit tests,
+  integration tests against real PostgreSQL and Redis, and frontend tests, plus
+  Playwright end-to-end tests in a real browser. CI runs `mypy --strict`, strict
+  TypeScript, linting, a database migration round-trip, and a full Docker
+  Compose start-up.
 
-| | |
-|---|---|
-| [`matching/matcher.py`](apps/api/src/jip_api/application/matching/matcher.py) | The scoring engine, at 6.0.0. **Deterministic and versioned — no model call anywhere in it**, and eight verdicts rather than a percentage |
-| [`dev-011-results.md`](docs/development/dev-011-results.md) | Nine real postings, scored by the engine and by a person, and what came out of every disagreement |
-| [`resumes/truth.py`](apps/api/src/jip_api/application/resumes/truth.py) | The fabrication guard. Refuses invented figures, flags introduced terminology, classifies risk |
-| [`packages/ai-core`](packages/ai-core) | The provider boundary: schema-constrained decoding, validation on the way back, retry by failure type, a trace per attempt with cost |
-| [`tests/accuracy/test_ocr_accuracy.py`](apps/api/tests/accuracy/test_ocr_accuracy.py) | OCR measured rather than asserted — character and word error rates against generated ground truth, and the finding that retired a shipped number |
-| [`docs/adr/`](docs/adr) | Eight architecture decisions, each with the alternative that was rejected |
-| [`known-issues.md`](docs/development/known-issues.md) | Every defect found, its cause, the fix, and the test that now covers it |
-
-Two details from the matcher worth the click. `NO_EVIDENCE` is **excluded from
-the average rather than scored zero** — an incomplete profile must not quietly
-lower the number. And the nine calibration postings moved the engine five major
-versions without changing a single weight, cap or threshold: every one was a
-defect in the code rather than a rule that turned out to be wrong.
-
-## Engineering
-
-**Tests.** 2,300+ across three layers:
-
-| | |
-|---|---|
-| Backend unit + offline AI evaluations | 1,118 |
-| Integration, against real PostgreSQL and Redis | 615 |
-| Frontend | 573 |
-
-Plus a live-model evaluation suite that runs on request, because it costs
-money, and an OCR accuracy suite that needs the Tesseract binary and skips with
-a reason where it is absent.
-
-**Checks**, as a GitHub Actions workflow on every pull request, and as
-`python scripts/run_checks.py` locally — the same set in the same order, so a
-failure is found before the push rather than after it: `mypy --strict` over 327
-files, TypeScript `strict` with `noUncheckedIndexedAccess`, ruff, eslint,
-prettier, an Alembic `upgrade head → downgrade base` round-trip, and a Docker
-Compose stack brought up from scratch.
-
-**Scale.** ~108,000 lines of code across the API, the web app, the worker, the
-shared packages, the tests and the tooling, and ~25,000 more of documentation —
-every tracked file except the lockfile and the images, counted with `wc -l`, so
-the figure can be reproduced rather than taken. Reported as a fact about the
-surface, not as a claim about its quality.
-
-**AI is treated as an untrusted input**, not as a library call. Every operation
-has a typed output schema, schema validation, a versioned prompt, a persisted
-run trace, and an evaluation fixture. Failures are classified: a permanent one
-is never retried, and a retry is never offered where it cannot work.
-
-**Measured, and it changed the answer.** The OCR path shipped a line on the
-review screen reading *"82% clear"*, taken from the engine's mean word
-confidence. Building the accuracy suite showed the figure does not mean that:
-
-| condition | character error rate | mean confidence | words emitted |
-|---|---|---|---|
-| skew 2.5°, blur 3.5 | 0.45 | 86.9 | 25 of 40 |
-| skew 3.5°, blur 4.5 | 0.20 | 53.4 | 40 of 40 |
-
-**The worse read reported the higher confidence.** A mean averages the words
-the engine emitted, and a badly confused engine abandons the hard ones — an
-abandoned word lands in the error rate as a deletion and nowhere in the mean.
-The figure measured the words kept, not the words lost. No statistic over that
-output can see the loss, so the number was removed rather than replaced.
-
-Two more things the measurement produced. Accuracy does not degrade with
-resolution, it falls off a cliff — flawless from 300 DPI down to 100, then 0.54
-at 50 and nothing at 40. And the first version of the accuracy test measured
-nothing at all: it compared 300 DPI against 120, both scored perfectly, and it
-failed as `0.0 > 0.0`.
-
-**Verification automated tests cannot do** is written down rather than assumed:
-[`manual-verification-checklist.md`](docs/development/manual-verification-checklist.md)
-records what a person walked, when, and what it found — 95 checks so far.
-
-One sitting is why the file exists. Twelve stages walked, eleven turned up a
-defect the suite had missed, nearly every one a screen saying the wrong thing
-about a calculation that was right. No unit or integration test sees that class
-of fault. A browser does, which is also why
-[`tests/e2e`](tests/e2e) exists.
-
-## Running it
+## Running it locally
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Web on `:3000`, API on `:8000`, API docs on `:8000/docs`.
+Web on `localhost:3000`, API on `:8000`, API docs on `:8000/docs`.
 
-**Sign-in without registering anywhere.** Authentication is OIDC and normally
-goes to Clerk, which means an account before the first screen renders. Set both
-halves to skip that:
+To sign in without creating an account, set `JIP_AUTH_PROVIDER=local` (and
+`NEXT_PUBLIC_AUTH_PROVIDER=local` for the web) with the same secret in
+`JIP_AUTH_LOCAL_SECRET` and `AUTH_LOCAL_SECRET`. The API refuses this mode
+outside local development and tests. `python scripts/seed_dev_data.py` fills
+the account with sample data.
 
-```bash
-JIP_AUTH_PROVIDER=local          # and NEXT_PUBLIC_AUTH_PROVIDER=local for the web
-JIP_AUTH_LOCAL_SECRET=…          # and AUTH_LOCAL_SECRET, the same value
-```
-
-`/sign-in` then asks for a name instead of credentials, and the name becomes the
-profile. It verifies a real signature against a real expiry — only the key
-source changes. **The API refuses to build that verifier outside `local` and
-`test`**, so a demo convenience cannot reach a deployment.
-`python scripts/seed_dev_data.py` fills the account with enough to look at.
-
-The AI features need an API key in `.env`; everything else runs without one. For
-host-process development, the checks, and the Windows notes, see
+The AI features need an API key in `.env`; everything else works without one.
+Running without Docker, running the checks, and Windows notes are in
 [`local-environment.md`](docs/development/local-environment.md).
 
 ## Status
 
-**The whole chain works end to end**, on a real profile against real postings:
-build a profile, save a posting, read it into requirements, match it with
-evidence, tailor a résumé against the match, and track what happened. Fourteen
-screens, and every capability listed above is built rather than planned.
-
-**What is deliberately not claimed.** It is not deployed and it has one user.
-It was built to be correct rather than to scale: no load testing, and no
-evidence about how it behaves with a thousand accounts, because none of that
-has been measured.
-
-[`implementation-status.md`](docs/development/implementation-status.md) says
-what exists and where it is thinner than it looks.
+The full flow works end to end on real job postings, across 14 screens and 119
+API endpoints. It's a personal project: it isn't deployed, it has one user, and
+it hasn't been load-tested.
 
 ## How it was built
 
-Written with AI coding assistance, and worth saying plainly rather than leaving
-to be discovered.
+Built with AI coding assistance — worth saying up front.
 
-**The specifications came first**, which is checkable rather than asserted: the
-first commit in this repository is twelve specification documents, and the
-first domain model arrives three hours later. The architecture, the domain
-rules and the acceptance criteria were decided before anything implemented
-them, and the judgement calls are the documented ones —
-[`docs/adr/`](docs/adr) for what was rejected and why,
-[`dev-011-results.md`](docs/development/dev-011-results.md) for an engine
-disagreed with by hand nine times.
-
-The tests are what makes working this way safe. An assistant that produces a
-plausible wrong answer quickly moves the bottleneck from typing to
-verification, which is why the boundary test above exists and why the claims on
-this page were checked before they were written.
+The project started from specifications: the first commit is 13 specification
+documents, and the first domain code came under three hours later.
+Architecture decisions, and the alternatives that were rejected, are recorded
+in [`docs/adr/`](docs/adr). The tests are what make working this way safe: an
+assistant can produce a plausible wrong answer quickly, so most of the effort
+goes into verifying rather than typing.
 
 ## Documentation
 
-Twelve specification documents, seven architecture decisions, and the
-development tracking — indexed in [`docs/`](docs).
+- [`docs/`](docs) — 13 specification documents: product vision, requirements,
+  user flows, domain model, architecture, AI and matching, API contracts,
+  engineering standards.
+- [`docs/adr/`](docs/adr) — 8 architecture decision records.
 
-Working in this repository with an AI agent? [`AGENTS.md`](AGENTS.md) is the entry point:
-what to read, how to verify, and the four things that will catch you out.
+## License
+
+Source-available — see [LICENSE](LICENSE).

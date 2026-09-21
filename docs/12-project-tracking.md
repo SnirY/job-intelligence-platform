@@ -13,6 +13,10 @@ Maintain lightweight but reliable development tracking so a new session can answ
 
 Tracking should preserve continuity without becoming bureaucracy.
 
+> The tracking files this document describes are working notes. They are kept
+> alongside the code during development and are not part of the published
+> repository.
+
 ## Mandatory tracking files
 
 ```text
