@@ -13,11 +13,14 @@ name: CI
 # with no pull request open is now unverified until one exists, which is the
 # right trade: the check that matters is the one before a merge.
 #
-# `paths-ignore` skips documentation-only changes. The calibration in
-# `docs/development/` is written up one posting at a time, and running 466
-# integration tests and a Docker Compose stack against a markdown edit is the
-# other half of what emptied the quota. A pull request touching code *and* docs
-# still runs — the filter only skips when every changed file matches.
+# `paths-ignore` skips documentation-only changes. Running the integration
+# suite and a Docker Compose stack against a markdown edit is the other half of
+# what emptied the quota. A pull request touching code *and* docs still runs —
+# the filter only skips when every changed file matches.
+#
+# `workflow_dispatch` is the manual one — `gh workflow run CI`, or "Run
+# workflow" on the Actions tab — for when a skipped documentation change still
+# needs a result. It overlaps with nothing, because only a person starts it.
 on:
   push:
     branches: [main]
